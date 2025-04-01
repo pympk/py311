@@ -1,0 +1,16 @@
+
+geckodriver.log
+.env
+.venv
+.vscode/
+
+# Ignore nodejs folders and subfolders
+/nodejs/node_modules/
+
+# Ignore Python folders and subfolders
+__pycache__/
+.pytest_cache/
+temp/
+data/
+lumen/
+lumen_/
