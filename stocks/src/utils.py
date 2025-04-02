@@ -638,10 +638,6 @@ import numpy as np
 import pandas as pd
 
 
-
-import numpy as np
-import pandas as pd
-
 def get_cov_corr_ewm_matrices(df, span=21, return_corr=True, return_cov=True):
     """
     Calculates the exponentially weighted moving (EWM) covariance and/or correlation matrix,
@@ -694,5 +690,75 @@ def get_cov_corr_ewm_matrices(df, span=21, return_corr=True, return_cov=True):
         return None
 
     return (cov_matrix, correlation_matrix) if return_cov and return_corr else (cov_matrix if return_cov else correlation_matrix)
+
+
+def get_cov_corr_ewm_matrices_chunked(df, span=21, return_corr=True, return_cov=True, chunk_size=100):
+    """
+    Robust chunked calculation of EWM covariance and correlation matrices.
+    Handles edge cases and ensures proper broadcasting.
+    """
+    alpha = 2 / (span + 1)
+    
+    # Clean data - remove inf and drop rows with any NaN
+    clean_df = df.replace([np.inf, -np.inf], np.nan).dropna()
+    n_assets = len(clean_df.columns)
+    n_obs = len(clean_df)
+    
+    # Calculate EWM mean and demean
+    ewm_mean = clean_df.ewm(alpha=alpha, adjust=False).mean()
+    demeaned = clean_df - ewm_mean
+    
+    # Compute weights as a column vector
+    weights = (1 - alpha) ** np.arange(n_obs, 0, -1)
+    weights /= weights.sum()
+    weights = weights.reshape(-1, 1)  # Shape (n_obs, 1)
+    
+    # Initialize covariance matrix
+    cov_matrix = np.zeros((n_assets, n_assets))
+    
+    # Process in chunks
+    for i in range(0, n_assets, chunk_size):
+        i_end = min(i + chunk_size, n_assets)
+        chunk_i = demeaned.iloc[:, i:i_end].values  # Shape (n_obs, chunk_size)
+        
+        # Apply weights to chunk_i (broadcasting works automatically)
+        weighted_chunk_i = chunk_i * weights  # Shape (n_obs, chunk_size)
+        
+        for j in range(i, n_assets, chunk_size):  # Start from i for upper triangle
+            j_end = min(j + chunk_size, n_assets)
+            chunk_j = demeaned.iloc[:, j:j_end].values  # Shape (n_obs, chunk_size)
+            
+            # Calculate weighted products for this chunk pair
+            cov_chunk = np.dot(weighted_chunk_i.T, chunk_j)  # Shape (chunk_size, chunk_size)
+            
+            # Fill the covariance matrix
+            cov_matrix[i:i_end, j:j_end] = cov_chunk
+            
+            # Fill symmetric part if not on diagonal
+            if i != j:
+                cov_matrix[j:j_end, i:i_end] = cov_chunk.T
+    
+    # Prepare results
+    results = []
+    
+    if return_cov:
+        cov_matrix_df = pd.DataFrame(cov_matrix, 
+                                   index=clean_df.columns, 
+                                   columns=clean_df.columns)
+        results.append(cov_matrix_df)
+    
+    if return_corr:
+        # Handle zero variances
+        variances = np.diag(cov_matrix).copy()
+        variances[variances <= 0] = 1e-10  # Small positive value
+        std_devs = np.sqrt(variances)
+        
+        corr_matrix = cov_matrix / np.outer(std_devs, std_devs)
+        corr_matrix_df = pd.DataFrame(corr_matrix,
+                                    index=clean_df.columns,
+                                    columns=clean_df.columns)
+        results.append(corr_matrix_df)
+    
+    return tuple(results) if len(results) > 1 else results[0]
 
 
