@@ -493,7 +493,7 @@ def convert_volume(value):
         return np.nan
 
 
-
+import re
 def extract_date_from_string(input_string, pattern=r'(\d{4}-\d{2}-\d{2})', group_index=1):
     """
     Extracts a date (or any matching pattern) from a string using a regular expression.

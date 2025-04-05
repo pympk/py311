@@ -1,0 +1,23 @@
+2025-04-05 15:44:40,879 - INFO - Logging configured. Output file: ..\logs\2025-04-02_optimizer.log
+2025-04-05 15:44:40,881 - INFO - ============================== Starting Portfolio Optimization ==============================
+2025-04-05 15:44:40,882 - INFO - Detailed results will be written to: ..\picks\2025-04-02_portfolio.txt
+2025-04-05 15:44:40,884 - INFO - Preparing data: Converting numeric columns and calculating ATR/Price %.
+2025-04-05 15:44:41,022 - INFO - Calculated 'ATR/Price %' and added to volatility metrics.
+2025-04-05 15:44:41,023 - INFO - Defining scoring parameters and column groups.
+2025-04-05 15:44:41,024 - INFO - Columns required for scoring: ['Volatility W %', 'Sortino 15d', 'Volatility M %', 'SMA50 %', 'Sortino 3d', 'Omega 5d', 'RSI', 'Sortino 30d', 'Sharpe 3d', 'Sortino 5d', 'Omega 15d', 'Sortino 60d', 'Sharpe 5d', 'Omega 30d', 'Sharpe 30d', 'SMA20 %', 'Perf Month %', 'Perf Week %', 'Sharpe 10d', 'Perf Quart %', 'Perf 3D %', 'Sortino 10d', 'Omega 10d', 'Omega 60d', 'Omega 3d', 'ATR/Price %', 'SMA200 %', 'Sharpe 60d', 'Sharpe 15d']
+2025-04-05 15:44:41,027 - INFO - Volatility columns being used: ['Volatility W %', 'Volatility M %', 'ATR/Price %']
+2025-04-05 15:44:41,035 - INFO - Data cleaning complete. Retained 1161 rows out of 1161 (removed 0 rows with NaNs in required columns).
+2025-04-05 15:44:41,036 - INFO - Calculating composite scores for tickers.
+2025-04-05 15:44:41,078 - INFO - Composite score calculation finished.
+2025-04-05 15:44:41,079 - INFO - Selecting top 1161 tickers based on 'composite_score'.
+2025-04-05 15:44:41,083 - INFO - Selected tickers: ['CORT', 'BRBR', 'FTI', 'HMY', 'COR']... (first 5 shown)
+2025-04-05 15:44:41,084 - INFO - Performing hierarchical clustering into 60 clusters.
+2025-04-05 15:44:41,250 - INFO - Clustering successful. Found 60 clusters.
+2025-04-05 15:44:41,253 - INFO - Analyzing clusters and calculating risk-adjusted scores.
+2025-04-05 15:44:41,329 - INFO - Calculating cluster summary statistics.
+2025-04-05 15:44:41,406 - INFO - Cluster analysis complete.
+2025-04-05 15:44:41,408 - INFO - Assembling final output DataFrame (zscore_df).
+2025-04-05 15:44:41,423 - INFO - Final output DataFrame assembled.
+2025-04-05 15:44:41,424 - INFO - Writing detailed results to file: ..\picks\2025-04-02_portfolio.txt
+2025-04-05 15:44:41,484 - INFO - Successfully wrote results data to ..\picks\2025-04-02_portfolio.txt
+2025-04-05 15:44:41,485 - INFO - ============================== Portfolio Optimization Completed Successfully ==============================

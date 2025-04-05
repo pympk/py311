@@ -16,3 +16,4 @@ lumen/
 lumen_/
 # Ignore picks directory (add this if missing)
 stocks/picks/
+stocks/notebooks/output.log
