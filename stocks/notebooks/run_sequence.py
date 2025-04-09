@@ -15,7 +15,7 @@ notebooks = [
     "py7_cov_corr_matrices_v4.ipynb",
     "py8_portf_picks_v31.ipynb",
     "py9_market_sentiment.ipynb_v1
-    "py10_selection_perf.ipynb",
+    "py10_append_selection_v0.ipynb",
 ]
 
 def run_notebook(notebook_path):
