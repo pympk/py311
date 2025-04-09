@@ -16,6 +16,7 @@ notebooks = [
     "py8_portf_picks_v31.ipynb",
     "py9_market_sentiment.ipynb_v1
     "py10_append_selection_v0.ipynb",
+    "py11_calc_portf_performance_v0.ipynb",
 ]
 
 def run_notebook(notebook_path):
