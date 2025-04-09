@@ -11,10 +11,11 @@ notebooks = [
     "py3_calc_perf_ratios_v10.ipynb",
     "py4_append_ratios_v7.ipynb",
     "py5_append_columns_v5.ipynb",
-    "py5_stats_history_v1.ipynb",
-    "py6_cov_corr_matrices_v4.ipynb",
-    "py7_portf_picks_v30.ipynb",
-    "py8_market_sentiment.ipynb",
+    "py6_stats_history_v1.ipynb",
+    "py7_cov_corr_matrices_v4.ipynb",
+    "py8_portf_picks_v31.ipynb",
+    "py9_market_sentiment.ipynb_v1
+    "py10_selection_perf.ipynb",
 ]
 
 def run_notebook(notebook_path):
