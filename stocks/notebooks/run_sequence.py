@@ -13,8 +13,8 @@ notebooks = [
     "py5_append_columns_v5.ipynb",
     "py6_stats_history_v1.ipynb",
     "py7_cov_corr_matrices_v4.ipynb",
-    "py8_portf_picks_v31.ipynb",
-    "py9_market_sentiment.ipynb_v1
+    "py8_portf_picks_v32.ipynb",
+    "py9_market_sentiment_v1.ipynb",
     "py10_append_selection_v0.ipynb",
     "py11_calc_portf_performance_v0.ipynb",
 ]
