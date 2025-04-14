@@ -13,10 +13,11 @@ notebooks = [
     "py5_append_columns_v5.ipynb",
     "py6_stats_history_v1.ipynb",
     "py7_cov_corr_matrices_v4.ipynb",
-    "py8_portf_picks_v33.ipynb",
-    "py9_market_sentiment_v1.ipynb",
-    "py10_append_selection_v0.ipynb",
-    "py11_calc_portf_performance_v0.ipynb",
+    "py8_calc_scores_clusters_v1.ipynb",
+    # "py8_portf_picks_v39.ipynb",
+    # "py9_market_sentiment_v1.ipynb",
+    # "py10_append_selection_v0.ipynb",
+    # "py11_calc_portf_performance_v0.ipynb",
 ]
 
 def run_notebook(notebook_path):
@@ -36,29 +37,29 @@ def run_notebook(notebook_path):
     # os.makedirs(executed_dir_path, exist_ok=True) # Using os module
     executed_dir_path.mkdir(parents=True, exist_ok=True) # Using pathlib (preferred)
 
-    # --- Clear the contents of the executed directory ---
-    # Added section to delete existing contents
-    print(f"Clearing contents of directory: {executed_dir_path}")
-    deleted_count = 0
-    error_count = 0
-    for item in executed_dir_path.iterdir():
-        try:
-            if item.is_file() or item.is_symlink():
-                item.unlink() # Deletes files and symbolic links
-                print(f"  Deleted file: {item.name}")
-                deleted_count += 1
-            elif item.is_dir():
-                shutil.rmtree(item) # Deletes directories and their contents recursively
-                print(f"  Deleted directory: {item.name}")
-                deleted_count += 1
-        except Exception as e:
-            print(f"  Error deleting {item.name}: {e}")
-            error_count += 1
-    if deleted_count > 0 or error_count > 0:
-        print(f"Finished clearing: {deleted_count} items deleted, {error_count} errors.")
-    else:
-        print("Directory was already empty or contained no deletable items.")
-    # --- End of added section ---
+    # # --- Clear the contents of the executed directory ---
+    # # Added section to delete existing contents
+    # print(f"Clearing contents of directory: {executed_dir_path}")
+    # deleted_count = 0
+    # error_count = 0
+    # for item in executed_dir_path.iterdir():
+    #     try:
+    #         if item.is_file() or item.is_symlink():
+    #             item.unlink() # Deletes files and symbolic links
+    #             print(f"  Deleted file: {item.name}")
+    #             deleted_count += 1
+    #         elif item.is_dir():
+    #             shutil.rmtree(item) # Deletes directories and their contents recursively
+    #             print(f"  Deleted directory: {item.name}")
+    #             deleted_count += 1
+    #     except Exception as e:
+    #         print(f"  Error deleting {item.name}: {e}")
+    #         error_count += 1
+    # if deleted_count > 0 or error_count > 0:
+    #     print(f"Finished clearing: {deleted_count} items deleted, {error_count} errors.")
+    # else:
+    #     print("Directory was already empty or contained no deletable items.")
+    # # --- End of added section ---
 
     # Create the new filename by prefixing the original name
     output_filename = f"executed_{p_notebook.name}"
