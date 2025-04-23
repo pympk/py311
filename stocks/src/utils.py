@@ -722,7 +722,7 @@ def get_cov_corr_ewm_matrices_chunked(df, span=21, return_corr=True, return_cov=
     return tuple(results) if len(results) > 1 else results[0]
 
 
-def main_processor(data_dir='../data', downloads_dir=None, downloads_limit=20,
+def main_processor_(data_dir='../data', downloads_dir=None, downloads_limit=20,
                    clean_name_override=None, start_file_pattern='df_OHLCV_',
                    contains_pattern=None):
     """
@@ -797,12 +797,99 @@ def main_processor(data_dir='../data', downloads_dir=None, downloads_limit=20,
     return selected_file, dest_path
 
 
+def main_processor(data_dir='../data', downloads_dir=None, downloads_limit=20,
+                   clean_name_override=None, start_file_pattern='df_OHLCV_',
+                   contains_pattern=None):
+    """
+    Orchestrate file selection with configurable start and contains patterns.
+    Uses the base name of data_dir as the origin label for its files. Also
+    returns the list of basenames of files presented to the user.
+
+    Args:
+        data_dir (str): Path to the primary data directory.
+        downloads_dir (str, optional): Path to the downloads directory. Defaults to ~/Downloads.
+                                      Set to '' or None to skip searching downloads.
+        downloads_limit (int): Maximum number of files to consider from downloads.
+        clean_name_override (str, optional): If provided, overrides the generated destination filename.
+        start_file_pattern (str): Pattern for the start of filenames to search for.
+        contains_pattern (str, optional): Additional pattern that must be contained within the filename.
+                                         Defaults to None (no contains filtering).
+
+    Returns:
+        tuple: (selected_file_path, destination_path, displayed_filenames_list)
+               where displayed_filenames_list is a list of strings (basenames only).
+               Returns (None, None, []) if no files are found.
+               Returns (None, None, displayed_filenames_list) if the user cancels selection.
+    """
+    if downloads_dir is None:
+        downloads_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
+    elif downloads_dir == '': # Treat empty string as explicitly skipping downloads
+        downloads_dir = None
+
+    # Normalize data_dir path for consistent processing and get its base name
+    data_dir_abs = os.path.abspath(data_dir)
+    data_dir_label = os.path.basename(data_dir_abs) or data_dir_abs # Use basename, fallback to full path if basename is empty (e.g., root dir)
+
+    # Get data directory files matching BOTH patterns
+    data_files_raw = get_matching_files(data_dir_abs, create_dir=True, start_file_pattern=start_file_pattern)
+    data_files = [(os.path.join(data_dir_abs, f), data_dir_label) # <-- Use base name as origin label
+                  for f in data_files_raw
+                  if not contains_pattern or contains_pattern in f] # Apply contains_pattern filter
+
+    # Get downloads files matching BOTH patterns
+    downloads_files = []
+    # Only search downloads if the path exists and was provided (not None or '')
+    if downloads_dir and os.path.exists(downloads_dir):
+        raw_downloads = process_downloads_dir(downloads_dir, downloads_limit, start_file_pattern=start_file_pattern)
+        # Apply contains_pattern filter to downloads files (checking basename)
+        filtered_downloads = [f for f in raw_downloads
+                              if not contains_pattern or contains_pattern in os.path.basename(f)]
+        downloads_files = [(f, 'downloads') for f in filtered_downloads] # Keep 'downloads' label distinct
+    elif downloads_dir and not os.path.exists(downloads_dir):
+         display(Markdown(f"**Warning:** Downloads directory specified but not found: `{downloads_dir}`"))
 
 
+    # Internal list still uses tuples for display logic
+    ohlcv_files = data_files + downloads_files
 
+    # Construct informative error/selection messages
+    search_criteria = f"starting with '{start_file_pattern}'"
+    if contains_pattern:
+        search_criteria += f" and containing '{contains_pattern}'"
 
+    # Create the list of basenames to be returned
+    displayed_filenames = [os.path.basename(f_path) for f_path, _ in ohlcv_files]
 
+    if not ohlcv_files: # Check the original tuple list
+        display(Markdown(f"**Error:** No files found matching {search_criteria}! "
+                         f"(Searched: '{data_dir_label}' dir and downloads (if applicable))"))
+        # Return None, None, and an empty list for displayed_filenames
+        return None, None, [] # Return empty list [] directly
 
+    # Pass the tuple list to display (it needs the origin info)
+    display_file_selector(ohlcv_files, search_criteria)
+    selected_file = get_user_choice(ohlcv_files) # This returns the selected path or None
+
+    if selected_file is None: # Handle case where user cancels
+         display(Markdown(f"**Info:** No file selected."))
+         # Return None, None, but DO return the list of filenames that *were* displayed
+         return None, None, displayed_filenames
+
+    # --- File was selected ---
+    clean_name = generate_clean_filename(os.path.basename(selected_file))
+    if clean_name_override is not None:
+        clean_name = clean_name_override
+    # Destination path still uses the full absolute path for reliability
+    dest_path = os.path.join(data_dir_abs, clean_name)
+
+    display(Markdown(f"""
+    **Selected paths:**
+    - Source: `{selected_file}`
+    - Destination: `{dest_path}`
+    """))
+
+    # Return the selected file, destination path, AND the list of displayed *basenames*
+    return selected_file, dest_path, displayed_filenames
 
 
 

@@ -15,8 +15,7 @@ notebooks = [
     "py6_view_market_sentiment_v1.ipynb",
     "py7_cov_corr_matrices_v4.ipynb",
     "py8_calc_scores_clusters_v2.ipynb",
-    # "py8_portf_picks_v39.ipynb",
-    # "py9_market_sentiment_v1.ipynb",
+    "py8_portf_picks_v45.ipynb",
     # "py10_append_selection_v0.ipynb",
     # "py11_calc_portf_performance_v0.ipynb",
 ]
