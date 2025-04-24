@@ -893,4 +893,524 @@ def main_processor(data_dir='../data', downloads_dir=None, downloads_limit=20,
 
 
 
+#########################
+from typing import Dict, Any
 
+def print_stock_selection_report(output: Dict[str, Any]) -> None:
+    """
+    Prints a detailed report summarizing the results of the stock selection process,
+    extracting all necessary information from the output dictionary.
+
+    Args:
+        output (Dict[str, Any]): The dictionary returned by the
+                                select_stocks_from_clusters function, containing:
+                                - 'selected_stocks': DataFrame of selected stocks.
+                                - 'cluster_performance': DataFrame of selected cluster metrics.
+                                - 'parameters': Dictionary of the input parameters used.
+                                - 'cluster_stats_df': Original cluster stats DataFrame.
+                                - 'detailed_clusters_df': Original detailed clusters DataFrame.
+    Returns:
+        None: This function prints output to the console.
+    """
+    # Extract data from the output dictionary using .get() for safety
+    selected_stocks = output.get('selected_stocks', pd.DataFrame())
+    cluster_performance = output.get('cluster_performance', pd.DataFrame())
+    used_params = output.get('parameters', {})
+    # Extract the input DataFrames needed for the report
+    # cluster_stats_df = output.get('input_cluster_stats_df') # Might be None
+    cluster_stats_df = output.get('cluster_stats_df') # Might be None
+    # detailed_clusters_df = output.get('input_detailed_clusters_df') # Might be None
+    detailed_clusters_df = output.get('detailed_clusters_df') # Might be None
+
+    # --- Start of Original Code Block (adapted) ---
+
+    print("\n=== CLUSTER SELECTION CRITERIA ===")
+    print("* Using Composite_Cluster_Score (balancing Raw Score and diversification) for cluster ranking.")
+    print("* Using Risk_Adj_Score for stock selection within clusters.")
+
+    num_selected_clusters = len(cluster_performance) if not cluster_performance.empty else 0
+    # Use the extracted cluster_stats_df
+    total_clusters = len(cluster_stats_df) if cluster_stats_df is not None and not cluster_stats_df.empty else 'N/A'
+
+    print(f"* Selected top {num_selected_clusters} clusters from {total_clusters} total initial clusters.") # Adjusted wording slightly
+    print(f"* Selection Criteria:")
+    if used_params:
+        for key, value in used_params.items():
+            # Avoid printing the large input dataframes stored in parameters if they were added there too
+            if not isinstance(value, pd.DataFrame):
+                print(f"    {key}: {value}")
+    else:
+        print("    Parameters not available.")
+
+
+    if not cluster_performance.empty:
+        print("\n=== SELECTED CLUSTERS (RANKED BY COMPOSITE SCORE) ===")
+        display_cols_exist = [col for col in [
+                                'Cluster_ID', 'Size', 'Avg_Raw_Score', 'Avg_Risk_Adj_Score',
+                                'Avg_IntraCluster_Corr', 'Avg_Volatility', 'Composite_Cluster_Score',
+                                'Stocks_Selected', 'Intra_Cluster_Diversification']
+                                if col in cluster_performance.columns]
+        print(cluster_performance[display_cols_exist].sort_values('Composite_Cluster_Score', ascending=False).to_string(index=False))
+
+        # Print top 8 stocks by Raw_Score for each selected cluster
+        # Check if detailed_clusters_df was successfully extracted
+        if detailed_clusters_df is not None and not detailed_clusters_df.empty:
+            print("\n=== TOP STOCKS BY RAW SCORE PER SELECTED CLUSTER ===")
+            print("""* Volatility is the standard deviation of daily returns over the past 250 trading days (example context).
+* Note: The stocks below are shown ranked by Raw_Score for analysis,
+*       but actual selection within the cluster was based on Risk_Adj_Score.""")
+
+            for cluster_id in cluster_performance['Cluster_ID']:
+                cluster_stocks = detailed_clusters_df[detailed_clusters_df['Cluster_ID'] == cluster_id]
+                if not cluster_stocks.empty:
+                    required_cols = ['Ticker', 'Raw_Score', 'Risk_Adj_Score', 'Volatility']
+                    if all(col in cluster_stocks.columns for col in required_cols):
+                        top_raw = cluster_stocks.nlargest(8, 'Raw_Score')[required_cols]
+
+                        print(f"\nCluster {cluster_id} - Top 8 by Raw Score:")
+                        print(top_raw.to_string(index=False))
+                        cluster_avg_raw = cluster_performance.loc[cluster_performance['Cluster_ID'] == cluster_id, 'Avg_Raw_Score'].values
+                        cluster_avg_risk = cluster_performance.loc[cluster_performance['Cluster_ID'] == cluster_id, 'Avg_Risk_Adj_Score'].values
+                        if len(cluster_avg_raw) > 0: print(f"Cluster Avg Raw Score: {cluster_avg_raw[0]:.2f}")
+                        if len(cluster_avg_risk) > 0: print(f"Cluster Avg Risk Adj Score: {cluster_avg_risk[0]:.2f}")
+                    else:
+                        print(f"\nCluster {cluster_id} - Missing required columns in detailed_clusters_df to show top stocks.")
+                else:
+                    print(f"\nCluster {cluster_id} - No stocks found in detailed_clusters_df for this cluster.")
+        else:
+            print("\n=== TOP STOCKS BY RAW SCORE PER SELECTED CLUSTER ===")
+            print("Skipping - Detailed cluster information ('input_detailed_clusters_df') not found in the output dictionary.")
+
+    else:
+        print("\n=== SELECTED CLUSTERS ===")
+        print("No clusters were selected based on the criteria.")
+
+
+    print(f"\n=== FINAL SELECTED STOCKS (FILTERED & WEIGHTED) ===")
+    if not selected_stocks.empty:
+        print("* Stocks actually selected based on Risk_Adj_Score (and optional thresholds) within each cluster.")
+        print("* Position weights assigned based on Risk_Adj_Score within the final selected portfolio.")
+
+        desired_cols = ['Cluster_ID', 'Ticker', 'Raw_Score', 'Risk_Adj_Score',
+                        'Volatility', 'Weight',
+                        'Cluster_Avg_Raw_Score', 'Cluster_Avg_Risk_Adj_Score']
+        available_cols = [col for col in desired_cols if col in selected_stocks.columns]
+        print(selected_stocks[available_cols].sort_values(['Cluster_ID', 'Risk_Adj_Score'],
+                                                        ascending=[True, False]).to_string(index=False))
+
+        print("\n=== PORTFOLIO SUMMARY ===")
+        print(f"Total Stocks Selected: {len(selected_stocks)}")
+        print(f"Average Raw Score: {selected_stocks.get('Raw_Score', pd.Series(dtype=float)).mean():.2f}")
+        print(f"Average Risk-Adjusted Score: {selected_stocks.get('Risk_Adj_Score', pd.Series(dtype=float)).mean():.2f}")
+        print(f"Average Volatility: {selected_stocks.get('Volatility', pd.Series(dtype=float)).mean():.2f}")
+        print(f"Total Weight (should be close to 1.0): {selected_stocks.get('Weight', pd.Series(dtype=float)).sum():.4f}")
+        print("\nCluster Distribution:")
+        print(selected_stocks['Cluster_ID'].value_counts().to_string())
+    else:
+        print("No stocks were selected after applying all filters and criteria.")
+
+
+
+
+#########################
+
+def select_stocks_from_clusters(cluster_stats_df, detailed_clusters_df,
+                                select_top_n_clusters=3, max_selection_per_cluster=5,
+                                min_cluster_size=5, penalty_IntraCluster_Corr=0.3,
+                                date_str=None,
+                                min_raw_score=None, # <-- Added argument
+                                min_risk_adj_score=None): # <-- Added argument
+    """
+    Pipeline to select stocks from better performing clusters, with optional score thresholds.
+
+    Parameters:
+    - cluster_stats_df: DataFrame with cluster statistics.
+    - detailed_clusters_df: DataFrame with detailed cluster information including
+                            'Ticker', 'Cluster_ID', 'Raw_Score', 'Risk_Adj_Score', etc.
+    - select_top_n_clusters: int, Number of top clusters to select (default=3).
+    - max_selection_per_cluster: int, Max number of stocks to select from each cluster (default=5).
+    - min_cluster_size: int, Minimum size for a cluster to be considered (default=5).
+    - penalty_IntraCluster_Corr: float, Penalty weight for intra-cluster correlation in
+        composite score (default=0.3).
+    - date_str: str, Date string for tracking/parameter storage.
+    - min_raw_score: float, optional (default=None)
+        Minimum Raw_Score required for a stock to be considered for selection.
+        If None, no threshold is applied based on Raw_Score.
+    - min_risk_adj_score: float, optional (default=None)
+        Minimum Risk_Adj_Score required for a stock to be considered for selection.
+        If None, no threshold is applied based on Risk_Adj_Score.
+
+    Returns:
+    - dict: A dictionary containing:
+        - 'selected_top_n_cluster_ids': List of top selected cluster IDs.
+        - 'selected_stocks': DataFrame of selected stocks.
+        - 'cluster_performance': DataFrame of selected cluster metrics.
+        - 'parameters': Dictionary of the input parameters used.
+    """
+
+    # Store input parameters
+    parameters = {
+        'date_str': date_str,
+        'select_top_n_clusters': select_top_n_clusters,
+        'max_selection_per_cluster': max_selection_per_cluster,
+        'min_cluster_size': min_cluster_size,
+        'min_raw_score': min_raw_score,         # <-- Stored parameter
+        'min_risk_adj_score': min_risk_adj_score, # <-- Stored parameter
+        'penalty_IntraCluster_Corr': penalty_IntraCluster_Corr,
+    }
+    
+    # ===== 1. Filter and Rank Clusters =====
+    qualified_clusters = cluster_stats_df[cluster_stats_df['Size'] >= min_cluster_size].copy()
+    if qualified_clusters.empty:
+        print(f"Warning: No clusters met the minimum size criteria ({min_cluster_size}).")
+        return {
+            'selected_stocks': pd.DataFrame(),
+            'cluster_performance': pd.DataFrame(),
+            'parameters': parameters
+        }
+
+    qualified_clusters['Composite_Cluster_Score'] = (
+        (1 - penalty_IntraCluster_Corr) * qualified_clusters['Avg_Raw_Score'] +
+        penalty_IntraCluster_Corr * (1 - qualified_clusters['Avg_IntraCluster_Corr'])
+    )
+    ranked_clusters = qualified_clusters.sort_values('Composite_Cluster_Score', ascending=False)
+    selected_clusters = ranked_clusters.head(select_top_n_clusters)
+    cluster_ids = selected_clusters['Cluster_ID'].tolist()
+
+    if not cluster_ids:
+        print("Warning: No clusters were selected based on ranking.")
+        return {
+            'selected_stocks': pd.DataFrame(),
+            'cluster_performance': selected_clusters, # Return empty selected clusters df
+            'parameters': parameters
+        }
+
+
+    # ===== 2. Select Stocks from Each Cluster =====
+    selected_stocks_list = []
+    for cluster_id in cluster_ids:
+        # Get all stocks for the current cluster
+        cluster_stocks = detailed_clusters_df[detailed_clusters_df['Cluster_ID'] == cluster_id].copy()
+
+        # ===> Apply Threshold Filters <===
+        if min_raw_score is not None:
+            cluster_stocks = cluster_stocks[cluster_stocks['Raw_Score'] >= min_raw_score]
+        if min_risk_adj_score is not None:
+            cluster_stocks = cluster_stocks[cluster_stocks['Risk_Adj_Score'] >= min_risk_adj_score]
+        # ===> End of Added Filters <===
+
+        # Proceed only if stocks remain after filtering
+        if len(cluster_stocks) > 0:
+            # Sort remaining stocks by Risk_Adj_Score and select top N
+            top_stocks = cluster_stocks.sort_values('Risk_Adj_Score', ascending=False).head(max_selection_per_cluster)
+
+            # Add cluster-level metrics to the selected stock rows
+            cluster_metrics = selected_clusters[selected_clusters['Cluster_ID'] == cluster_id].iloc[0]
+            for col in ['Composite_Cluster_Score', 'Avg_IntraCluster_Corr', 'Avg_Volatility',
+                        'Avg_Raw_Score', 'Avg_Risk_Adj_Score', 'Size']: # Added Size for context
+                # Use .get() for safety if a column might be missing
+                top_stocks[f'Cluster_{col}'] = cluster_metrics.get(col, None)
+            selected_stocks_list.append(top_stocks)
+
+    # Consolidate selected stocks
+    if selected_stocks_list:
+        selected_stocks = pd.concat(selected_stocks_list)
+        # Recalculate weights based on the final selection
+        if selected_stocks['Risk_Adj_Score'].sum() != 0:
+            selected_stocks['Weight'] = (selected_stocks['Risk_Adj_Score'] /
+                                        selected_stocks['Risk_Adj_Score'].sum())
+        else:
+            # Handle case where all selected scores are zero (unlikely but possible)
+            selected_stocks['Weight'] = 1 / len(selected_stocks) if len(selected_stocks) > 0 else 0
+
+        selected_stocks = selected_stocks.sort_values(['Cluster_ID', 'Risk_Adj_Score'],
+                                                    ascending=[True, False])
+    else:
+        selected_stocks = pd.DataFrame()
+        print("Warning: No stocks met selection criteria (including score thresholds if applied).")
+
+
+    # ===== 3. Prepare Enhanced Output Reports =====
+    cluster_performance = selected_clusters.copy()
+    # Calculate how many stocks were actually selected per cluster after filtering
+    cluster_performance['Stocks_Selected'] = cluster_performance['Cluster_ID'].apply(
+        lambda x: len(selected_stocks[selected_stocks['Cluster_ID'] == x]) if not selected_stocks.empty else 0)
+
+    if not selected_stocks.empty:
+        # Ensure Avg_IntraCluster_Corr exists before calculating diversification
+        if 'Avg_IntraCluster_Corr' in cluster_performance.columns:
+            cluster_performance['Intra_Cluster_Diversification'] = 1 - cluster_performance['Avg_IntraCluster_Corr']
+        else:
+            cluster_performance['Intra_Cluster_Diversification'] = pd.NA # Or None
+    else:
+        # Handle case where selected_stocks is empty
+        cluster_performance['Intra_Cluster_Diversification'] = pd.NA # Or None
+
+    # ===> Package results and parameters
+    results_bundle = {
+        'selected_top_n_cluster_ids': cluster_ids,
+        'selected_stocks': selected_stocks,
+        'cluster_performance': cluster_performance,
+        'parameters': parameters
+    }
+
+    return results_bundle
+
+
+
+import pandas as pd
+import numpy as np
+import logging      # Assuming logging is set up elsewhere
+
+# Define a small epsilon to prevent division by zero
+EPSILON = 1e-9
+
+def select_stocks_from_clusters_ai(
+    cluster_stats_df,
+    detailed_clusters_df, # MUST contain 'Volatility' column if using 'InverseVolatility'
+                          # MUST contain 'Risk_Adj_Score' if using 'RiskAdjScore'
+    select_top_n_clusters=3,
+    max_selection_per_cluster=5,
+    min_cluster_size=5,
+    penalty_IntraCluster_Corr=0.3,
+    weighting_scheme='RiskAdjScore', # <-- Changed default back, added as option
+    date_str=None,
+    min_raw_score=None,
+    min_risk_adj_score=None):
+    """
+    Pipeline to select stocks from better performing clusters, applying a specified
+    weighting scheme.
+
+    Parameters:
+    - cluster_stats_df: DataFrame with cluster statistics.
+    - detailed_clusters_df: DataFrame with detailed cluster information including
+                            'Ticker', 'Cluster_ID', 'Raw_Score', 'Risk_Adj_Score',
+                            and 'Volatility' (required for InverseVolatility).
+    - select_top_n_clusters: int, Number of top clusters to select (default=3).
+    - max_selection_per_cluster: int, Max number of stocks to select from each cluster (default=5).
+    - min_cluster_size: int, Minimum size for a cluster to be considered (default=5).
+    - penalty_IntraCluster_Corr: float, Penalty weight for intra-cluster correlation in
+                                     composite score (default=0.3).
+    - weighting_scheme: str, Method for assigning portfolio weights. Options:
+                          'RiskAdjScore' (default, weights by Risk Adjusted Score),
+                          'EqualWeight',
+                          'InverseVolatility'.
+    - date_str: str, Date string for tracking/parameter storage.
+    - min_raw_score: float, optional (default=None)
+        Minimum Raw_Score required for a stock to be considered for selection.
+    - min_risk_adj_score: float, optional (default=None)
+        Minimum Risk_Adj_Score required for a stock to be considered for selection.
+
+    Returns:
+    - dict: A dictionary containing:
+        - 'selected_top_n_cluster_ids': List of top selected cluster IDs.
+        - 'selected_stocks': DataFrame of selected stocks with weights based on scheme.
+        - 'cluster_performance': DataFrame of selected cluster metrics.
+        - 'parameters': Dictionary of the input parameters used.
+    """
+    # Validate weighting scheme input
+    valid_schemes = ['RiskAdjScore', 'EqualWeight', 'InverseVolatility'] # Added RiskAdjScore
+    if weighting_scheme not in valid_schemes:
+        logging.warning(f"Invalid weighting_scheme '{weighting_scheme}'. "
+                        f"Defaulting to 'RiskAdjScore'. Valid options: {valid_schemes}")
+        weighting_scheme = 'RiskAdjScore' # Default if invalid input
+
+    # Check if required columns exist for the chosen scheme
+    required_col = None
+    if weighting_scheme == 'InverseVolatility':
+        required_col = 'Volatility'
+    elif weighting_scheme == 'RiskAdjScore':
+        required_col = 'Risk_Adj_Score'
+        # Check if Risk_Adj_Score actually exists in the input, as it's crucial
+        if required_col not in detailed_clusters_df.columns:
+            logging.error(f"Weighting scheme '{weighting_scheme}' selected, but "
+                          f"required column '{required_col}' is missing in detailed_clusters_df input. "
+                          f"Cannot proceed with this scheme.")
+            # Fallback or error - let's error more definitively here as it's the core input
+            # Returning None results to signal failure
+            parameters['error'] = f"Missing required column '{required_col}' for scheme '{weighting_scheme}'"
+            return {
+                'selected_top_n_cluster_ids': [],
+                'selected_stocks': pd.DataFrame(),
+                'cluster_performance': pd.DataFrame(),
+                'parameters': parameters
+            }
+
+    # Specific check for InverseVolatility if it's the chosen scheme
+    if weighting_scheme == 'InverseVolatility' and required_col not in detailed_clusters_df.columns:
+         logging.error(f"Weighting scheme 'InverseVolatility' selected, but "
+                       f"'Volatility' column is missing in detailed_clusters_df input. "
+                       f"Cannot proceed with this scheme. Check the upstream analyze_clusters function.")
+         logging.warning("Falling back to 'EqualWeight' due to missing 'Volatility' column.")
+         weighting_scheme = 'EqualWeight' # Fallback if Volatility is missing
+         required_col = None # Reset required_col as we've switched scheme
+
+
+    # Store input parameters
+    parameters = {
+        'date_str': date_str,
+        'select_top_n_clusters': select_top_n_clusters,
+        'max_selection_per_cluster': max_selection_per_cluster,
+        'min_cluster_size': min_cluster_size,
+        'min_raw_score': min_raw_score,
+        'min_risk_adj_score': min_risk_adj_score,
+        'penalty_IntraCluster_Corr': penalty_IntraCluster_Corr,
+        'weighting_scheme': weighting_scheme # Store the *actual* scheme used
+    }
+
+    # ===== 1. Filter and Rank Clusters (No Change) =====
+    qualified_clusters = cluster_stats_df[cluster_stats_df['Size'] >= min_cluster_size].copy()
+    if qualified_clusters.empty:
+        logging.warning(f"No clusters met the minimum size criteria ({min_cluster_size}).")
+        return {
+            'selected_top_n_cluster_ids': [],
+            'selected_stocks': pd.DataFrame(),
+            'cluster_performance': pd.DataFrame(),
+            'parameters': parameters
+        }
+
+    qualified_clusters['Composite_Cluster_Score'] = (
+        (1 - penalty_IntraCluster_Corr) * qualified_clusters['Avg_Raw_Score'] +
+        penalty_IntraCluster_Corr * (1 - qualified_clusters['Avg_IntraCluster_Corr'])
+    )
+    ranked_clusters = qualified_clusters.sort_values('Composite_Cluster_Score', ascending=False)
+    selected_clusters = ranked_clusters.head(select_top_n_clusters)
+    cluster_ids = selected_clusters['Cluster_ID'].tolist()
+
+    if not cluster_ids:
+        logging.warning("No clusters were selected based on ranking.")
+        return {
+            'selected_top_n_cluster_ids': [],
+            'selected_stocks': pd.DataFrame(),
+            'cluster_performance': selected_clusters,
+            'parameters': parameters
+        }
+
+    # ===== 2. Select Stocks from Each Cluster (No Change in Selection Logic) =====
+    selected_stocks_list = []
+    for cluster_id in cluster_ids:
+        cluster_stocks = detailed_clusters_df[detailed_clusters_df['Cluster_ID'] == cluster_id].copy()
+
+        # Apply Threshold Filters
+        if min_raw_score is not None:
+            cluster_stocks = cluster_stocks[cluster_stocks['Raw_Score'] >= min_raw_score]
+        if min_risk_adj_score is not None:
+            cluster_stocks = cluster_stocks[cluster_stocks['Risk_Adj_Score'] >= min_risk_adj_score]
+
+        if len(cluster_stocks) > 0:
+            # Selection still based on Risk_Adj_Score
+            top_stocks = cluster_stocks.sort_values('Risk_Adj_Score', ascending=False).head(max_selection_per_cluster)
+
+            # Add cluster-level metrics
+            cluster_metrics = selected_clusters[selected_clusters['Cluster_ID'] == cluster_id].iloc[0]
+            required_metrics = ['Composite_Cluster_Score', 'Avg_IntraCluster_Corr', 'Avg_Volatility',
+                                'Avg_Raw_Score', 'Avg_Risk_Adj_Score', 'Size']
+            for col in required_metrics:
+                top_stocks[f'Cluster_{col}'] = cluster_metrics.get(col, None)
+            selected_stocks_list.append(top_stocks)
+
+    # Consolidate selected stocks
+    if selected_stocks_list:
+        selected_stocks = pd.concat(selected_stocks_list)
+
+        # -------------------------------------------------------------
+        # --- START MODIFICATION: Apply Selected Weighting Scheme ---
+        # -------------------------------------------------------------
+        num_selected = len(selected_stocks)
+        logging.info(f"Applying '{weighting_scheme}' weighting to {num_selected} selected stocks.")
+
+        if num_selected > 0:
+            if weighting_scheme == 'EqualWeight':
+                equal_weight = 1.0 / num_selected
+                selected_stocks['Weight'] = equal_weight
+
+            elif weighting_scheme == 'InverseVolatility':
+                volatility = selected_stocks['Volatility'].copy()
+                valid_vol_mask = volatility.notna() & (volatility > 0)
+                num_invalid_vol = num_selected - valid_vol_mask.sum()
+                if num_invalid_vol > 0:
+                     logging.warning(f"Found {num_invalid_vol} stocks with missing or non-positive "
+                                     f"volatility. They will receive zero weight in InverseVolatility scheme.")
+                     volatility.loc[~valid_vol_mask] = np.inf # Set vol to inf -> inv_vol becomes 0
+
+                inv_vol = 1.0 / volatility
+                inv_vol = inv_vol.replace([np.inf, -np.inf], 0) # Handle division by zero/inf
+
+                total_inv_vol = inv_vol.sum()
+                if total_inv_vol > EPSILON:
+                    selected_stocks['Weight'] = inv_vol / total_inv_vol
+                else:
+                    logging.warning("Sum of inverse volatilities is near zero. Falling back to EqualWeight.")
+                    selected_stocks['Weight'] = 1.0 / num_selected
+
+            # --- ADDED BACK: RiskAdjScore Weighting ---
+            elif weighting_scheme == 'RiskAdjScore':
+                scores = selected_stocks['Risk_Adj_Score'].copy()
+                # Handle potential negative scores if they should be excluded or floored at zero
+                # For now, assume scores can be negative and sum might be zero or negative
+                # If scores should only be positive, add: scores.loc[scores < 0] = 0
+                total_score = scores.sum()
+
+                if abs(total_score) > EPSILON: # Check if sum is significantly different from zero
+                     # Normalize by the sum of scores
+                     selected_stocks['Weight'] = scores / total_score
+                     # Optional: Handle negative weights if needed (e.g., cap at 0, re-normalize positives)
+                     # Example: if (selected_stocks['Weight'] < 0).any():
+                     #     logging.warning("Negative weights generated by RiskAdjScore scheme. Capping at 0 and renormalizing.")
+                     #     selected_stocks['Weight'] = np.maximum(selected_stocks['Weight'], 0)
+                     #     selected_stocks['Weight'] /= selected_stocks['Weight'].sum()
+                else:
+                     logging.warning("Sum of Risk_Adj_Score is near zero. Cannot normalize weights. Falling back to EqualWeight.")
+                     selected_stocks['Weight'] = 1.0 / num_selected
+            # --- END of RiskAdjScore Weighting ---
+
+
+            # --- Placeholder for Future Schemes ---
+            # elif weighting_scheme == 'MinimumVariance': ...
+            # elif weighting_scheme == 'RiskParity': ...
+            # -------------------------------------
+
+        else:
+            selected_stocks['Weight'] = 0
+            logging.warning("selected_stocks DataFrame became empty unexpectedly before weighting.")
+
+        # --- Final check on weights ---
+        if 'Weight' in selected_stocks.columns:
+             weight_sum = selected_stocks['Weight'].sum()
+             if not np.isclose(weight_sum, 1.0):
+                  logging.warning(f"Weights under scheme '{weighting_scheme}' do not sum close to 1.0 (Sum = {weight_sum:.6f}). This might indicate an issue (e.g., only negative scores).")
+                  # Consider if re-normalization is needed depending on the scheme's intent
+
+        # -----------------------------------------------------------
+        # --- END MODIFICATION ---
+        # -----------------------------------------------------------
+
+        # Keep the sorting for consistent output
+        selected_stocks = selected_stocks.sort_values(['Cluster_ID', 'Risk_Adj_Score'],
+                                                    ascending=[True, False])
+    else:
+        selected_stocks = pd.DataFrame()
+        logging.warning("No stocks met selection criteria (including score thresholds if applied).")
+
+
+    # ===== 3. Prepare Enhanced Output Reports (No Change) =====
+    cluster_performance = selected_clusters.copy()
+    cluster_performance['Stocks_Selected'] = cluster_performance['Cluster_ID'].apply(
+        lambda x: len(selected_stocks[selected_stocks['Cluster_ID'] == x]) if not selected_stocks.empty else 0)
+
+    if not selected_stocks.empty:
+        if 'Avg_IntraCluster_Corr' in cluster_performance.columns:
+             cluster_performance['Intra_Cluster_Diversification'] = 1 - cluster_performance['Avg_IntraCluster_Corr']
+        else:
+             cluster_performance['Intra_Cluster_Diversification'] = pd.NA
+    else:
+        cluster_performance['Intra_Cluster_Diversification'] = pd.NA
+
+    results_bundle = {
+        'selected_top_n_cluster_ids': cluster_ids,
+        'selected_stocks': selected_stocks, # Contains weights from the chosen scheme
+        'cluster_performance': cluster_performance,
+        'parameters': parameters
+    }
+
+    return results_bundle
