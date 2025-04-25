@@ -1,0 +1,27 @@
+2025-04-13 17:14:14,930 - INFO - Logging configured. Output file: ..\logs\2025-04-11_optimizer.log
+2025-04-13 17:14:14,932 - INFO - ============================== Starting Portfolio Optimization ==============================
+2025-04-13 17:14:14,935 - INFO - Target number of tickers: 1188
+2025-04-13 17:14:14,937 - INFO - Target number of clusters: 60
+2025-04-13 17:14:14,939 - INFO - Detailed results will be written to: ..\picks\2025-04-11_portfolio.txt
+2025-04-13 17:14:14,942 - INFO - Preparing data: Converting numeric columns.
+2025-04-13 17:14:15,313 - INFO - Found valid numeric data for 'ATR/Price %'. Added to volatility metrics.
+2025-04-13 17:14:15,323 - INFO - Final volatility metrics being used: ['Volatility W %', 'Volatility M %', 'ATR/Price %']
+2025-04-13 17:14:15,326 - INFO - Defining scoring parameters and column groups.
+2025-04-13 17:14:15,330 - INFO - Columns required for scoring: ['ATR/Price %', 'Omega 10d', 'Omega 15d', 'Omega 30d', 'Omega 3d', 'Omega 5d', 'Omega 60d', 'Perf 3D %', 'Perf Month %', 'Perf Quart %', 'Perf Week %', 'RSI', 'SMA20 %', 'SMA200 %', 'SMA50 %', 'Sharpe 10d', 'Sharpe 15d', 'Sharpe 30d', 'Sharpe 3d', 'Sharpe 5d', 'Sharpe 60d', 'Sortino 10d', 'Sortino 15d', 'Sortino 30d', 'Sortino 3d', 'Sortino 5d', 'Sortino 60d', 'Volatility M %', 'Volatility W %']
+2025-04-13 17:14:15,334 - INFO - Volatility columns being used: ['Volatility W %', 'Volatility M %', 'ATR/Price %']
+2025-04-13 17:14:15,356 - INFO - Data cleaning complete. Retained 1186 rows out of 1188 (removed 2 rows with NaNs in required columns: ['ATR/Price %', 'Omega 10d', 'Omega 15d', 'Omega 30d', 'Omega 3d', 'Omega 5d', 'Omega 60d', 'Perf 3D %', 'Perf Month %', 'Perf Quart %', 'Perf Week %', 'RSI', 'SMA20 %', 'SMA200 %', 'SMA50 %', 'Sharpe 10d', 'Sharpe 15d', 'Sharpe 30d', 'Sharpe 3d', 'Sharpe 5d', 'Sharpe 60d', 'Sortino 10d', 'Sortino 15d', 'Sortino 30d', 'Sortino 3d', 'Sortino 5d', 'Sortino 60d', 'Volatility M %', 'Volatility W %']).
+2025-04-13 17:14:15,358 - WARNING - Only 1186 valid tickers remain after cleaning, which is less than the target num_tickers (1188). Adjusting selection to 1186.
+2025-04-13 17:14:15,360 - INFO - Calculating composite scores for tickers.
+2025-04-13 17:14:15,454 - INFO - Composite score calculation finished.
+2025-04-13 17:14:15,457 - INFO - Selecting top 1186 tickers based on 'composite_score'.
+2025-04-13 17:14:15,467 - INFO - Selected tickers: ['HMY', 'UNH', 'AU', 'HUM', 'AEM']... (first 5 shown)
+2025-04-13 17:14:15,469 - INFO - Performing hierarchical clustering into 60 clusters.
+2025-04-13 17:14:15,857 - INFO - Clustering successful. Formed 60 clusters.
+2025-04-13 17:14:15,861 - INFO - Assembling final output DataFrame (zscore_df).
+2025-04-13 17:14:15,899 - INFO - Final output DataFrame assembled.
+2025-04-13 17:14:15,901 - INFO - Analyzing clusters and calculating risk-adjusted scores.
+2025-04-13 17:14:15,967 - INFO - Calculating cluster summary statistics.
+2025-04-13 17:14:16,127 - INFO - Cluster analysis complete.
+2025-04-13 17:14:16,133 - INFO - Writing detailed results to file: ..\picks\2025-04-11_portfolio.txt
+2025-04-13 17:14:16,258 - INFO - Successfully wrote results data to ..\picks\2025-04-11_portfolio.txt
+2025-04-13 17:14:16,261 - INFO - ============================== Portfolio Optimization Process Completed ==============================

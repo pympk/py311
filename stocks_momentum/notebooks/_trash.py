@@ -1,0 +1,1 @@
+print(f'inside _trash: {item}')  # Print the value of i) 
