@@ -6,16 +6,16 @@ from pathlib import Path # <--- Import Path from pathlib
 
 # List of notebooks to run in order
 notebooks = [
-    "py1_clean_df_finviz_v7.ipynb",
-    "py2_clean_df_OHLCV_v5.ipynb",
-    "py3_calc_perf_ratios_v10.ipynb",
-    "py4_append_ratios_v7.ipynb",
-    "py5_append_columns_v5.ipynb",
-    "py6_append_stats_history_v1.ipynb",
-    "py6_view_market_sentiment_v1.ipynb",
-    "py7_cov_corr_matrices_v4.ipynb",
-    "py8_calc_scores_clusters_v2.ipynb",
-    "py8_portf_picks_v45.ipynb",
+    "py1_clean_df_finviz_v11.ipynb",
+    "py2_clean_df_OHLCV_v7.ipynb",
+    "py3_calc_perf_ratios_v12.ipynb",
+    "py4_append_ratios_v8.ipynb",
+    "py5_append_columns_v6.ipynb",
+    "py6_append_stats_history_v2.ipynb",
+    "py6_view_market_sentiment_v3.ipynb",
+    # "py7_cov_corr_matrices_v4.ipynb",
+    # "py8_calc_scores_clusters_v2.ipynb",
+    "py8_portf_picks_short_term_v4.ipynb",
     # "py10_append_selection_v0.ipynb",
     # "py11_calc_portf_performance_v0.ipynb",
 ]
