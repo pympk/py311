@@ -8,6 +8,7 @@ import empyrical
 import warnings
 import re
 from IPython.display import display, Markdown
+from typing import Optional # For type hinting the return value
 
 
 warnings.filterwarnings("ignore", message="Module \"zipline.assets\" not found.*")
@@ -260,7 +261,7 @@ def find_sorted_intersection(list1, list2):
     return intersection_list
 
 
-def filter_df_dates_to_reference_symbol(df, reference_symbol="AAPL"):
+def filter_df_dates_to_reference_symbol_obsolete(df, reference_symbol="AAPL"):
     """
     Filters symbols in a DataFrame based on date index matching a reference symbol (default AAPL)
     and provides analysis of the filtering results.
@@ -321,6 +322,133 @@ def filter_df_dates_to_reference_symbol(df, reference_symbol="AAPL"):
     print(df_filtered.info())
 
     return df_filtered
+
+
+
+import pandas as pd
+
+def filter_df_dates_to_reference_symbol(df, reference_symbol="AAPL"):
+    """
+    Filters symbols in a DataFrame based on date index matching a reference symbol
+    and provides analysis of the filtering results. The function will adapt
+    if the symbol index level is named 'Symbol' or 'Ticker'.
+
+    Args:
+        df (pd.DataFrame): DataFrame with a MultiIndex. The first level of the
+                           MultiIndex should be the symbol identifier (expected to be
+                           named 'Symbol' or 'Ticker'), and the second level should be 'Date'.
+        reference_symbol (str): The symbol to use as the reference for date comparison.
+                                Defaults to "AAPL".
+
+    Returns:
+        pd.DataFrame: The filtered DataFrame. Prints analysis to standard output.
+                      Returns an empty DataFrame if errors occur (e.g., reference symbol
+                      not found, or incompatible index name).
+    """
+
+    if not isinstance(df.index, pd.MultiIndex) or len(df.index.levels) < 2:
+        print("Error: DataFrame must have a MultiIndex with at least two levels.")
+        return pd.DataFrame()
+
+    # Determine the name of the symbol index level
+    symbol_level_name = None
+    if df.index.names[0] == 'Symbol':
+        symbol_level_name = 'Symbol'
+    elif df.index.names[0] == 'Ticker':
+        symbol_level_name = 'Ticker'
+    else:
+        print(f"Error: The first level of the DataFrame's index must be named 'Symbol' or 'Ticker', but found '{df.index.names[0]}'.")
+        return pd.DataFrame()
+
+    # Get the date index for the reference symbol. Return empty DataFrame if symbol not found
+    try:
+        # Ensure reference_symbol is correctly accessed using the determined symbol_level_name
+        # df.loc is smart enough to use the first level index if only one key is provided for the first level
+        reference_dates = df.loc[reference_symbol].index
+        if isinstance(reference_dates, pd.MultiIndex): # if reference_symbol still returns a multiindex (e.g. only one date)
+            reference_dates = reference_dates.get_level_values('Date')
+
+    except KeyError:
+        print(f"Error: Reference symbol '{reference_symbol}' not found in DataFrame under index level '{symbol_level_name}'.")
+        return pd.DataFrame()
+    except AttributeError: # Handles cases where .index might not behave as expected if loc result is not a DataFrame
+        print(f"Error: Could not retrieve date index for reference symbol '{reference_symbol}'.")
+        return pd.DataFrame()
+
+
+    original_symbols = df.index.get_level_values(symbol_level_name).unique().tolist()
+
+    # Filter symbols based on date index matching with the reference symbol
+    filtered_symbols = []
+    for symbol_val in original_symbols:
+        try: # Handle the case where a symbol might be missing or have issues
+            # Access data for the current symbol using the determined symbol_level_name
+            symbol_dates = df.loc[symbol_val].index
+            if isinstance(symbol_dates, pd.MultiIndex): # if symbol_val still returns a multiindex
+                 symbol_dates = symbol_dates.get_level_values('Date')
+
+        except KeyError:
+            print(f"Warning: Symbol '{symbol_val}' caused a KeyError during date extraction. Skipping.")
+            continue # Skip to the next symbol if this one is missing or causes issues
+        except AttributeError: # Handles cases where .index might not behave as expected
+            print(f"Warning: Could not retrieve date index for symbol '{symbol_val}'. Skipping.")
+            continue
+
+
+        if len(symbol_dates) == len(reference_dates) and symbol_dates.equals(reference_dates):
+            filtered_symbols.append(symbol_val)
+
+    # Create the filtered DataFrame
+    # df.loc can filter on the first level of a MultiIndex directly with a list of keys
+    if filtered_symbols:
+        df_filtered = df.loc[pd.IndexSlice[filtered_symbols, :]]
+    else:
+        df_filtered = pd.DataFrame() # Create an empty DataFrame with same columns if no symbols match
+        if not df.empty:
+            df_filtered = pd.DataFrame(columns=df.columns)
+        if isinstance(df.index, pd.MultiIndex):
+             df_filtered = df_filtered.set_index(df.index.names)
+             # Ensure it's an empty df with the correct index structure if possible
+             # This part might need adjustment based on how you want to handle an empty but structured df
+             if not df_filtered.index.empty: # if set_index resulted in non-empty (e.g. from existing columns)
+                 df_filtered = df_filtered.iloc[0:0]
+
+
+    # Analyze the filtering results
+    print(f"Using '{symbol_level_name}' as the symbol identifier.")
+    print(f"Original number of {symbol_level_name}s: {len(original_symbols)}")
+    print(f"Number of {symbol_level_name}s after filtering: {len(filtered_symbols)}")
+    print(f"Number of {symbol_level_name}s filtered out: {len(original_symbols) - len(filtered_symbols)}")
+
+    filtered_out_symbols = list(set(original_symbols) - set(filtered_symbols))
+
+    print(f"\nFirst 10 {symbol_level_name}s that were filtered out:")
+    print(filtered_out_symbols[:10])
+
+    if filtered_out_symbols:
+        print(f"\nExample of dates for first filtered out {symbol_level_name}:")
+        first_filtered_symbol = filtered_out_symbols[0]
+        try:
+            symbol_data = df.loc[first_filtered_symbol]
+            print(f"\nDates for {first_filtered_symbol}:")
+            # Assuming the date level is consistently named 'Date' or is the second level
+            if isinstance(symbol_data.index, pd.MultiIndex):
+                print(symbol_data.index.get_level_values(df.index.names[1]))
+            else:
+                print(symbol_data.index)
+
+        except KeyError:
+            print(f"\n{symbol_level_name} '{first_filtered_symbol}' not found in the original DataFrame (this might happen if it was problematic).")
+
+
+    print("\nFiltered DataFrame info:")
+    if not df_filtered.empty:
+        print(df_filtered.info())
+    else:
+        print("Filtered DataFrame is empty.")
+
+    return df_filtered
+
 
 
 def get_latest_dfs(df, num_rows):
@@ -1414,3 +1542,49 @@ def select_stocks_from_clusters_ai(
     }
 
     return results_bundle
+
+
+
+def extract_date_from_string(text_to_search: str) -> Optional[str]:
+    """
+    Extracts the first valid YYYY-MM-DD date string found anywhere in the text.
+
+    Uses regex to find the pattern and optionally validates the date's
+    calendar correctness (e.g., rejects '2023-02-30').
+
+    Args:
+        text_to_search: The string to search within.
+
+    Returns:
+        The extracted and validated date string (e.g., '2025-04-24') if found,
+        otherwise None. Returns None if the format matches but the date is
+        not a valid calendar date.
+    """
+    # Regex pattern:
+    # (\d{4}-\d{2}-\d{2}) - Captures a sequence of 4 digits, hyphen,
+    #                       2 digits, hyphen, 2 digits.
+    # No ^ anchor, so it can be anywhere in the string.
+    pattern = r"(\d{4}-\d{2}-\d{2})"
+
+    # Use re.search to find the first occurrence anywhere in the string
+    match = re.search(pattern, text_to_search)
+
+    if match:
+        potential_date_str = match.group(1) # Extract the captured group
+
+        # --- Optional but recommended: Validate if it's a valid date ---
+        try:
+            # Attempt to parse the extracted string as a date
+            # datetime.strptime(potential_date_str, '%Y-%m-%d')
+            datetime.datetime.strptime(potential_date_str, '%Y-%m-%d')
+            # If parsing succeeds, it's a valid format AND a valid calendar date
+            return potential_date_str
+        except ValueError:
+            # The pattern matched, but it's not a valid calendar date
+            # (e.g., "2023-13-01" or "2023-02-30")
+            # print(f"Warning: Found pattern '{potential_date_str}' but it's not a valid date.")
+            return None # Treat invalid calendar dates as "not found"
+    else:
+        # Pattern was not found anywhere in the string
+        return None
+
