@@ -1,0 +1,15 @@
+2025-05-11 17:00:33,098 - INFO - Logging initialized. Log file: logs\backtest_run_20250511_170033.log
+2025-05-11 17:00:33,100 - INFO - Script execution started at: 2025-05-11 17:00:33
+2025-05-11 17:00:33,102 - INFO - Python Interpreter: c:\Users\ping\Files_win10\python\py311\.venv\Scripts\python.exe
+2025-05-11 17:00:33,107 - INFO - Pandas Version: 2.2.3
+2025-05-11 17:00:33,111 - INFO - Attempting to load price data from: c:\Users\ping\Files_win10\python\py311\stocks\notebooks\df_adj_close.parquet
+2025-05-11 17:00:33,497 - INFO - Successfully read price data from existing file: df_adj_close.parquet
+2025-05-11 17:00:33,505 - INFO - Price data successfully obtained. Shape: (319, 1544), Columns (sample): ['A', 'AA', 'AAL', 'AAON', 'AAPL']...
+2025-05-11 17:00:33,508 - INFO - Price data (df_adj_close) pre-processing complete. Index type: <class 'pandas.core.indexes.datetimes.DatetimeIndex'>, Is Monotonic: True
+2025-05-11 17:00:33,512 - CRITICAL - CRITICAL ERROR in main: name 'sf__name' is not defined
+Traceback (most recent call last):
+  File "C:\Users\ping\AppData\Local\Temp\ipykernel_8920\4103372455.py", line 135, in <module>
+    file_pairs.append((sf__name, param_map[date_str_loop]))
+                       ^^^^^^^^
+NameError: name 'sf__name' is not defined
+2025-05-11 17:00:33,512 - INFO - === Script Execution Finished ===

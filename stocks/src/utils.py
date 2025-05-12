@@ -344,6 +344,7 @@ def filter_df_dates_to_reference_symbol(df, reference_symbol="AAPL"):
         pd.DataFrame: The filtered DataFrame. Prints analysis to standard output.
                       Returns an empty DataFrame if errors occur (e.g., reference symbol
                       not found, or incompatible index name).
+        filtered_out_symbols (list): List of symbols that were filtered out.              
     """
 
     if not isinstance(df.index, pd.MultiIndex) or len(df.index.levels) < 2:
@@ -447,7 +448,7 @@ def filter_df_dates_to_reference_symbol(df, reference_symbol="AAPL"):
     else:
         print("Filtered DataFrame is empty.")
 
-    return df_filtered
+    return df_filtered, filtered_out_symbols
 
 
 
