@@ -18,4 +18,6 @@ lumen_/
 stocks/picks/
 stocks/notebooks/output.log
 stocks/notebooks/executed/
+stocks/notebooks/logs/
 stocks/logs/
+
