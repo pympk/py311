@@ -6,6 +6,8 @@ from pathlib import Path # <--- Import Path from pathlib
 
 # List of notebooks to run in order
 notebooks = [
+    "py0_get_tickers_v0.ipynb",
+    "py0_get_yloader_OHLCV_data_v0.ipynb"
     "py1_clean_df_finviz_v13.ipynb",
     "py2_clean_df_OHLCV_v9.ipynb",
     "py2_save_df_adj_close_v0.ipynb",    
