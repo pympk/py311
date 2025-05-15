@@ -1589,3 +1589,126 @@ def extract_date_from_string(text_to_search: str) -> Optional[str]:
         # Pattern was not found anywhere in the string
         return None
 
+
+
+from pathlib import Path
+import os # Used for os.path.expanduser to robustly find the home directory
+
+def get_recent_files_in_directory(
+    prefix: str = '',
+    extension: str = '',
+    count: int = 10,
+    directory_name: str = "Downloads"
+) -> list[str]:
+    """
+    Reads the most recent files matching a specific prefix and extension
+    from a specified subdirectory within the user's home directory.
+
+    Args:
+        prefix (str): The prefix the filenames must start with (e.g., 'report', 'ticker').
+                      Defaults to an empty string, matching files without a specific prefix.
+        extension (str): The file extension to filter by (e.g., 'csv', 'txt', 'log').
+                         Include the extension only, no leading dot.
+                         Defaults to an empty string, matching any extension.
+        count (int): The maximum number of recent filenames to return.
+        directory_name (str): The name of the subdirectory in the user's home
+                              folder to search (e.g., "Downloads", "Documents").
+
+    Returns:
+        list[str]: A list of the most recent filenames matching the criteria,
+                   sorted from most recent to oldest. Returns an empty list if no
+                   matching files are found or the directory doesn't exist.
+    """
+    try:
+        # 1. Get the user's home directory
+        home_dir = Path.home() # Preferred modern way
+        # Fallback for some environments if Path.home() is problematic:
+        # home_dir = Path(os.path.expanduser('~'))
+
+        # 2. Construct the path to the target directory
+        target_dir = home_dir / directory_name
+        print(f'target_dir: {target_dir}')  # Debugging line to show the target directory
+        
+        if not target_dir.is_dir():
+            # print(f"Error: Directory '{target_dir}' not found.") # Optional: more verbose
+            return []
+
+        # 3. Find all files matching the pattern (prefix*.extension)
+        #    We use glob for pattern matching.
+        #    Construct the glob pattern based on prefix and extension.
+        pattern = f"{prefix}*.{extension}" if extension else f"{prefix}*"
+
+        candidate_files = [
+            f for f in target_dir.glob(pattern)
+            if f.is_file()
+        ]
+
+        if not candidate_files:
+            # print(f"No files matching pattern '{pattern}' found in '{target_dir}'.") # Optional: more verbose
+            return []
+
+        # 4. Sort these files by modification time (most recent first)
+        #    Path.stat().st_mtime gives the timestamp of the last modification.
+        sorted_files = sorted(
+            candidate_files,
+            key=lambda f: f.stat().st_mtime,
+            reverse=True  # True for most recent first
+        )
+
+        # 5. Get the top 'count' files and extract their names
+        recent_filenames = [file.name for file in sorted_files[:count]]
+
+        return recent_filenames
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return []
+
+if __name__ == "__main__":
+    # Get the most recent 10 CSV files starting with 'ticker' from Downloads
+    print("--- Example 1: Top 10 'ticker' CSV files from Downloads ---")
+    recent_ticker_files = get_recent_files_in_directory(
+        prefix='ticker',
+        extension='csv',
+        count=10,
+        directory_name="Downloads"
+    )
+
+    if recent_ticker_files:
+        print("Most recent 'ticker' CSV files found in Downloads:")
+        for i, filename in enumerate(recent_ticker_files):
+            print(f"{i+1}. {filename}")
+    else:
+        print("No 'ticker' CSV files found in your Downloads directory, or an error occurred.")
+
+    print("\n--- Example 2: Top 3 'data' TXT files from Documents ---")
+    # Example: Get the most recent 3 TXT files starting with 'data' from Documents
+    recent_data_files = get_recent_files_in_directory(
+        prefix='data',
+        extension='txt',
+        count=3,
+        directory_name="Documents"
+    )
+    if recent_data_files:
+        print("Most recent 'data' TXT files found in Documents:")
+        for i, filename in enumerate(recent_data_files):
+            print(f"{i+1}. {filename}")
+    else:
+        print("No 'data' TXT files found in your Documents directory, or an error occurred.")
+
+    print("\n--- Example 3: Top 5 any extension files starting with 'report' from Downloads ---")
+     # Example: Get the most recent 5 files of ANY extension starting with 'report' from Downloads
+    recent_report_files = get_recent_files_in_directory(
+        prefix='report',
+        extension='', # Empty extension matches any file starting with 'report'
+        count=5,
+        directory_name="Downloads"
+    )
+    if recent_report_files:
+        print("Most recent files starting with 'report' (any extension) found in Downloads:")
+        for i, filename in enumerate(recent_report_files):
+            print(f"{i+1}. {filename}")
+    else:
+        print("No files starting with 'report' found in your Downloads directory, or an error occurred.")
+
+
