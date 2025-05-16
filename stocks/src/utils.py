@@ -1140,9 +1140,6 @@ def print_stock_selection_report(output: Dict[str, Any]) -> None:
 
 
 
-
-#########################
-
 def select_stocks_from_clusters(cluster_stats_df, detailed_clusters_df,
                                 select_top_n_clusters=3, max_selection_per_cluster=5,
                                 min_cluster_size=5, penalty_IntraCluster_Corr=0.3,
