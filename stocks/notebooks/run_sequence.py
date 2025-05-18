@@ -4,9 +4,9 @@ import sys
 import os
 from pathlib import Path # <--- Import Path from pathlib
 
+
 # List of notebooks to run in order
 notebooks = [
-    # "py0_get_tickers_v0.ipynb",
     "py0_get_yloader_OHLCV_data_v0.ipynb",
     "py1_clean_df_finviz_v13.ipynb",
     "py2_clean_df_OHLCV_v9.ipynb",
@@ -17,6 +17,8 @@ notebooks = [
     "py6_append_stats_history_v3.ipynb",
     "py6_view_market_sentiment_v4.ipynb",
     "py8_portf_picks_short_term_v5.ipynb",
+    "py9_backtest_v1.ipynb",
+    "py90_view_backtest_results_v0.ipynb",
 ]
 
 def run_notebook(notebook_path):
