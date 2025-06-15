@@ -4,4 +4,6 @@ Use google login
 Paste mermaid code in playground
 Export as svg file
 Ctrl+Shift+V to view in VSCode
-View svg file in Firefox. It has better zoom.
+View svg file in Firefox
+ -- copy path
+ -- paste path in url
