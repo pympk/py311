@@ -2516,58 +2516,6 @@ def run_single_backtest(
         logging.critical(f"  FATAL ERROR during backtest run for {selection_date}, {scheme_name}: {e}", exc_info=True)
         return None
 
-def process_backtest_for_pair(
-    data_file: Path,
-    param_file: Path,
-    df_adj_close: pd.DataFrame,
-    risk_free_rate_daily: float,
-    run_timestamp: str,
-    log_filepath: Path
-    ) -> List[Dict[str, Any]]:
-    """High-level wrapper to process a single pair of data/param files."""
-    records = []
-    try:
-        selection_date = extract_date_from_string(data_file.name)
-        with open(param_file, 'r') as f:
-            params = json.load(f)
-        
-        df_selection = pd.read_parquet(data_file)
-        weight_cols = [c for c in df_selection.columns if c.startswith('Weight_')]
-        
-        for weight_col in weight_cols:
-            scheme_name = weight_col.split('_')[-1]
-            ticker_weights = df_selection[weight_col].dropna().to_dict()
-            
-            if not ticker_weights:
-                logging.warning(f"No tickers for scheme '{scheme_name}' on {selection_date}. Skipping.")
-                continue
-
-            result = run_single_backtest(selection_date, scheme_name, ticker_weights, df_adj_close, risk_free_rate_daily)
-            
-            if result:
-                # Flatten the strategy parameter dictionaries for easier CSV/DataFrame columns
-                flat_filters = {f"filter_{k}": v for k, v in params.get('filters', {}).items()}
-                flat_weights = {f"score_weight_{k}": v for k, v in params.get('scoring_weights', {}).items()}
-
-                record = {
-                    'run_timestamp': run_timestamp,
-                    'log_file': log_filepath.name,
-                    'selection_date': selection_date,
-                    'actual_selection_date_used': result.get('run_inputs', {}).get('actual_selection_date_used'),
-                    'scheme': scheme_name,
-                    'n_select_requested': params.get('n_select'),
-                    'inv_vol_col_name': params.get('inv_vol_col_name'),
-                    **flat_filters,
-                    **flat_weights,
-                    **result['metrics']
-                }
-                records.append(record)
-
-    except Exception as e:
-        logging.error(f"Failed to process pair {data_file.name}/{param_file.name}: {e}", exc_info=True)
-
-    return records
-
 def update_and_save_results(
     new_records: List[Dict[str, Any]],
     results_path: Path,
@@ -2614,4 +2562,58 @@ def update_and_save_results(
     df_final.to_csv(results_path.with_suffix('.csv'), index=False, float_format='%.6f')
     
     logging.info(f"Successfully saved {len(df_final)} consolidated records to {results_path.name}")
+
+
+# IN src/utils.py, REPLACE THE OLD process_backtest_for_pair FUNCTION WITH THIS ONE:
+
+def process_backtest_for_pair(
+    data_file: Path,
+    param_file: Path,
+    df_adj_close: pd.DataFrame,
+    risk_free_rate_daily: float,
+    run_timestamp: str,
+    log_filepath: Path
+    ) -> List[Dict[str, Any]]:
+    """High-level wrapper to process a single pair of data/param files."""
+    records = []
+    try:
+        selection_date = extract_date_from_string(data_file.name)
+        with open(param_file, 'r') as f:
+            params = json.load(f) # params is a flat dictionary with correct key names
+        
+        df_selection = pd.read_parquet(data_file)
+        weight_cols = [c for c in df_selection.columns if c.startswith('Weight_')]
+        
+        for weight_col in weight_cols:
+            scheme_name = weight_col.split('_')[-1]
+            ticker_weights = df_selection[weight_col].dropna().to_dict()
+            
+            if not ticker_weights:
+                logging.warning(f"No tickers for scheme '{scheme_name}' on {selection_date}. Skipping.")
+                continue
+
+            result = run_single_backtest(selection_date, scheme_name, ticker_weights, df_adj_close, risk_free_rate_daily)
+            
+            if result:
+                # --- CORRECTED LOGIC ---
+                # Since the keys in the JSON file already match the desired column names,
+                # we can directly unpack the `params` dictionary into the record.
+                
+                record = {
+                    'run_timestamp': run_timestamp,
+                    'log_file': log_filepath.name,
+                    'selection_date': selection_date,
+                    'actual_selection_date_used': result.get('run_inputs', {}).get('actual_selection_date_used'),
+                    'scheme': scheme_name,
+                    **params,  # <-- This correctly unpacks all key-value pairs from the JSON
+                    **result['metrics'] # This unpacks all performance metrics
+                }
+                
+                records.append(record)
+
+    except Exception as e:
+        logging.error(f"Failed to process pair {data_file.name}/{param_file.name}: {e}", exc_info=True)
+
+    return records
+
 
