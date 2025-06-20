@@ -2617,3 +2617,167 @@ def process_backtest_for_pair(
     return records
 
 
+
+# =================================================================================
+# NEW PLOTTING FUNCTION FOR CUMULATIVE RETURNS - APPEND TO src/utils.py
+# =================================================================================
+
+def plot_cumulative_returns(
+    df: pd.DataFrame,
+    date_col: str,
+    return_col: str,
+    scheme_col: str,
+    strategy_id_cols: list,
+    top_n_strategies: int = 1
+    ):
+    """
+    Plots the cumulative return equity curve for the best performing strategies.
+    
+    Args:
+        df (pd.DataFrame): The master results DataFrame.
+        date_col (str): The name of the date column.
+        return_col (str): The name of the daily return column.
+        scheme_col (str): The name of the scheme column.
+        strategy_id_cols (list): List of column names that uniquely identify a strategy.
+        top_n_strategies (int): The number of top strategies to plot based on final return.
+    """
+    if not isinstance(df, pd.DataFrame):
+        raise ValueError("Input 'df' must be a pandas DataFrame.")
+
+    # Identify the top N strategies based on their final cumulative return
+    grouped = df.groupby(strategy_id_cols + [scheme_col])
+    final_returns = grouped[return_col].apply(lambda x: (1 + x).prod() - 1)
+    top_strategies = final_returns.nlargest(top_n_strategies).index
+    
+    plt.style.use('seaborn-v0_8-darkgrid')
+    fig, ax = plt.subplots(figsize=(14, 7))
+
+    for strategy in top_strategies:
+        # Unpack the multi-index tuple
+        strategy_params = strategy[:-1]
+        scheme = strategy[-1]
+        
+        # Filter the DataFrame for this specific strategy and scheme
+        mask = (df[strategy_id_cols] == strategy_params).all(axis=1) & (df[scheme_col] == scheme)
+        subset = df[mask].sort_values(by=date_col)
+
+        if not subset.empty:
+            # Calculate cumulative return (equity curve)
+            equity_curve = (1 + subset[return_col]).cumprod()
+            
+            # Create a clean label for the legend
+            params_str = ', '.join([f"{col.split('_')[-1]}={val}" for col, val in zip(strategy_id_cols, strategy_params)])
+            label = f"Scheme: {scheme} ({params_str})"
+            
+            ax.plot(subset[date_col], equity_curve, label=label, linewidth=2)
+
+    ax.set_title(f'Equity Curve for Top {top_n_strategies} Strategy Run(s)', fontsize=16)
+    ax.set_xlabel('Date', fontsize=12)
+    ax.set_ylabel('Cumulative Return (1 = breakeven)', fontsize=12)
+    ax.legend(fontsize=9)
+    ax.grid(True, which='both', linestyle=':', linewidth=0.6)
+    ax.axhline(1.0, color='black', linestyle='--', linewidth=0.75) # Breakeven line
+    fig.autofmt_xdate()
+    plt.show()
+
+
+
+# =================================================================================
+# NEW ADDITIONS FOR ANALYSIS AND VISUALIZATION - APPEND TO src/utils.py
+# =================================================================================
+
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+from matplotlib.dates import DateFormatter
+
+def plot_evolving_annualized_sharpe(
+    df: pd.DataFrame,
+    date_col: str,
+    return_col: str,
+    scheme_col: str,
+    annual_risk_free_rate: float,
+    trading_days_per_year: int = 252,
+    min_periods_for_sharpe: int = 10
+    ) -> pd.DataFrame:
+    """
+    Calculates and plots the evolving annualized Sharpe Ratio for different schemes.
+
+    The function processes a DataFrame of daily returns, calculates the expanding
+    mean and standard deviation of these returns for each scheme, and then
+    computes the daily and annualized Sharpe Ratios. The results are plotted
+    over time, showing how the risk-adjusted performance of each scheme evolves.
+    """
+    if not isinstance(df, pd.DataFrame):
+        raise ValueError("Input 'df' must be a pandas DataFrame.")
+    if not all(col in df.columns for col in [date_col, return_col, scheme_col]):
+        raise ValueError(f"DataFrame must contain columns: {date_col}, {return_col}, {scheme_col}")
+    if not isinstance(trading_days_per_year, int) or trading_days_per_year <= 0:
+        raise ValueError("trading_days_per_year must be a positive integer.")
+    if not isinstance(min_periods_for_sharpe, int) or min_periods_for_sharpe < 2:
+        raise ValueError("min_periods_for_sharpe must be an integer greater than or equal to 2.")
+
+    # --- 1. Data Preparation ---
+    df_analysis = df.copy()
+    df_analysis[date_col] = pd.to_datetime(df_analysis[date_col]).dt.normalize()
+    df_analysis = df_analysis.dropna(subset=[date_col])
+    df_analysis = df_analysis.sort_values(by=[scheme_col, date_col])
+
+    # --- 2. Calculate Daily Risk-Free Rate ---
+    daily_risk_free_rate = annual_risk_free_rate / trading_days_per_year
+
+    # --- 3. Calculate Evolving Metrics and Sharpe Ratio ---
+    results_list = []
+    for scheme_name, group in df_analysis.groupby(scheme_col):
+        group['expanding_mean_return'] = group[return_col].expanding(min_periods=min_periods_for_sharpe).mean()
+        group['expanding_std_return'] = group[return_col].expanding(min_periods=min_periods_for_sharpe).std()
+
+        numerator = group['expanding_mean_return'] - daily_risk_free_rate
+        denominator = group['expanding_std_return']
+
+        group['daily_sharpe_ratio'] = np.where(
+            (denominator > 1e-9) & (denominator.notna()),
+            numerator / denominator,
+            np.nan
+        )
+        group['annualized_sharpe_ratio'] = group['daily_sharpe_ratio'] * np.sqrt(trading_days_per_year)
+        results_list.append(group)
+
+    if not results_list:
+        print("Warning: No data after processing. Cannot generate plot.")
+        return pd.DataFrame()
+        
+    df_results = pd.concat(results_list)
+
+    # --- 4. Plotting ---
+    plt.style.use('seaborn-v0_8-darkgrid')
+    fig, ax = plt.subplots(figsize=(14, 7))
+    all_plotted_dates_objects = []
+
+    for scheme in df_results[scheme_col].unique():
+        subset_plot = df_results[df_results[scheme_col] == scheme].dropna(subset=['annualized_sharpe_ratio', date_col])
+        if not subset_plot.empty:
+            ax.plot(subset_plot[date_col], subset_plot['annualized_sharpe_ratio'],
+                    label=f"Scheme: {scheme}", linewidth=2, marker='o', markersize=4)
+            all_plotted_dates_objects.extend(subset_plot[date_col].tolist())
+
+    ax.set_title(f'Evolving Annualized Sharpe Ratio (vs. {annual_risk_free_rate*100:.1f}% Ann. Risk-Free Rate)', fontsize=16)
+    ax.set_xlabel(f'Date ({date_col})', fontsize=12)
+    ax.set_ylabel(f'Annualized Sharpe Ratio (using {trading_days_per_year} days/year)', fontsize=12)
+
+    if ax.get_legend_handles_labels()[0]:
+        ax.legend(fontsize=10)
+    
+    ax.grid(True, which='both', linestyle=':', linewidth=0.6)
+    ax.axhline(0, color='black', linestyle='-', linewidth=0.75)
+
+    if all_plotted_dates_objects:
+        unique_plotted_dates = sorted(list(pd.Series(all_plotted_dates_objects).unique()))
+        unique_plotted_dates = [pd.Timestamp(d) for d in unique_plotted_dates if pd.notna(d)]
+        if unique_plotted_dates:
+            ax.set_xticks(unique_plotted_dates)
+            ax.xaxis.set_major_formatter(DateFormatter("%m/%d/%y"))
+            fig.autofmt_xdate(rotation=30, ha='right')
+
+    plt.show()
+    return df_results
+
