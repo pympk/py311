@@ -1597,7 +1597,7 @@ def extract_date_from_string(text_to_search: str) -> Optional[str]:
 from pathlib import Path
 import os # Used for os.path.expanduser to robustly find the home directory
 
-def get_recent_files_in_directory(
+def get_recent_files_in_directory_obsolete(
     prefix: str = '',
     extension: str = '',
     count: int = 10,
@@ -1666,54 +1666,6 @@ def get_recent_files_in_directory(
     except Exception as e:
         print(f"An error occurred: {e}")
         return []
-
-if __name__ == "__main__":
-    # Get the most recent 10 CSV files starting with 'ticker' from Downloads
-    print("--- Example 1: Top 10 'ticker' CSV files from Downloads ---")
-    recent_ticker_files = get_recent_files_in_directory(
-        prefix='ticker',
-        extension='csv',
-        count=10,
-        directory_name="Downloads"
-    )
-
-    if recent_ticker_files:
-        print("Most recent 'ticker' CSV files found in Downloads:")
-        for i, filename in enumerate(recent_ticker_files):
-            print(f"{i+1}. {filename}")
-    else:
-        print("No 'ticker' CSV files found in your Downloads directory, or an error occurred.")
-
-    print("\n--- Example 2: Top 3 'data' TXT files from Documents ---")
-    # Example: Get the most recent 3 TXT files starting with 'data' from Documents
-    recent_data_files = get_recent_files_in_directory(
-        prefix='data',
-        extension='txt',
-        count=3,
-        directory_name="Documents"
-    )
-    if recent_data_files:
-        print("Most recent 'data' TXT files found in Documents:")
-        for i, filename in enumerate(recent_data_files):
-            print(f"{i+1}. {filename}")
-    else:
-        print("No 'data' TXT files found in your Documents directory, or an error occurred.")
-
-    print("\n--- Example 3: Top 5 any extension files starting with 'report' from Downloads ---")
-     # Example: Get the most recent 5 files of ANY extension starting with 'report' from Downloads
-    recent_report_files = get_recent_files_in_directory(
-        prefix='report',
-        extension='', # Empty extension matches any file starting with 'report'
-        count=5,
-        directory_name="Downloads"
-    )
-    if recent_report_files:
-        print("Most recent files starting with 'report' (any extension) found in Downloads:")
-        for i, filename in enumerate(recent_report_files):
-            print(f"{i+1}. {filename}")
-    else:
-        print("No files starting with 'report' found in your Downloads directory, or an error occurred.")
-
 
 
 
@@ -2780,4 +2732,146 @@ def plot_evolving_annualized_sharpe(
 
     plt.show()
     return df_results
+
+
+
+# =================================================================================
+# NEW ADDITIONS FOR PIPELINE ORCHESTRATION - APPEND TO src/utils.py
+# =================================================================================
+
+import re
+from typing import List, Optional
+
+# Note: Assumes a function `get_recent_files_in_directory` already exists.
+# If not, it would be defined here. We will assume it's refactored
+# to accept a Path object directly, e.g., `directory_path: Path`.
+
+def extract_and_sort_dates_from_filenames(filenames: List[str]) -> List[str]:
+    """Extracts unique date strings (YYYY-MM-DD) from filenames and sorts them."""
+    date_pattern = re.compile(r'\d{4}-\d{2}-\d{2}')
+    all_dates = {match.group(0) for filename in filenames if (match := date_pattern.search(filename))}
+    return sorted(list(all_dates))
+
+def print_list_in_columns(items: List[str], num_columns: int = 5):
+    """Prints a list of strings in a numbered, multi-column format for readability."""
+    if not items:
+        print("No items to display.")
+        return
+    for i in range(0, len(items), num_columns):
+        row_slice = items[i : i + num_columns]
+        row_items = [f"  {i+j:<4} {item}" for j, item in enumerate(row_slice)]
+        print("  ".join(row_items))
+
+def parse_str_to_slice(slice_str: str) -> Optional[slice]:
+    """Parses a string like "start:stop:step" into a slice object."""
+    try:
+        parts = [int(p) if p.strip() else None for p in slice_str.split(':')]
+        return slice(*parts)
+    except (ValueError, IndexError):
+        return None
+
+def prompt_for_slice_update(variable_name: str, current_value: slice) -> slice:
+    """Displays a slice's current value and prompts the user to keep or change it."""
+    s = current_value
+    current_value_str = f"{s.start or ''}:{s.stop or ''}:{s.step or ''}"
+    while True:
+        prompt = (
+            f"\n-> The current {variable_name} is: '{current_value_str}'\n"
+            f"   Enter a new slice (e.g., ':10', '-5:', '::-1') or press ENTER to continue: "
+        )
+        user_input = input(prompt).strip()
+        if not user_input:
+            print("   Continuing with the current value.")
+            return current_value
+        new_slice = parse_str_to_slice(user_input)
+        if new_slice is not None:
+            print(f"   {variable_name} updated.")
+            return new_slice
+        else:
+            print(f"   Error: Invalid slice format '{user_input}'. Please try again.")
+
+def create_pipeline_config_file(
+    config_path: Path,
+    date_str: str,
+    downloads_dir: Path,
+    dest_dir: Path,
+    annual_risk_free_rate: float,
+    trading_days_per_year: int
+    ):
+    """Creates a config.py file with dynamic paths and parameters."""
+    daily_risk_free_rate = annual_risk_free_rate / trading_days_per_year
+    
+    # Use .as_posix() to ensure cross-platform compatible path strings
+    config_content = f"""# config.py
+# This file is auto-generated by py0. DO NOT EDIT MANUALLY.
+
+from pathlib import Path
+
+# --- File path configuration ---
+DATE_STR = '{date_str}'
+DOWNLOAD_DIR = Path('{downloads_dir.as_posix()}')
+DEST_DIR = Path('{dest_dir.as_posix()}')
+
+# --- Analysis Parameters ---
+ANNUAL_RISK_FREE_RATE = {annual_risk_free_rate}
+TRADING_DAYS_PER_YEAR = {trading_days_per_year}
+DAILY_RISK_FREE_RATE = {daily_risk_free_rate}
+"""
+    with open(config_path, 'w') as f:
+        f.write(config_content)
+    print(f"Successfully created config file: {config_path}")
+
+
+# In src/utils.py, find and REPLACE the old get_recent_files_in_directory function
+
+import os
+from pathlib import Path
+from typing import List
+
+def get_recent_files_in_directory(
+    directory_path: Path, 
+    prefix: str, 
+    extension: str, 
+    count: int
+    ) -> List[str]:
+    """
+    Finds and returns a list of the most recent filenames in a given directory
+    that match a specific prefix and extension.
+
+    Args:
+        directory_path (Path): The pathlib.Path object for the directory to search.
+        prefix (str): The required starting string of the filenames.
+        extension (str): The required file extension (e.g., 'parquet', 'csv').
+        count (int): The maximum number of recent files to return.
+
+    Returns:
+        List[str]: A list of filenames, sorted from most recent to oldest.
+    """
+    if not directory_path.is_dir():
+        print(f"Warning: Directory not found at {directory_path}")
+        return []
+
+    # Construct the glob pattern to find matching files
+    pattern = f"{prefix}*.{extension}"
+    
+    # Find all matching files and get their modification times
+    files_with_mtime = []
+    for f in directory_path.glob(pattern):
+        try:
+            # Use f.stat() to get file metadata, including modification time
+            mtime = f.stat().st_mtime
+            files_with_mtime.append((f.name, mtime))
+        except FileNotFoundError:
+            # This can happen in rare race conditions if a file is deleted
+            # while the loop is running.
+            continue
+            
+    # Sort the files by modification time in descending order (most recent first)
+    files_with_mtime.sort(key=lambda x: x[1], reverse=True)
+    
+    # Return only the filenames from the sorted list, up to the specified count
+    sorted_filenames = [filename for filename, mtime in files_with_mtime]
+    
+    return sorted_filenames[:count]
+
 

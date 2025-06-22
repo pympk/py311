@@ -7,18 +7,20 @@ from pathlib import Path # <--- Import Path from pathlib
 
 # List of notebooks to run in order
 notebooks = [
-    "py0_get_yloader_OHLCV_data_v1.ipynb",
-    "py1_clean_df_finviz_v14.ipynb",
-    "py2_clean_df_OHLCV_v10.ipynb",
-    "py2_save_df_adj_close_v1.ipynb",    
-    "py3_calc_perf_ratios_v16.ipynb",
-    # "py4_append_ratios_v8.ipynb",
-    # "py5_append_columns_v7.ipynb",
-    # "py6_append_stats_history_v3.ipynb",
-    # "py6_view_market_sentiment_v4.ipynb",
-    # "py8_portf_picks_short_term_v5.ipynb",
-    # "py9_backtest_v1.ipynb",
-    # "py90_view_backtest_results_v1.ipynb",
+    # "py0_get_yloader_OHLCV_data_v1.ipynb",
+    # "py1_clean_df_finviz_v14.ipynb",
+    # "py2_clean_df_OHLCV_v10.ipynb",
+    # "py2_save_df_adj_close_v1.ipynb",    
+    # "py3_calc_perf_ratios_v16.ipynb",
+    # "py4_append_ratios_v9.ipynb",
+    # "py5_append_columns_v8.ipynb",
+    "py6_append_stats_history_v4.ipynb",
+    "py6_view_market_sentiment_history.ipynb",
+    "py7_view_daily_market_snapshot.ipynb",
+    "py8_portf_picks_short_term_v6.ipynb",
+    "py9_backtest_v2.ipynb",
+    "py10_backtest_verification_v1.ipynb"
+    "py90_view_backtest_results_v5.ipynb",
 ]
 
 def run_notebook(notebook_path):
