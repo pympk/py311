@@ -14,10 +14,11 @@ notebooks = [
     # "py3_calc_perf_ratios_v16.ipynb",
     # "py4_append_ratios_v9.ipynb",
     # "py5_append_columns_v8.ipynb",
-    "py6_append_stats_history_v4.ipynb",
-    "py6_view_market_sentiment_history.ipynb",
-    "py7_view_daily_market_snapshot.ipynb",
-    "py8_portf_picks_short_term_v6.ipynb",
+
+    # "py6_append_stats_history_v4.ipynb",
+    # "py6_view_market_sentiment_history.ipynb",
+    # "py7_view_daily_market_snapshot.ipynb",
+    # "py8_portf_picks_short_term_v6.ipynb",
     "py9_backtest_v2.ipynb",
     "py10_backtest_verification_v1.ipynb"
     "py90_view_backtest_results_v5.ipynb",
