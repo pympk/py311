@@ -2468,7 +2468,7 @@ def run_single_backtest(
         logging.critical(f"  FATAL ERROR during backtest run for {selection_date}, {scheme_name}: {e}", exc_info=True)
         return None
 
-def update_and_save_results(
+def update_and_save_results_obsolete(
     new_records: List[Dict[str, Any]],
     results_path: Path,
     unique_key_cols: List[str]
@@ -2514,6 +2514,92 @@ def update_and_save_results(
     df_final.to_csv(results_path.with_suffix('.csv'), index=False, float_format='%.6f')
     
     logging.info(f"Successfully saved {len(df_final)} consolidated records to {results_path.name}")
+
+
+
+# In your utils.py file
+
+import pandas as pd
+from pathlib import Path
+import logging
+from typing import List, Dict, Any
+
+def update_and_save_results(
+    new_records: List[Dict[str, Any]],
+    results_path: Path,
+    unique_key_cols: List[str]
+):
+    """
+    Loads existing results, combines with new records, removes duplicates by
+    keeping the most recent entry for each unique run, and saves the data.
+    
+    This version is robust against duplicate runs on the same date.
+    """
+    logging.info(f"Updating results file at: {results_path}")
+    
+    if not new_records:
+        logging.info("No new records provided. No changes made.")
+        return
+
+    # --- 1. Prepare New and Existing DataFrames ---
+    df_new = pd.DataFrame(new_records)
+    df_new['run_timestamp'] = pd.to_datetime(df_new.get('run_timestamp', pd.Timestamp.now()))
+
+    if results_path.exists():
+        logging.info(f"Loading {results_path.name} to merge with new results.")
+        df_old = pd.read_parquet(results_path)
+        df_old['run_timestamp'] = pd.to_datetime(df_old['run_timestamp'])
+        
+        # Align columns before concat to prevent schema issues
+        all_cols = sorted(list(set(df_old.columns) | set(df_new.columns)))
+        df_old = df_old.reindex(columns=all_cols)
+        df_new = df_new.reindex(columns=all_cols)
+        
+        combined_df = pd.concat([df_old, df_new], ignore_index=True)
+    else:
+        logging.info("No existing results file found. Creating a new one.")
+        combined_df = df_new
+        
+    # --- 2. De-duplicate: The Core of the Fix ---
+    num_before = len(combined_df)
+
+    # Add a crucial check for the date column in the keys
+    date_key_present = any(col in ['selection_date', 'actual_selection_date_used'] for col in unique_key_cols)
+    if not date_key_present:
+        logging.warning(
+            "CRITICAL WARNING: The date column ('selection_date' or 'actual_selection_date_used') "
+            "is NOT in `unique_key_cols`. This may cause unintended data loss. "
+            "The unique key should define a single run on a single day."
+        )
+
+    # Sort by timestamp first, so 'keep=last' correctly keeps the newest run
+    combined_df = combined_df.sort_values('run_timestamp')
+    
+    # Drop duplicates based on the provided unique keys
+    df_deduplicated = combined_df.drop_duplicates(subset=unique_key_cols, keep='last')
+    num_after = len(df_deduplicated)
+    
+    # --- 3. Final Sort and Save ---
+    # Sort the final clean data for consistent output, matching the old logic
+    df_final = df_deduplicated.sort_values(by=['selection_date', 'scheme'], ascending=[False, True])
+    
+    # Ensure parent directory exists
+    results_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Save to Parquet (primary format)
+    df_final.to_parquet(results_path, index=False)
+    
+    # Save to CSV as well for easy viewing
+    df_final.to_csv(results_path.with_suffix('.csv'), index=False, float_format='%.6f')
+    
+    logging.info("-" * 50)
+    logging.info(f"Results successfully updated and saved to '{results_path.name}'")
+    logging.info(f"Records before de-duplication: {num_before}")
+    logging.info(f"Duplicate records removed:      {num_before - num_after}")
+    logging.info(f"Final records in file:          {num_after}")
+    logging.info("-" * 50)
+
+
 
 
 # IN src/utils.py, REPLACE THE OLD process_backtest_for_pair FUNCTION WITH THIS ONE:

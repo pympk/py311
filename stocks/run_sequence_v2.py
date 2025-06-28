@@ -20,7 +20,6 @@ NOTEBOOKS_DIR = ROOT_DIR / 'notebooks'
 # The order is critical, as each notebook often depends on the output of the previous one.
 # Use the full, correct filenames of your refactored notebooks.
 notebooks_to_run = [
-    "py0_get_yloader_OHLCV_data_v1.ipynb",
     "py1_clean_df_finviz_v14.ipynb",
     "py2_clean_df_OHLCV_v10.ipynb",
     "py2_save_df_adj_close_v1.ipynb",    
