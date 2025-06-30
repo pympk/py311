@@ -1,0 +1,1418 @@
+2025-06-21 18:55:51,492 - INFO - Logging initialized. Log file: c:\Users\ping\Files_win10\python\py311\stocks\logs\backtest_run_20250621_185551.log
+2025-06-21 18:55:51,671 - INFO - Loading historical price data from: c:\Users\ping\Files_win10\python\py311\stocks\data\df_adj_close.parquet
+2025-06-21 18:55:51,888 - INFO - Successfully loaded and prepared price data. Shape: (347, 1554)
+2025-06-21 18:55:55,173 - INFO - Searching for selection files in: c:\Users\ping\Files_win10\python\py311\stocks\output\selection_results
+2025-06-21 18:55:55,242 - INFO - Found 40 paired data and parameter files.
+2025-06-21 18:55:55,706 - INFO - ------------------------------
+2025-06-21 18:55:55,708 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:55,711 - INFO -   Date          : 2025-04-25
+2025-06-21 18:55:55,712 - INFO -   Scheme        : EW
+2025-06-21 18:55:55,718 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:55,721 - INFO -   Selection Date Used: 2025-04-25
+2025-06-21 18:55:55,724 - INFO -   Buy Date           : 2025-04-28
+2025-06-21 18:55:55,727 - INFO -   Sell Date          : 2025-04-29
+2025-06-21 18:55:55,741 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:55,744 - INFO -   Portfolio Return : 0.0085
+2025-06-21 18:55:55,747 - INFO -   Win Rate         : 70.00%
+2025-06-21 18:55:55,753 - INFO - Backtest simulation for 'EW' on 2025-04-25 completed.
+2025-06-21 18:55:55,756 - INFO - ------------------------------
+2025-06-21 18:55:55,758 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:55,760 - INFO -   Date          : 2025-04-25
+2025-06-21 18:55:55,762 - INFO -   Scheme        : IV
+2025-06-21 18:55:55,763 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:55,772 - INFO -   Selection Date Used: 2025-04-25
+2025-06-21 18:55:55,774 - INFO -   Buy Date           : 2025-04-28
+2025-06-21 18:55:55,776 - INFO -   Sell Date          : 2025-04-29
+2025-06-21 18:55:55,788 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:55,792 - INFO -   Portfolio Return : 0.0075
+2025-06-21 18:55:55,794 - INFO -   Win Rate         : 70.00%
+2025-06-21 18:55:55,796 - INFO - Backtest simulation for 'IV' on 2025-04-25 completed.
+2025-06-21 18:55:55,801 - INFO - ------------------------------
+2025-06-21 18:55:55,803 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:55,807 - INFO -   Date          : 2025-04-25
+2025-06-21 18:55:55,809 - INFO -   Scheme        : SW
+2025-06-21 18:55:55,811 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:55,813 - INFO -   Selection Date Used: 2025-04-25
+2025-06-21 18:55:55,822 - INFO -   Buy Date           : 2025-04-28
+2025-06-21 18:55:55,824 - INFO -   Sell Date          : 2025-04-29
+2025-06-21 18:55:55,836 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:55,839 - INFO -   Portfolio Return : 0.0096
+2025-06-21 18:55:55,843 - INFO -   Win Rate         : 70.00%
+2025-06-21 18:55:55,846 - INFO - Backtest simulation for 'SW' on 2025-04-25 completed.
+2025-06-21 18:55:55,871 - INFO - ------------------------------
+2025-06-21 18:55:55,873 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:55,876 - INFO -   Date          : 2025-04-28
+2025-06-21 18:55:55,878 - INFO -   Scheme        : EW
+2025-06-21 18:55:55,880 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:55,888 - INFO -   Selection Date Used: 2025-04-28
+2025-06-21 18:55:55,890 - INFO -   Buy Date           : 2025-04-29
+2025-06-21 18:55:55,891 - INFO -   Sell Date          : 2025-04-30
+2025-06-21 18:55:55,907 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:55,909 - INFO -   Portfolio Return : 0.0114
+2025-06-21 18:55:55,911 - INFO -   Win Rate         : 80.00%
+2025-06-21 18:55:55,914 - INFO - Backtest simulation for 'EW' on 2025-04-28 completed.
+2025-06-21 18:55:55,922 - INFO - ------------------------------
+2025-06-21 18:55:55,924 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:55,926 - INFO -   Date          : 2025-04-28
+2025-06-21 18:55:55,928 - INFO -   Scheme        : IV
+2025-06-21 18:55:55,930 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:55,939 - INFO -   Selection Date Used: 2025-04-28
+2025-06-21 18:55:55,941 - INFO -   Buy Date           : 2025-04-29
+2025-06-21 18:55:55,944 - INFO -   Sell Date          : 2025-04-30
+2025-06-21 18:55:55,957 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:55,959 - INFO -   Portfolio Return : 0.0105
+2025-06-21 18:55:55,961 - INFO -   Win Rate         : 80.00%
+2025-06-21 18:55:55,967 - INFO - Backtest simulation for 'IV' on 2025-04-28 completed.
+2025-06-21 18:55:55,971 - INFO - ------------------------------
+2025-06-21 18:55:55,973 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:55,975 - INFO -   Date          : 2025-04-28
+2025-06-21 18:55:55,976 - INFO -   Scheme        : SW
+2025-06-21 18:55:55,979 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:55,986 - INFO -   Selection Date Used: 2025-04-28
+2025-06-21 18:55:55,989 - INFO -   Buy Date           : 2025-04-29
+2025-06-21 18:55:55,990 - INFO -   Sell Date          : 2025-04-30
+2025-06-21 18:55:56,001 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,004 - INFO -   Portfolio Return : 0.0128
+2025-06-21 18:55:56,007 - INFO -   Win Rate         : 80.00%
+2025-06-21 18:55:56,009 - INFO - Backtest simulation for 'SW' on 2025-04-28 completed.
+2025-06-21 18:55:56,029 - INFO - ------------------------------
+2025-06-21 18:55:56,036 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,038 - INFO -   Date          : 2025-04-29
+2025-06-21 18:55:56,041 - INFO -   Scheme        : EW
+2025-06-21 18:55:56,043 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,046 - INFO -   Selection Date Used: 2025-04-29
+2025-06-21 18:55:56,052 - INFO -   Buy Date           : 2025-04-30
+2025-06-21 18:55:56,055 - INFO -   Sell Date          : 2025-05-01
+2025-06-21 18:55:56,062 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,070 - INFO -   Portfolio Return : -0.0023
+2025-06-21 18:55:56,072 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:55:56,074 - INFO - Backtest simulation for 'EW' on 2025-04-29 completed.
+2025-06-21 18:55:56,077 - INFO - ------------------------------
+2025-06-21 18:55:56,078 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,086 - INFO -   Date          : 2025-04-29
+2025-06-21 18:55:56,088 - INFO -   Scheme        : IV
+2025-06-21 18:55:56,089 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,092 - INFO -   Selection Date Used: 2025-04-29
+2025-06-21 18:55:56,094 - INFO -   Buy Date           : 2025-04-30
+2025-06-21 18:55:56,096 - INFO -   Sell Date          : 2025-05-01
+2025-06-21 18:55:56,109 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,111 - INFO -   Portfolio Return : -0.0012
+2025-06-21 18:55:56,113 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:55:56,121 - INFO - Backtest simulation for 'IV' on 2025-04-29 completed.
+2025-06-21 18:55:56,124 - INFO - ------------------------------
+2025-06-21 18:55:56,126 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,128 - INFO -   Date          : 2025-04-29
+2025-06-21 18:55:56,135 - INFO -   Scheme        : SW
+2025-06-21 18:55:56,138 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,141 - INFO -   Selection Date Used: 2025-04-29
+2025-06-21 18:55:56,142 - INFO -   Buy Date           : 2025-04-30
+2025-06-21 18:55:56,144 - INFO -   Sell Date          : 2025-05-01
+2025-06-21 18:55:56,156 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,159 - INFO -   Portfolio Return : -0.0064
+2025-06-21 18:55:56,162 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:55:56,168 - INFO - Backtest simulation for 'SW' on 2025-04-29 completed.
+2025-06-21 18:55:56,188 - INFO - ------------------------------
+2025-06-21 18:55:56,190 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,193 - INFO -   Date          : 2025-04-30
+2025-06-21 18:55:56,195 - INFO -   Scheme        : EW
+2025-06-21 18:55:56,202 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,205 - INFO -   Selection Date Used: 2025-04-30
+2025-06-21 18:55:56,207 - INFO -   Buy Date           : 2025-05-01
+2025-06-21 18:55:56,209 - INFO -   Sell Date          : 2025-05-02
+2025-06-21 18:55:56,222 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,223 - INFO -   Portfolio Return : 0.0242
+2025-06-21 18:55:56,225 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:56,228 - INFO - Backtest simulation for 'EW' on 2025-04-30 completed.
+2025-06-21 18:55:56,236 - INFO - ------------------------------
+2025-06-21 18:55:56,238 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,240 - INFO -   Date          : 2025-04-30
+2025-06-21 18:55:56,242 - INFO -   Scheme        : IV
+2025-06-21 18:55:56,244 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,246 - INFO -   Selection Date Used: 2025-04-30
+2025-06-21 18:55:56,252 - INFO -   Buy Date           : 2025-05-01
+2025-06-21 18:55:56,254 - INFO -   Sell Date          : 2025-05-02
+2025-06-21 18:55:56,263 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,269 - INFO -   Portfolio Return : 0.0230
+2025-06-21 18:55:56,274 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:56,276 - INFO - Backtest simulation for 'IV' on 2025-04-30 completed.
+2025-06-21 18:55:56,278 - INFO - ------------------------------
+2025-06-21 18:55:56,284 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,287 - INFO -   Date          : 2025-04-30
+2025-06-21 18:55:56,289 - INFO -   Scheme        : SW
+2025-06-21 18:55:56,291 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,293 - INFO -   Selection Date Used: 2025-04-30
+2025-06-21 18:55:56,296 - INFO -   Buy Date           : 2025-05-01
+2025-06-21 18:55:56,303 - INFO -   Sell Date          : 2025-05-02
+2025-06-21 18:55:56,310 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,312 - INFO -   Portfolio Return : 0.0253
+2025-06-21 18:55:56,319 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:56,321 - INFO - Backtest simulation for 'SW' on 2025-04-30 completed.
+2025-06-21 18:55:56,340 - INFO - ------------------------------
+2025-06-21 18:55:56,342 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,344 - INFO -   Date          : 2025-05-01
+2025-06-21 18:55:56,346 - INFO -   Scheme        : EW
+2025-06-21 18:55:56,354 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,356 - INFO -   Selection Date Used: 2025-05-01
+2025-06-21 18:55:56,360 - INFO -   Buy Date           : 2025-05-02
+2025-06-21 18:55:56,363 - INFO -   Sell Date          : 2025-05-05
+2025-06-21 18:55:56,374 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,376 - INFO -   Portfolio Return : -0.0038
+2025-06-21 18:55:56,377 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:55:56,380 - INFO - Backtest simulation for 'EW' on 2025-05-01 completed.
+2025-06-21 18:55:56,387 - INFO - ------------------------------
+2025-06-21 18:55:56,389 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,391 - INFO -   Date          : 2025-05-01
+2025-06-21 18:55:56,393 - INFO -   Scheme        : IV
+2025-06-21 18:55:56,395 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,399 - INFO -   Selection Date Used: 2025-05-01
+2025-06-21 18:55:56,402 - INFO -   Buy Date           : 2025-05-02
+2025-06-21 18:55:56,403 - INFO -   Sell Date          : 2025-05-05
+2025-06-21 18:55:56,411 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,413 - INFO -   Portfolio Return : -0.0049
+2025-06-21 18:55:56,418 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:55:56,421 - INFO - Backtest simulation for 'IV' on 2025-05-01 completed.
+2025-06-21 18:55:56,424 - INFO - ------------------------------
+2025-06-21 18:55:56,426 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,427 - INFO -   Date          : 2025-05-01
+2025-06-21 18:55:56,429 - INFO -   Scheme        : SW
+2025-06-21 18:55:56,434 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,436 - INFO -   Selection Date Used: 2025-05-01
+2025-06-21 18:55:56,438 - INFO -   Buy Date           : 2025-05-02
+2025-06-21 18:55:56,440 - INFO -   Sell Date          : 2025-05-05
+2025-06-21 18:55:56,453 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,454 - INFO -   Portfolio Return : -0.0016
+2025-06-21 18:55:56,456 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:55:56,460 - INFO - Backtest simulation for 'SW' on 2025-05-01 completed.
+2025-06-21 18:55:56,479 - INFO - ------------------------------
+2025-06-21 18:55:56,481 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,487 - INFO -   Date          : 2025-05-02
+2025-06-21 18:55:56,488 - INFO -   Scheme        : EW
+2025-06-21 18:55:56,490 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,492 - INFO -   Selection Date Used: 2025-05-02
+2025-06-21 18:55:56,494 - INFO -   Buy Date           : 2025-05-05
+2025-06-21 18:55:56,496 - INFO -   Sell Date          : 2025-05-06
+2025-06-21 18:55:56,506 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,508 - INFO -   Portfolio Return : 0.0038
+2025-06-21 18:55:56,510 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:55:56,512 - INFO - Backtest simulation for 'EW' on 2025-05-02 completed.
+2025-06-21 18:55:56,518 - INFO - ------------------------------
+2025-06-21 18:55:56,520 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,521 - INFO -   Date          : 2025-05-02
+2025-06-21 18:55:56,524 - INFO -   Scheme        : IV
+2025-06-21 18:55:56,526 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,528 - INFO -   Selection Date Used: 2025-05-02
+2025-06-21 18:55:56,533 - INFO -   Buy Date           : 2025-05-05
+2025-06-21 18:55:56,536 - INFO -   Sell Date          : 2025-05-06
+2025-06-21 18:55:56,543 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,544 - INFO -   Portfolio Return : 0.0017
+2025-06-21 18:55:56,546 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:55:56,553 - INFO - Backtest simulation for 'IV' on 2025-05-02 completed.
+2025-06-21 18:55:56,557 - INFO - ------------------------------
+2025-06-21 18:55:56,559 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,562 - INFO -   Date          : 2025-05-02
+2025-06-21 18:55:56,563 - INFO -   Scheme        : SW
+2025-06-21 18:55:56,568 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,570 - INFO -   Selection Date Used: 2025-05-02
+2025-06-21 18:55:56,572 - INFO -   Buy Date           : 2025-05-05
+2025-06-21 18:55:56,574 - INFO -   Sell Date          : 2025-05-06
+2025-06-21 18:55:56,586 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,588 - INFO -   Portfolio Return : 0.0045
+2025-06-21 18:55:56,589 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:55:56,591 - INFO - Backtest simulation for 'SW' on 2025-05-02 completed.
+2025-06-21 18:55:56,611 - INFO - ------------------------------
+2025-06-21 18:55:56,613 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,617 - INFO -   Date          : 2025-05-05
+2025-06-21 18:55:56,619 - INFO -   Scheme        : EW
+2025-06-21 18:55:56,620 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,623 - INFO -   Selection Date Used: 2025-05-05
+2025-06-21 18:55:56,625 - INFO -   Buy Date           : 2025-05-06
+2025-06-21 18:55:56,627 - INFO -   Sell Date          : 2025-05-07
+2025-06-21 18:55:56,640 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,641 - INFO -   Portfolio Return : 0.0105
+2025-06-21 18:55:56,643 - INFO -   Win Rate         : 70.00%
+2025-06-21 18:55:56,645 - INFO - Backtest simulation for 'EW' on 2025-05-05 completed.
+2025-06-21 18:55:56,649 - INFO - ------------------------------
+2025-06-21 18:55:56,652 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,653 - INFO -   Date          : 2025-05-05
+2025-06-21 18:55:56,656 - INFO -   Scheme        : IV
+2025-06-21 18:55:56,657 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,661 - INFO -   Selection Date Used: 2025-05-05
+2025-06-21 18:55:56,662 - INFO -   Buy Date           : 2025-05-06
+2025-06-21 18:55:56,672 - INFO -   Sell Date          : 2025-05-07
+2025-06-21 18:55:56,680 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,686 - INFO -   Portfolio Return : 0.0106
+2025-06-21 18:55:56,688 - INFO -   Win Rate         : 70.00%
+2025-06-21 18:55:56,691 - INFO - Backtest simulation for 'IV' on 2025-05-05 completed.
+2025-06-21 18:55:56,694 - INFO - ------------------------------
+2025-06-21 18:55:56,696 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,699 - INFO -   Date          : 2025-05-05
+2025-06-21 18:55:56,702 - INFO -   Scheme        : SW
+2025-06-21 18:55:56,703 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,705 - INFO -   Selection Date Used: 2025-05-05
+2025-06-21 18:55:56,706 - INFO -   Buy Date           : 2025-05-06
+2025-06-21 18:55:56,708 - INFO -   Sell Date          : 2025-05-07
+2025-06-21 18:55:56,720 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,723 - INFO -   Portfolio Return : 0.0105
+2025-06-21 18:55:56,726 - INFO -   Win Rate         : 70.00%
+2025-06-21 18:55:56,729 - INFO - Backtest simulation for 'SW' on 2025-05-05 completed.
+2025-06-21 18:55:56,745 - INFO - ------------------------------
+2025-06-21 18:55:56,747 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,753 - INFO -   Date          : 2025-05-06
+2025-06-21 18:55:56,755 - INFO -   Scheme        : EW
+2025-06-21 18:55:56,757 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,759 - INFO -   Selection Date Used: 2025-05-06
+2025-06-21 18:55:56,762 - INFO -   Buy Date           : 2025-05-07
+2025-06-21 18:55:56,765 - INFO -   Sell Date          : 2025-05-08
+2025-06-21 18:55:56,773 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,777 - INFO -   Portfolio Return : 0.0159
+2025-06-21 18:55:56,779 - INFO -   Win Rate         : 70.00%
+2025-06-21 18:55:56,787 - INFO - Backtest simulation for 'EW' on 2025-05-06 completed.
+2025-06-21 18:55:56,790 - INFO - ------------------------------
+2025-06-21 18:55:56,793 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,795 - INFO -   Date          : 2025-05-06
+2025-06-21 18:55:56,796 - INFO -   Scheme        : IV
+2025-06-21 18:55:56,802 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,804 - INFO -   Selection Date Used: 2025-05-06
+2025-06-21 18:55:56,806 - INFO -   Buy Date           : 2025-05-07
+2025-06-21 18:55:56,808 - INFO -   Sell Date          : 2025-05-08
+2025-06-21 18:55:56,821 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,823 - INFO -   Portfolio Return : 0.0128
+2025-06-21 18:55:56,825 - INFO -   Win Rate         : 70.00%
+2025-06-21 18:55:56,827 - INFO - Backtest simulation for 'IV' on 2025-05-06 completed.
+2025-06-21 18:55:56,830 - INFO - ------------------------------
+2025-06-21 18:55:56,836 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,838 - INFO -   Date          : 2025-05-06
+2025-06-21 18:55:56,840 - INFO -   Scheme        : SW
+2025-06-21 18:55:56,842 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,844 - INFO -   Selection Date Used: 2025-05-06
+2025-06-21 18:55:56,847 - INFO -   Buy Date           : 2025-05-07
+2025-06-21 18:55:56,854 - INFO -   Sell Date          : 2025-05-08
+2025-06-21 18:55:56,861 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,863 - INFO -   Portfolio Return : 0.0171
+2025-06-21 18:55:56,870 - INFO -   Win Rate         : 70.00%
+2025-06-21 18:55:56,873 - INFO - Backtest simulation for 'SW' on 2025-05-06 completed.
+2025-06-21 18:55:56,889 - INFO - ------------------------------
+2025-06-21 18:55:56,891 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,895 - INFO -   Date          : 2025-05-07
+2025-06-21 18:55:56,897 - INFO -   Scheme        : EW
+2025-06-21 18:55:56,905 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,907 - INFO -   Selection Date Used: 2025-05-07
+2025-06-21 18:55:56,909 - INFO -   Buy Date           : 2025-05-08
+2025-06-21 18:55:56,911 - INFO -   Sell Date          : 2025-05-09
+2025-06-21 18:55:56,924 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,926 - INFO -   Portfolio Return : -0.0044
+2025-06-21 18:55:56,928 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:55:56,937 - INFO - Backtest simulation for 'EW' on 2025-05-07 completed.
+2025-06-21 18:55:56,940 - INFO - ------------------------------
+2025-06-21 18:55:56,942 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,944 - INFO -   Date          : 2025-05-07
+2025-06-21 18:55:56,946 - INFO -   Scheme        : IV
+2025-06-21 18:55:56,953 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,955 - INFO -   Selection Date Used: 2025-05-07
+2025-06-21 18:55:56,957 - INFO -   Buy Date           : 2025-05-08
+2025-06-21 18:55:56,959 - INFO -   Sell Date          : 2025-05-09
+2025-06-21 18:55:56,971 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:56,973 - INFO -   Portfolio Return : -0.0031
+2025-06-21 18:55:56,976 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:55:56,979 - INFO - Backtest simulation for 'IV' on 2025-05-07 completed.
+2025-06-21 18:55:56,986 - INFO - ------------------------------
+2025-06-21 18:55:56,988 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:56,991 - INFO -   Date          : 2025-05-07
+2025-06-21 18:55:56,993 - INFO -   Scheme        : SW
+2025-06-21 18:55:56,994 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:56,996 - INFO -   Selection Date Used: 2025-05-07
+2025-06-21 18:55:57,004 - INFO -   Buy Date           : 2025-05-08
+2025-06-21 18:55:57,007 - INFO -   Sell Date          : 2025-05-09
+2025-06-21 18:55:57,018 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,021 - INFO -   Portfolio Return : -0.0047
+2025-06-21 18:55:57,023 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:55:57,026 - INFO - Backtest simulation for 'SW' on 2025-05-07 completed.
+2025-06-21 18:55:57,046 - INFO - ------------------------------
+2025-06-21 18:55:57,049 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,055 - INFO -   Date          : 2025-05-08
+2025-06-21 18:55:57,056 - INFO -   Scheme        : EW
+2025-06-21 18:55:57,059 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,061 - INFO -   Selection Date Used: 2025-05-08
+2025-06-21 18:55:57,063 - INFO -   Buy Date           : 2025-05-09
+2025-06-21 18:55:57,069 - INFO -   Sell Date          : 2025-05-12
+2025-06-21 18:55:57,078 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,080 - INFO -   Portfolio Return : 0.0246
+2025-06-21 18:55:57,088 - INFO -   Win Rate         : 80.00%
+2025-06-21 18:55:57,090 - INFO - Backtest simulation for 'EW' on 2025-05-08 completed.
+2025-06-21 18:55:57,092 - INFO - ------------------------------
+2025-06-21 18:55:57,094 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,101 - INFO -   Date          : 2025-05-08
+2025-06-21 18:55:57,104 - INFO -   Scheme        : IV
+2025-06-21 18:55:57,106 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,109 - INFO -   Selection Date Used: 2025-05-08
+2025-06-21 18:55:57,111 - INFO -   Buy Date           : 2025-05-09
+2025-06-21 18:55:57,119 - INFO -   Sell Date          : 2025-05-12
+2025-06-21 18:55:57,127 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,129 - INFO -   Portfolio Return : 0.0204
+2025-06-21 18:55:57,132 - INFO -   Win Rate         : 80.00%
+2025-06-21 18:55:57,135 - INFO - Backtest simulation for 'IV' on 2025-05-08 completed.
+2025-06-21 18:55:57,137 - INFO - ------------------------------
+2025-06-21 18:55:57,139 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,141 - INFO -   Date          : 2025-05-08
+2025-06-21 18:55:57,143 - INFO -   Scheme        : SW
+2025-06-21 18:55:57,145 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,151 - INFO -   Selection Date Used: 2025-05-08
+2025-06-21 18:55:57,153 - INFO -   Buy Date           : 2025-05-09
+2025-06-21 18:55:57,156 - INFO -   Sell Date          : 2025-05-12
+2025-06-21 18:55:57,163 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,168 - INFO -   Portfolio Return : 0.0250
+2025-06-21 18:55:57,170 - INFO -   Win Rate         : 80.00%
+2025-06-21 18:55:57,172 - INFO - Backtest simulation for 'SW' on 2025-05-08 completed.
+2025-06-21 18:55:57,190 - INFO - ------------------------------
+2025-06-21 18:55:57,192 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,194 - INFO -   Date          : 2025-05-09
+2025-06-21 18:55:57,196 - INFO -   Scheme        : EW
+2025-06-21 18:55:57,202 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,204 - INFO -   Selection Date Used: 2025-05-09
+2025-06-21 18:55:57,206 - INFO -   Buy Date           : 2025-05-12
+2025-06-21 18:55:57,208 - INFO -   Sell Date          : 2025-05-13
+2025-06-21 18:55:57,218 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,222 - INFO -   Portfolio Return : -0.0248
+2025-06-21 18:55:57,224 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:55:57,226 - INFO - Backtest simulation for 'EW' on 2025-05-09 completed.
+2025-06-21 18:55:57,229 - INFO - ------------------------------
+2025-06-21 18:55:57,234 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,237 - INFO -   Date          : 2025-05-09
+2025-06-21 18:55:57,238 - INFO -   Scheme        : IV
+2025-06-21 18:55:57,240 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,243 - INFO -   Selection Date Used: 2025-05-09
+2025-06-21 18:55:57,244 - INFO -   Buy Date           : 2025-05-12
+2025-06-21 18:55:57,245 - INFO -   Sell Date          : 2025-05-13
+2025-06-21 18:55:57,256 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,257 - INFO -   Portfolio Return : -0.0230
+2025-06-21 18:55:57,260 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:55:57,262 - INFO - Backtest simulation for 'IV' on 2025-05-09 completed.
+2025-06-21 18:55:57,268 - INFO - ------------------------------
+2025-06-21 18:55:57,270 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,273 - INFO -   Date          : 2025-05-09
+2025-06-21 18:55:57,275 - INFO -   Scheme        : SW
+2025-06-21 18:55:57,276 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,279 - INFO -   Selection Date Used: 2025-05-09
+2025-06-21 18:55:57,284 - INFO -   Buy Date           : 2025-05-12
+2025-06-21 18:55:57,286 - INFO -   Sell Date          : 2025-05-13
+2025-06-21 18:55:57,293 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,296 - INFO -   Portfolio Return : -0.0236
+2025-06-21 18:55:57,301 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:55:57,304 - INFO - Backtest simulation for 'SW' on 2025-05-09 completed.
+2025-06-21 18:55:57,322 - INFO - ------------------------------
+2025-06-21 18:55:57,323 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,325 - INFO -   Date          : 2025-05-12
+2025-06-21 18:55:57,327 - INFO -   Scheme        : EW
+2025-06-21 18:55:57,329 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,335 - INFO -   Selection Date Used: 2025-05-12
+2025-06-21 18:55:57,338 - INFO -   Buy Date           : 2025-05-13
+2025-06-21 18:55:57,340 - INFO -   Sell Date          : 2025-05-14
+2025-06-21 18:55:57,347 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,352 - INFO -   Portfolio Return : -0.0166
+2025-06-21 18:55:57,355 - INFO -   Win Rate         : 10.00%
+2025-06-21 18:55:57,356 - INFO - Backtest simulation for 'EW' on 2025-05-12 completed.
+2025-06-21 18:55:57,359 - INFO - ------------------------------
+2025-06-21 18:55:57,361 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,363 - INFO -   Date          : 2025-05-12
+2025-06-21 18:55:57,368 - INFO -   Scheme        : IV
+2025-06-21 18:55:57,370 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,373 - INFO -   Selection Date Used: 2025-05-12
+2025-06-21 18:55:57,375 - INFO -   Buy Date           : 2025-05-13
+2025-06-21 18:55:57,377 - INFO -   Sell Date          : 2025-05-14
+2025-06-21 18:55:57,386 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,388 - INFO -   Portfolio Return : -0.0136
+2025-06-21 18:55:57,390 - INFO -   Win Rate         : 10.00%
+2025-06-21 18:55:57,393 - INFO - Backtest simulation for 'IV' on 2025-05-12 completed.
+2025-06-21 18:55:57,395 - INFO - ------------------------------
+2025-06-21 18:55:57,401 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,403 - INFO -   Date          : 2025-05-12
+2025-06-21 18:55:57,405 - INFO -   Scheme        : SW
+2025-06-21 18:55:57,407 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,409 - INFO -   Selection Date Used: 2025-05-12
+2025-06-21 18:55:57,412 - INFO -   Buy Date           : 2025-05-13
+2025-06-21 18:55:57,414 - INFO -   Sell Date          : 2025-05-14
+2025-06-21 18:55:57,424 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,426 - INFO -   Portfolio Return : -0.0166
+2025-06-21 18:55:57,428 - INFO -   Win Rate         : 10.00%
+2025-06-21 18:55:57,435 - INFO - Backtest simulation for 'SW' on 2025-05-12 completed.
+2025-06-21 18:55:57,452 - INFO - ------------------------------
+2025-06-21 18:55:57,454 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,456 - INFO -   Date          : 2025-05-13
+2025-06-21 18:55:57,458 - INFO -   Scheme        : EW
+2025-06-21 18:55:57,460 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,463 - INFO -   Selection Date Used: 2025-05-13
+2025-06-21 18:55:57,469 - INFO -   Buy Date           : 2025-05-14
+2025-06-21 18:55:57,471 - INFO -   Sell Date          : 2025-05-15
+2025-06-21 18:55:57,479 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,485 - INFO -   Portfolio Return : 0.0060
+2025-06-21 18:55:57,487 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:57,488 - INFO - Backtest simulation for 'EW' on 2025-05-13 completed.
+2025-06-21 18:55:57,491 - INFO - ------------------------------
+2025-06-21 18:55:57,494 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,495 - INFO -   Date          : 2025-05-13
+2025-06-21 18:55:57,500 - INFO -   Scheme        : IV
+2025-06-21 18:55:57,502 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,504 - INFO -   Selection Date Used: 2025-05-13
+2025-06-21 18:55:57,506 - INFO -   Buy Date           : 2025-05-14
+2025-06-21 18:55:57,509 - INFO -   Sell Date          : 2025-05-15
+2025-06-21 18:55:57,518 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,520 - INFO -   Portfolio Return : 0.0141
+2025-06-21 18:55:57,522 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:57,525 - INFO - Backtest simulation for 'IV' on 2025-05-13 completed.
+2025-06-21 18:55:57,527 - INFO - ------------------------------
+2025-06-21 18:55:57,529 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,535 - INFO -   Date          : 2025-05-13
+2025-06-21 18:55:57,536 - INFO -   Scheme        : SW
+2025-06-21 18:55:57,539 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,540 - INFO -   Selection Date Used: 2025-05-13
+2025-06-21 18:55:57,542 - INFO -   Buy Date           : 2025-05-14
+2025-06-21 18:55:57,543 - INFO -   Sell Date          : 2025-05-15
+2025-06-21 18:55:57,553 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,556 - INFO -   Portfolio Return : -0.0208
+2025-06-21 18:55:57,560 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:57,562 - INFO - Backtest simulation for 'SW' on 2025-05-13 completed.
+2025-06-21 18:55:57,603 - INFO - ------------------------------
+2025-06-21 18:55:57,605 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,609 - INFO -   Date          : 2025-05-14
+2025-06-21 18:55:57,613 - INFO -   Scheme        : EW
+2025-06-21 18:55:57,618 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,624 - INFO -   Selection Date Used: 2025-05-14
+2025-06-21 18:55:57,634 - INFO -   Buy Date           : 2025-05-15
+2025-06-21 18:55:57,640 - INFO -   Sell Date          : 2025-05-16
+2025-06-21 18:55:57,652 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,655 - INFO -   Portfolio Return : 0.0194
+2025-06-21 18:55:57,657 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:57,659 - INFO - Backtest simulation for 'EW' on 2025-05-14 completed.
+2025-06-21 18:55:57,661 - INFO - ------------------------------
+2025-06-21 18:55:57,669 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,670 - INFO -   Date          : 2025-05-14
+2025-06-21 18:55:57,674 - INFO -   Scheme        : IV
+2025-06-21 18:55:57,676 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,678 - INFO -   Selection Date Used: 2025-05-14
+2025-06-21 18:55:57,690 - INFO -   Buy Date           : 2025-05-15
+2025-06-21 18:55:57,692 - INFO -   Sell Date          : 2025-05-16
+2025-06-21 18:55:57,705 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,708 - INFO -   Portfolio Return : 0.0177
+2025-06-21 18:55:57,710 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:57,712 - INFO - Backtest simulation for 'IV' on 2025-05-14 completed.
+2025-06-21 18:55:57,719 - INFO - ------------------------------
+2025-06-21 18:55:57,721 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,724 - INFO -   Date          : 2025-05-14
+2025-06-21 18:55:57,726 - INFO -   Scheme        : SW
+2025-06-21 18:55:57,728 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,736 - INFO -   Selection Date Used: 2025-05-14
+2025-06-21 18:55:57,738 - INFO -   Buy Date           : 2025-05-15
+2025-06-21 18:55:57,741 - INFO -   Sell Date          : 2025-05-16
+2025-06-21 18:55:57,756 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,759 - INFO -   Portfolio Return : 0.0245
+2025-06-21 18:55:57,763 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:57,771 - INFO - Backtest simulation for 'SW' on 2025-05-14 completed.
+2025-06-21 18:55:57,795 - INFO - ------------------------------
+2025-06-21 18:55:57,802 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,806 - INFO -   Date          : 2025-05-15
+2025-06-21 18:55:57,807 - INFO -   Scheme        : EW
+2025-06-21 18:55:57,810 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,812 - INFO -   Selection Date Used: 2025-05-15
+2025-06-21 18:55:57,818 - INFO -   Buy Date           : 2025-05-16
+2025-06-21 18:55:57,821 - INFO -   Sell Date          : 2025-05-19
+2025-06-21 18:55:57,835 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,838 - INFO -   Portfolio Return : 0.0110
+2025-06-21 18:55:57,842 - INFO -   Win Rate         : 60.00%
+2025-06-21 18:55:57,844 - INFO - Backtest simulation for 'EW' on 2025-05-15 completed.
+2025-06-21 18:55:57,850 - INFO - ------------------------------
+2025-06-21 18:55:57,852 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,855 - INFO -   Date          : 2025-05-15
+2025-06-21 18:55:57,858 - INFO -   Scheme        : IV
+2025-06-21 18:55:57,860 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,868 - INFO -   Selection Date Used: 2025-05-15
+2025-06-21 18:55:57,870 - INFO -   Buy Date           : 2025-05-16
+2025-06-21 18:55:57,873 - INFO -   Sell Date          : 2025-05-19
+2025-06-21 18:55:57,883 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,886 - INFO -   Portfolio Return : 0.0081
+2025-06-21 18:55:57,888 - INFO -   Win Rate         : 60.00%
+2025-06-21 18:55:57,891 - INFO - Backtest simulation for 'IV' on 2025-05-15 completed.
+2025-06-21 18:55:57,895 - INFO - ------------------------------
+2025-06-21 18:55:57,896 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,903 - INFO -   Date          : 2025-05-15
+2025-06-21 18:55:57,905 - INFO -   Scheme        : SW
+2025-06-21 18:55:57,907 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,910 - INFO -   Selection Date Used: 2025-05-15
+2025-06-21 18:55:57,911 - INFO -   Buy Date           : 2025-05-16
+2025-06-21 18:55:57,917 - INFO -   Sell Date          : 2025-05-19
+2025-06-21 18:55:57,924 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:57,927 - INFO -   Portfolio Return : 0.0270
+2025-06-21 18:55:57,929 - INFO -   Win Rate         : 60.00%
+2025-06-21 18:55:57,937 - INFO - Backtest simulation for 'SW' on 2025-05-15 completed.
+2025-06-21 18:55:57,953 - INFO - ------------------------------
+2025-06-21 18:55:57,955 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,957 - INFO -   Date          : 2025-05-16
+2025-06-21 18:55:57,959 - INFO -   Scheme        : EW
+2025-06-21 18:55:57,961 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:57,962 - INFO -   Selection Date Used: 2025-05-16
+2025-06-21 18:55:57,968 - INFO -   Buy Date           : 2025-05-19
+2025-06-21 18:55:57,970 - INFO -   Sell Date          : 2025-05-20
+2025-06-21 18:55:57,974 - WARNING -     - Ticker DFS not in price data. Skipping.
+2025-06-21 18:55:57,977 - INFO -   Trades Executed: 9/10
+2025-06-21 18:55:57,979 - INFO -   Portfolio Return : 0.0003
+2025-06-21 18:55:57,986 - INFO -   Win Rate         : 44.44%
+2025-06-21 18:55:57,989 - INFO - Backtest simulation for 'EW' on 2025-05-16 completed.
+2025-06-21 18:55:57,991 - INFO - ------------------------------
+2025-06-21 18:55:57,994 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:57,996 - INFO -   Date          : 2025-05-16
+2025-06-21 18:55:58,001 - INFO -   Scheme        : IV
+2025-06-21 18:55:58,004 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,006 - INFO -   Selection Date Used: 2025-05-16
+2025-06-21 18:55:58,007 - INFO -   Buy Date           : 2025-05-19
+2025-06-21 18:55:58,009 - INFO -   Sell Date          : 2025-05-20
+2025-06-21 18:55:58,019 - WARNING -     - Ticker DFS not in price data. Skipping.
+2025-06-21 18:55:58,022 - INFO -   Trades Executed: 9/10
+2025-06-21 18:55:58,025 - INFO -   Portfolio Return : 0.0009
+2025-06-21 18:55:58,026 - INFO -   Win Rate         : 44.44%
+2025-06-21 18:55:58,028 - INFO - Backtest simulation for 'IV' on 2025-05-16 completed.
+2025-06-21 18:55:58,030 - INFO - ------------------------------
+2025-06-21 18:55:58,036 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,038 - INFO -   Date          : 2025-05-16
+2025-06-21 18:55:58,040 - INFO -   Scheme        : SW
+2025-06-21 18:55:58,042 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,044 - INFO -   Selection Date Used: 2025-05-16
+2025-06-21 18:55:58,046 - INFO -   Buy Date           : 2025-05-19
+2025-06-21 18:55:58,048 - INFO -   Sell Date          : 2025-05-20
+2025-06-21 18:55:58,056 - WARNING -     - Ticker DFS not in price data. Skipping.
+2025-06-21 18:55:58,060 - INFO -   Trades Executed: 9/10
+2025-06-21 18:55:58,061 - INFO -   Portfolio Return : -0.0023
+2025-06-21 18:55:58,063 - INFO -   Win Rate         : 44.44%
+2025-06-21 18:55:58,068 - INFO - Backtest simulation for 'SW' on 2025-05-16 completed.
+2025-06-21 18:55:58,085 - INFO - ------------------------------
+2025-06-21 18:55:58,086 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,088 - INFO -   Date          : 2025-05-19
+2025-06-21 18:55:58,090 - INFO -   Scheme        : EW
+2025-06-21 18:55:58,092 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,095 - INFO -   Selection Date Used: 2025-05-19
+2025-06-21 18:55:58,102 - INFO -   Buy Date           : 2025-05-20
+2025-06-21 18:55:58,104 - INFO -   Sell Date          : 2025-05-21
+2025-06-21 18:55:58,110 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,111 - INFO -   Portfolio Return : -0.0311
+2025-06-21 18:55:58,112 - INFO -   Win Rate         : 0.00%
+2025-06-21 18:55:58,118 - INFO - Backtest simulation for 'EW' on 2025-05-19 completed.
+2025-06-21 18:55:58,120 - INFO - ------------------------------
+2025-06-21 18:55:58,121 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,125 - INFO -   Date          : 2025-05-19
+2025-06-21 18:55:58,126 - INFO -   Scheme        : IV
+2025-06-21 18:55:58,128 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,129 - INFO -   Selection Date Used: 2025-05-19
+2025-06-21 18:55:58,135 - INFO -   Buy Date           : 2025-05-20
+2025-06-21 18:55:58,137 - INFO -   Sell Date          : 2025-05-21
+2025-06-21 18:55:58,143 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,145 - INFO -   Portfolio Return : -0.0248
+2025-06-21 18:55:58,146 - INFO -   Win Rate         : 0.00%
+2025-06-21 18:55:58,153 - INFO - Backtest simulation for 'IV' on 2025-05-19 completed.
+2025-06-21 18:55:58,156 - INFO - ------------------------------
+2025-06-21 18:55:58,157 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,159 - INFO -   Date          : 2025-05-19
+2025-06-21 18:55:58,161 - INFO -   Scheme        : SW
+2025-06-21 18:55:58,163 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,168 - INFO -   Selection Date Used: 2025-05-19
+2025-06-21 18:55:58,170 - INFO -   Buy Date           : 2025-05-20
+2025-06-21 18:55:58,172 - INFO -   Sell Date          : 2025-05-21
+2025-06-21 18:55:58,179 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,184 - INFO -   Portfolio Return : -0.0337
+2025-06-21 18:55:58,187 - INFO -   Win Rate         : 0.00%
+2025-06-21 18:55:58,189 - INFO - Backtest simulation for 'SW' on 2025-05-19 completed.
+2025-06-21 18:55:58,207 - INFO - ------------------------------
+2025-06-21 18:55:58,209 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,210 - INFO -   Date          : 2025-05-20
+2025-06-21 18:55:58,212 - INFO -   Scheme        : EW
+2025-06-21 18:55:58,219 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,221 - INFO -   Selection Date Used: 2025-05-20
+2025-06-21 18:55:58,222 - INFO -   Buy Date           : 2025-05-21
+2025-06-21 18:55:58,225 - INFO -   Sell Date          : 2025-05-22
+2025-06-21 18:55:58,238 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,240 - INFO -   Portfolio Return : -0.0054
+2025-06-21 18:55:58,242 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:55:58,244 - INFO - Backtest simulation for 'EW' on 2025-05-20 completed.
+2025-06-21 18:55:58,246 - INFO - ------------------------------
+2025-06-21 18:55:58,252 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,254 - INFO -   Date          : 2025-05-20
+2025-06-21 18:55:58,255 - INFO -   Scheme        : IV
+2025-06-21 18:55:58,258 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,259 - INFO -   Selection Date Used: 2025-05-20
+2025-06-21 18:55:58,261 - INFO -   Buy Date           : 2025-05-21
+2025-06-21 18:55:58,262 - INFO -   Sell Date          : 2025-05-22
+2025-06-21 18:55:58,274 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,276 - INFO -   Portfolio Return : -0.0055
+2025-06-21 18:55:58,278 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:55:58,280 - INFO - Backtest simulation for 'IV' on 2025-05-20 completed.
+2025-06-21 18:55:58,287 - INFO - ------------------------------
+2025-06-21 18:55:58,289 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,291 - INFO -   Date          : 2025-05-20
+2025-06-21 18:55:58,294 - INFO -   Scheme        : SW
+2025-06-21 18:55:58,296 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,300 - INFO -   Selection Date Used: 2025-05-20
+2025-06-21 18:55:58,303 - INFO -   Buy Date           : 2025-05-21
+2025-06-21 18:55:58,305 - INFO -   Sell Date          : 2025-05-22
+2025-06-21 18:55:58,312 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,317 - INFO -   Portfolio Return : -0.0054
+2025-06-21 18:55:58,322 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:55:58,324 - INFO - Backtest simulation for 'SW' on 2025-05-20 completed.
+2025-06-21 18:55:58,344 - INFO - ------------------------------
+2025-06-21 18:55:58,346 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,353 - INFO -   Date          : 2025-05-21
+2025-06-21 18:55:58,357 - INFO -   Scheme        : EW
+2025-06-21 18:55:58,358 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,360 - INFO -   Selection Date Used: 2025-05-21
+2025-06-21 18:55:58,363 - INFO -   Buy Date           : 2025-05-22
+2025-06-21 18:55:58,368 - INFO -   Sell Date          : 2025-05-23
+2025-06-21 18:55:58,375 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,377 - INFO -   Portfolio Return : -0.0074
+2025-06-21 18:55:58,379 - INFO -   Win Rate         : 20.00%
+2025-06-21 18:55:58,386 - INFO - Backtest simulation for 'EW' on 2025-05-21 completed.
+2025-06-21 18:55:58,389 - INFO - ------------------------------
+2025-06-21 18:55:58,391 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,394 - INFO -   Date          : 2025-05-21
+2025-06-21 18:55:58,401 - INFO -   Scheme        : IV
+2025-06-21 18:55:58,405 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,407 - INFO -   Selection Date Used: 2025-05-21
+2025-06-21 18:55:58,409 - INFO -   Buy Date           : 2025-05-22
+2025-06-21 18:55:58,410 - INFO -   Sell Date          : 2025-05-23
+2025-06-21 18:55:58,420 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,422 - INFO -   Portfolio Return : -0.0068
+2025-06-21 18:55:58,425 - INFO -   Win Rate         : 20.00%
+2025-06-21 18:55:58,427 - INFO - Backtest simulation for 'IV' on 2025-05-21 completed.
+2025-06-21 18:55:58,429 - INFO - ------------------------------
+2025-06-21 18:55:58,434 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,437 - INFO -   Date          : 2025-05-21
+2025-06-21 18:55:58,438 - INFO -   Scheme        : SW
+2025-06-21 18:55:58,440 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,442 - INFO -   Selection Date Used: 2025-05-21
+2025-06-21 18:55:58,444 - INFO -   Buy Date           : 2025-05-22
+2025-06-21 18:55:58,447 - INFO -   Sell Date          : 2025-05-23
+2025-06-21 18:55:58,457 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,460 - INFO -   Portfolio Return : -0.0068
+2025-06-21 18:55:58,461 - INFO -   Win Rate         : 20.00%
+2025-06-21 18:55:58,463 - INFO - Backtest simulation for 'SW' on 2025-05-21 completed.
+2025-06-21 18:55:58,479 - INFO - ------------------------------
+2025-06-21 18:55:58,484 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,487 - INFO -   Date          : 2025-05-22
+2025-06-21 18:55:58,488 - INFO -   Scheme        : EW
+2025-06-21 18:55:58,490 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,492 - INFO -   Selection Date Used: 2025-05-22
+2025-06-21 18:55:58,495 - INFO -   Buy Date           : 2025-05-23
+2025-06-21 18:55:58,497 - INFO -   Sell Date          : 2025-05-27
+2025-06-21 18:55:58,507 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,509 - INFO -   Portfolio Return : 0.0222
+2025-06-21 18:55:58,511 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:58,512 - INFO - Backtest simulation for 'EW' on 2025-05-22 completed.
+2025-06-21 18:55:58,517 - INFO - ------------------------------
+2025-06-21 18:55:58,520 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,521 - INFO -   Date          : 2025-05-22
+2025-06-21 18:55:58,524 - INFO -   Scheme        : IV
+2025-06-21 18:55:58,525 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,527 - INFO -   Selection Date Used: 2025-05-22
+2025-06-21 18:55:58,529 - INFO -   Buy Date           : 2025-05-23
+2025-06-21 18:55:58,535 - INFO -   Sell Date          : 2025-05-27
+2025-06-21 18:55:58,542 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,543 - INFO -   Portfolio Return : 0.0202
+2025-06-21 18:55:58,545 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:58,546 - INFO - Backtest simulation for 'IV' on 2025-05-22 completed.
+2025-06-21 18:55:58,552 - INFO - ------------------------------
+2025-06-21 18:55:58,554 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,555 - INFO -   Date          : 2025-05-22
+2025-06-21 18:55:58,556 - INFO -   Scheme        : SW
+2025-06-21 18:55:58,558 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,561 - INFO -   Selection Date Used: 2025-05-22
+2025-06-21 18:55:58,562 - INFO -   Buy Date           : 2025-05-23
+2025-06-21 18:55:58,568 - INFO -   Sell Date          : 2025-05-27
+2025-06-21 18:55:58,576 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,580 - INFO -   Portfolio Return : 0.0239
+2025-06-21 18:55:58,584 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:58,591 - INFO - Backtest simulation for 'SW' on 2025-05-22 completed.
+2025-06-21 18:55:58,625 - INFO - ------------------------------
+2025-06-21 18:55:58,627 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,630 - INFO -   Date          : 2025-05-23
+2025-06-21 18:55:58,635 - INFO -   Scheme        : EW
+2025-06-21 18:55:58,640 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,641 - INFO -   Selection Date Used: 2025-05-23
+2025-06-21 18:55:58,645 - INFO -   Buy Date           : 2025-05-27
+2025-06-21 18:55:58,652 - INFO -   Sell Date          : 2025-05-28
+2025-06-21 18:55:58,661 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,663 - INFO -   Portfolio Return : -0.0120
+2025-06-21 18:55:58,669 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:55:58,672 - INFO - Backtest simulation for 'EW' on 2025-05-23 completed.
+2025-06-21 18:55:58,676 - INFO - ------------------------------
+2025-06-21 18:55:58,679 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,684 - INFO -   Date          : 2025-05-23
+2025-06-21 18:55:58,689 - INFO -   Scheme        : IV
+2025-06-21 18:55:58,691 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,693 - INFO -   Selection Date Used: 2025-05-23
+2025-06-21 18:55:58,695 - INFO -   Buy Date           : 2025-05-27
+2025-06-21 18:55:58,697 - INFO -   Sell Date          : 2025-05-28
+2025-06-21 18:55:58,710 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,712 - INFO -   Portfolio Return : -0.0105
+2025-06-21 18:55:58,723 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:55:58,725 - INFO - Backtest simulation for 'IV' on 2025-05-23 completed.
+2025-06-21 18:55:58,728 - INFO - ------------------------------
+2025-06-21 18:55:58,730 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,735 - INFO -   Date          : 2025-05-23
+2025-06-21 18:55:58,739 - INFO -   Scheme        : SW
+2025-06-21 18:55:58,742 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,744 - INFO -   Selection Date Used: 2025-05-23
+2025-06-21 18:55:58,747 - INFO -   Buy Date           : 2025-05-27
+2025-06-21 18:55:58,751 - INFO -   Sell Date          : 2025-05-28
+2025-06-21 18:55:58,760 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,762 - INFO -   Portfolio Return : -0.0162
+2025-06-21 18:55:58,765 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:55:58,770 - INFO - Backtest simulation for 'SW' on 2025-05-23 completed.
+2025-06-21 18:55:58,788 - INFO - ------------------------------
+2025-06-21 18:55:58,790 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,793 - INFO -   Date          : 2025-05-27
+2025-06-21 18:55:58,795 - INFO -   Scheme        : EW
+2025-06-21 18:55:58,797 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,802 - INFO -   Selection Date Used: 2025-05-27
+2025-06-21 18:55:58,804 - INFO -   Buy Date           : 2025-05-28
+2025-06-21 18:55:58,807 - INFO -   Sell Date          : 2025-05-29
+2025-06-21 18:55:58,816 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,818 - INFO -   Portfolio Return : 0.0092
+2025-06-21 18:55:58,820 - INFO -   Win Rate         : 60.00%
+2025-06-21 18:55:58,824 - INFO - Backtest simulation for 'EW' on 2025-05-27 completed.
+2025-06-21 18:55:58,826 - INFO - ------------------------------
+2025-06-21 18:55:58,828 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,836 - INFO -   Date          : 2025-05-27
+2025-06-21 18:55:58,841 - INFO -   Scheme        : IV
+2025-06-21 18:55:58,844 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,847 - INFO -   Selection Date Used: 2025-05-27
+2025-06-21 18:55:58,852 - INFO -   Buy Date           : 2025-05-28
+2025-06-21 18:55:58,854 - INFO -   Sell Date          : 2025-05-29
+2025-06-21 18:55:58,865 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,868 - INFO -   Portfolio Return : 0.0104
+2025-06-21 18:55:58,870 - INFO -   Win Rate         : 60.00%
+2025-06-21 18:55:58,875 - INFO - Backtest simulation for 'IV' on 2025-05-27 completed.
+2025-06-21 18:55:58,879 - INFO - ------------------------------
+2025-06-21 18:55:58,885 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,888 - INFO -   Date          : 2025-05-27
+2025-06-21 18:55:58,889 - INFO -   Scheme        : SW
+2025-06-21 18:55:58,891 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,895 - INFO -   Selection Date Used: 2025-05-27
+2025-06-21 18:55:58,896 - INFO -   Buy Date           : 2025-05-28
+2025-06-21 18:55:58,903 - INFO -   Sell Date          : 2025-05-29
+2025-06-21 18:55:58,910 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,912 - INFO -   Portfolio Return : 0.0059
+2025-06-21 18:55:58,913 - INFO -   Win Rate         : 60.00%
+2025-06-21 18:55:58,920 - INFO - Backtest simulation for 'SW' on 2025-05-27 completed.
+2025-06-21 18:55:58,938 - INFO - ------------------------------
+2025-06-21 18:55:58,940 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,941 - INFO -   Date          : 2025-05-28
+2025-06-21 18:55:58,943 - INFO -   Scheme        : EW
+2025-06-21 18:55:58,945 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,947 - INFO -   Selection Date Used: 2025-05-28
+2025-06-21 18:55:58,952 - INFO -   Buy Date           : 2025-05-29
+2025-06-21 18:55:58,954 - INFO -   Sell Date          : 2025-05-30
+2025-06-21 18:55:58,960 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:58,962 - INFO -   Portfolio Return : -0.0003
+2025-06-21 18:55:58,967 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:55:58,970 - INFO - Backtest simulation for 'EW' on 2025-05-28 completed.
+2025-06-21 18:55:58,972 - INFO - ------------------------------
+2025-06-21 18:55:58,976 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:58,977 - INFO -   Date          : 2025-05-28
+2025-06-21 18:55:58,979 - INFO -   Scheme        : IV
+2025-06-21 18:55:58,984 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:58,987 - INFO -   Selection Date Used: 2025-05-28
+2025-06-21 18:55:58,988 - INFO -   Buy Date           : 2025-05-29
+2025-06-21 18:55:58,990 - INFO -   Sell Date          : 2025-05-30
+2025-06-21 18:55:58,997 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,003 - INFO -   Portfolio Return : -0.0003
+2025-06-21 18:55:59,004 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:55:59,006 - INFO - Backtest simulation for 'IV' on 2025-05-28 completed.
+2025-06-21 18:55:59,009 - INFO - ------------------------------
+2025-06-21 18:55:59,010 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,012 - INFO -   Date          : 2025-05-28
+2025-06-21 18:55:59,013 - INFO -   Scheme        : SW
+2025-06-21 18:55:59,019 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,021 - INFO -   Selection Date Used: 2025-05-28
+2025-06-21 18:55:59,024 - INFO -   Buy Date           : 2025-05-29
+2025-06-21 18:55:59,026 - INFO -   Sell Date          : 2025-05-30
+2025-06-21 18:55:59,036 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,038 - INFO -   Portfolio Return : 0.0008
+2025-06-21 18:55:59,041 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:55:59,042 - INFO - Backtest simulation for 'SW' on 2025-05-28 completed.
+2025-06-21 18:55:59,061 - INFO - ------------------------------
+2025-06-21 18:55:59,062 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,064 - INFO -   Date          : 2025-05-29
+2025-06-21 18:55:59,071 - INFO -   Scheme        : EW
+2025-06-21 18:55:59,074 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,076 - INFO -   Selection Date Used: 2025-05-29
+2025-06-21 18:55:59,078 - INFO -   Buy Date           : 2025-05-30
+2025-06-21 18:55:59,080 - INFO -   Sell Date          : 2025-06-02
+2025-06-21 18:55:59,095 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,098 - INFO -   Portfolio Return : 0.0073
+2025-06-21 18:55:59,102 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:55:59,104 - INFO - Backtest simulation for 'EW' on 2025-05-29 completed.
+2025-06-21 18:55:59,108 - INFO - ------------------------------
+2025-06-21 18:55:59,109 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,122 - INFO -   Date          : 2025-05-29
+2025-06-21 18:55:59,128 - INFO -   Scheme        : IV
+2025-06-21 18:55:59,136 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,138 - INFO -   Selection Date Used: 2025-05-29
+2025-06-21 18:55:59,141 - INFO -   Buy Date           : 2025-05-30
+2025-06-21 18:55:59,145 - INFO -   Sell Date          : 2025-06-02
+2025-06-21 18:55:59,157 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,160 - INFO -   Portfolio Return : 0.0063
+2025-06-21 18:55:59,162 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:55:59,169 - INFO - Backtest simulation for 'IV' on 2025-05-29 completed.
+2025-06-21 18:55:59,174 - INFO - ------------------------------
+2025-06-21 18:55:59,177 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,179 - INFO -   Date          : 2025-05-29
+2025-06-21 18:55:59,185 - INFO -   Scheme        : SW
+2025-06-21 18:55:59,189 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,191 - INFO -   Selection Date Used: 2025-05-29
+2025-06-21 18:55:59,193 - INFO -   Buy Date           : 2025-05-30
+2025-06-21 18:55:59,196 - INFO -   Sell Date          : 2025-06-02
+2025-06-21 18:55:59,209 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,211 - INFO -   Portfolio Return : 0.0082
+2025-06-21 18:55:59,213 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:55:59,219 - INFO - Backtest simulation for 'SW' on 2025-05-29 completed.
+2025-06-21 18:55:59,243 - INFO - ------------------------------
+2025-06-21 18:55:59,244 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,251 - INFO -   Date          : 2025-05-30
+2025-06-21 18:55:59,253 - INFO -   Scheme        : EW
+2025-06-21 18:55:59,258 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,261 - INFO -   Selection Date Used: 2025-05-30
+2025-06-21 18:55:59,268 - INFO -   Buy Date           : 2025-06-02
+2025-06-21 18:55:59,273 - INFO -   Sell Date          : 2025-06-03
+2025-06-21 18:55:59,281 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,285 - INFO -   Portfolio Return : 0.0184
+2025-06-21 18:55:59,287 - INFO -   Win Rate         : 80.00%
+2025-06-21 18:55:59,289 - INFO - Backtest simulation for 'EW' on 2025-05-30 completed.
+2025-06-21 18:55:59,292 - INFO - ------------------------------
+2025-06-21 18:55:59,293 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,296 - INFO -   Date          : 2025-05-30
+2025-06-21 18:55:59,301 - INFO -   Scheme        : IV
+2025-06-21 18:55:59,303 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,307 - INFO -   Selection Date Used: 2025-05-30
+2025-06-21 18:55:59,309 - INFO -   Buy Date           : 2025-06-02
+2025-06-21 18:55:59,311 - INFO -   Sell Date          : 2025-06-03
+2025-06-21 18:55:59,321 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,324 - INFO -   Portfolio Return : 0.0162
+2025-06-21 18:55:59,326 - INFO -   Win Rate         : 80.00%
+2025-06-21 18:55:59,327 - INFO - Backtest simulation for 'IV' on 2025-05-30 completed.
+2025-06-21 18:55:59,329 - INFO - ------------------------------
+2025-06-21 18:55:59,339 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,342 - INFO -   Date          : 2025-05-30
+2025-06-21 18:55:59,344 - INFO -   Scheme        : SW
+2025-06-21 18:55:59,346 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,352 - INFO -   Selection Date Used: 2025-05-30
+2025-06-21 18:55:59,356 - INFO -   Buy Date           : 2025-06-02
+2025-06-21 18:55:59,359 - INFO -   Sell Date          : 2025-06-03
+2025-06-21 18:55:59,368 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,370 - INFO -   Portfolio Return : 0.0146
+2025-06-21 18:55:59,372 - INFO -   Win Rate         : 80.00%
+2025-06-21 18:55:59,374 - INFO - Backtest simulation for 'SW' on 2025-05-30 completed.
+2025-06-21 18:55:59,390 - INFO - ------------------------------
+2025-06-21 18:55:59,392 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,393 - INFO -   Date          : 2025-06-02
+2025-06-21 18:55:59,402 - INFO -   Scheme        : EW
+2025-06-21 18:55:59,404 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,406 - INFO -   Selection Date Used: 2025-06-02
+2025-06-21 18:55:59,409 - INFO -   Buy Date           : 2025-06-03
+2025-06-21 18:55:59,411 - INFO -   Sell Date          : 2025-06-04
+2025-06-21 18:55:59,421 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,423 - INFO -   Portfolio Return : 0.0035
+2025-06-21 18:55:59,425 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:55:59,428 - INFO - Backtest simulation for 'EW' on 2025-06-02 completed.
+2025-06-21 18:55:59,429 - INFO - ------------------------------
+2025-06-21 18:55:59,435 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,437 - INFO -   Date          : 2025-06-02
+2025-06-21 18:55:59,440 - INFO -   Scheme        : IV
+2025-06-21 18:55:59,442 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,445 - INFO -   Selection Date Used: 2025-06-02
+2025-06-21 18:55:59,446 - INFO -   Buy Date           : 2025-06-03
+2025-06-21 18:55:59,453 - INFO -   Sell Date          : 2025-06-04
+2025-06-21 18:55:59,460 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,462 - INFO -   Portfolio Return : 0.0025
+2025-06-21 18:55:59,463 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:55:59,468 - INFO - Backtest simulation for 'IV' on 2025-06-02 completed.
+2025-06-21 18:55:59,470 - INFO - ------------------------------
+2025-06-21 18:55:59,472 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,474 - INFO -   Date          : 2025-06-02
+2025-06-21 18:55:59,476 - INFO -   Scheme        : SW
+2025-06-21 18:55:59,479 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,482 - INFO -   Selection Date Used: 2025-06-02
+2025-06-21 18:55:59,484 - INFO -   Buy Date           : 2025-06-03
+2025-06-21 18:55:59,487 - INFO -   Sell Date          : 2025-06-04
+2025-06-21 18:55:59,493 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,495 - INFO -   Portfolio Return : 0.0031
+2025-06-21 18:55:59,499 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:55:59,501 - INFO - Backtest simulation for 'SW' on 2025-06-02 completed.
+2025-06-21 18:55:59,516 - INFO - ------------------------------
+2025-06-21 18:55:59,519 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,524 - INFO -   Date          : 2025-06-03
+2025-06-21 18:55:59,529 - INFO -   Scheme        : EW
+2025-06-21 18:55:59,535 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,538 - INFO -   Selection Date Used: 2025-06-03
+2025-06-21 18:55:59,540 - INFO -   Buy Date           : 2025-06-04
+2025-06-21 18:55:59,543 - INFO -   Sell Date          : 2025-06-05
+2025-06-21 18:55:59,549 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,551 - INFO -   Portfolio Return : 0.0041
+2025-06-21 18:55:59,555 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:55:59,561 - INFO - Backtest simulation for 'EW' on 2025-06-03 completed.
+2025-06-21 18:55:59,565 - INFO - ------------------------------
+2025-06-21 18:55:59,568 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,569 - INFO -   Date          : 2025-06-03
+2025-06-21 18:55:59,573 - INFO -   Scheme        : IV
+2025-06-21 18:55:59,575 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,577 - INFO -   Selection Date Used: 2025-06-03
+2025-06-21 18:55:59,579 - INFO -   Buy Date           : 2025-06-04
+2025-06-21 18:55:59,585 - INFO -   Sell Date          : 2025-06-05
+2025-06-21 18:55:59,593 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,596 - INFO -   Portfolio Return : 0.0035
+2025-06-21 18:55:59,601 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:55:59,604 - INFO - Backtest simulation for 'IV' on 2025-06-03 completed.
+2025-06-21 18:55:59,607 - INFO - ------------------------------
+2025-06-21 18:55:59,609 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,612 - INFO -   Date          : 2025-06-03
+2025-06-21 18:55:59,617 - INFO -   Scheme        : SW
+2025-06-21 18:55:59,619 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,621 - INFO -   Selection Date Used: 2025-06-03
+2025-06-21 18:55:59,625 - INFO -   Buy Date           : 2025-06-04
+2025-06-21 18:55:59,627 - INFO -   Sell Date          : 2025-06-05
+2025-06-21 18:55:59,636 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,640 - INFO -   Portfolio Return : 0.0052
+2025-06-21 18:55:59,642 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:55:59,644 - INFO - Backtest simulation for 'SW' on 2025-06-03 completed.
+2025-06-21 18:55:59,659 - INFO - ------------------------------
+2025-06-21 18:55:59,661 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,662 - INFO -   Date          : 2025-06-04
+2025-06-21 18:55:59,664 - INFO -   Scheme        : EW
+2025-06-21 18:55:59,667 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,669 - INFO -   Selection Date Used: 2025-06-04
+2025-06-21 18:55:59,671 - INFO -   Buy Date           : 2025-06-05
+2025-06-21 18:55:59,673 - INFO -   Sell Date          : 2025-06-06
+2025-06-21 18:55:59,679 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,681 - INFO -   Portfolio Return : 0.0143
+2025-06-21 18:55:59,683 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:59,685 - INFO - Backtest simulation for 'EW' on 2025-06-04 completed.
+2025-06-21 18:55:59,688 - INFO - ------------------------------
+2025-06-21 18:55:59,689 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,690 - INFO -   Date          : 2025-06-04
+2025-06-21 18:55:59,691 - INFO -   Scheme        : IV
+2025-06-21 18:55:59,692 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,694 - INFO -   Selection Date Used: 2025-06-04
+2025-06-21 18:55:59,695 - INFO -   Buy Date           : 2025-06-05
+2025-06-21 18:55:59,696 - INFO -   Sell Date          : 2025-06-06
+2025-06-21 18:55:59,703 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,704 - INFO -   Portfolio Return : 0.0141
+2025-06-21 18:55:59,705 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:59,707 - INFO - Backtest simulation for 'IV' on 2025-06-04 completed.
+2025-06-21 18:55:59,709 - INFO - ------------------------------
+2025-06-21 18:55:59,711 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,712 - INFO -   Date          : 2025-06-04
+2025-06-21 18:55:59,713 - INFO -   Scheme        : SW
+2025-06-21 18:55:59,716 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,718 - INFO -   Selection Date Used: 2025-06-04
+2025-06-21 18:55:59,721 - INFO -   Buy Date           : 2025-06-05
+2025-06-21 18:55:59,724 - INFO -   Sell Date          : 2025-06-06
+2025-06-21 18:55:59,729 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,732 - INFO -   Portfolio Return : 0.0144
+2025-06-21 18:55:59,733 - INFO -   Win Rate         : 90.00%
+2025-06-21 18:55:59,735 - INFO - Backtest simulation for 'SW' on 2025-06-04 completed.
+2025-06-21 18:55:59,749 - INFO - ------------------------------
+2025-06-21 18:55:59,751 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,753 - INFO -   Date          : 2025-06-05
+2025-06-21 18:55:59,755 - INFO -   Scheme        : EW
+2025-06-21 18:55:59,757 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,759 - INFO -   Selection Date Used: 2025-06-05
+2025-06-21 18:55:59,761 - INFO -   Buy Date           : 2025-06-06
+2025-06-21 18:55:59,762 - INFO -   Sell Date          : 2025-06-09
+2025-06-21 18:55:59,769 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,771 - INFO -   Portfolio Return : 0.0027
+2025-06-21 18:55:59,772 - INFO -   Win Rate         : 60.00%
+2025-06-21 18:55:59,774 - INFO - Backtest simulation for 'EW' on 2025-06-05 completed.
+2025-06-21 18:55:59,776 - INFO - ------------------------------
+2025-06-21 18:55:59,778 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,780 - INFO -   Date          : 2025-06-05
+2025-06-21 18:55:59,783 - INFO -   Scheme        : IV
+2025-06-21 18:55:59,784 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,785 - INFO -   Selection Date Used: 2025-06-05
+2025-06-21 18:55:59,789 - INFO -   Buy Date           : 2025-06-06
+2025-06-21 18:55:59,790 - INFO -   Sell Date          : 2025-06-09
+2025-06-21 18:55:59,796 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,797 - INFO -   Portfolio Return : -0.0001
+2025-06-21 18:55:59,799 - INFO -   Win Rate         : 60.00%
+2025-06-21 18:55:59,800 - INFO - Backtest simulation for 'IV' on 2025-06-05 completed.
+2025-06-21 18:55:59,803 - INFO - ------------------------------
+2025-06-21 18:55:59,805 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,807 - INFO -   Date          : 2025-06-05
+2025-06-21 18:55:59,808 - INFO -   Scheme        : SW
+2025-06-21 18:55:59,809 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,811 - INFO -   Selection Date Used: 2025-06-05
+2025-06-21 18:55:59,813 - INFO -   Buy Date           : 2025-06-06
+2025-06-21 18:55:59,815 - INFO -   Sell Date          : 2025-06-09
+2025-06-21 18:55:59,822 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,824 - INFO -   Portfolio Return : 0.0027
+2025-06-21 18:55:59,825 - INFO -   Win Rate         : 60.00%
+2025-06-21 18:55:59,828 - INFO - Backtest simulation for 'SW' on 2025-06-05 completed.
+2025-06-21 18:55:59,841 - INFO - ------------------------------
+2025-06-21 18:55:59,842 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,844 - INFO -   Date          : 2025-06-06
+2025-06-21 18:55:59,845 - INFO -   Scheme        : EW
+2025-06-21 18:55:59,849 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,851 - INFO -   Selection Date Used: 2025-06-06
+2025-06-21 18:55:59,852 - INFO -   Buy Date           : 2025-06-09
+2025-06-21 18:55:59,855 - INFO -   Sell Date          : 2025-06-10
+2025-06-21 18:55:59,861 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,863 - INFO -   Portfolio Return : -0.0036
+2025-06-21 18:55:59,865 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:55:59,867 - INFO - Backtest simulation for 'EW' on 2025-06-06 completed.
+2025-06-21 18:55:59,869 - INFO - ------------------------------
+2025-06-21 18:55:59,870 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,872 - INFO -   Date          : 2025-06-06
+2025-06-21 18:55:59,874 - INFO -   Scheme        : IV
+2025-06-21 18:55:59,875 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,876 - INFO -   Selection Date Used: 2025-06-06
+2025-06-21 18:55:59,878 - INFO -   Buy Date           : 2025-06-09
+2025-06-21 18:55:59,880 - INFO -   Sell Date          : 2025-06-10
+2025-06-21 18:55:59,886 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,888 - INFO -   Portfolio Return : -0.0008
+2025-06-21 18:55:59,890 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:55:59,891 - INFO - Backtest simulation for 'IV' on 2025-06-06 completed.
+2025-06-21 18:55:59,893 - INFO - ------------------------------
+2025-06-21 18:55:59,896 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,899 - INFO -   Date          : 2025-06-06
+2025-06-21 18:55:59,901 - INFO -   Scheme        : SW
+2025-06-21 18:55:59,902 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,904 - INFO -   Selection Date Used: 2025-06-06
+2025-06-21 18:55:59,905 - INFO -   Buy Date           : 2025-06-09
+2025-06-21 18:55:59,907 - INFO -   Sell Date          : 2025-06-10
+2025-06-21 18:55:59,912 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,916 - INFO -   Portfolio Return : -0.0073
+2025-06-21 18:55:59,918 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:55:59,919 - INFO - Backtest simulation for 'SW' on 2025-06-06 completed.
+2025-06-21 18:55:59,929 - INFO - ------------------------------
+2025-06-21 18:55:59,932 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,934 - INFO -   Date          : 2025-06-09
+2025-06-21 18:55:59,935 - INFO -   Scheme        : EW
+2025-06-21 18:55:59,937 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,941 - INFO -   Selection Date Used: 2025-06-09
+2025-06-21 18:55:59,942 - INFO -   Buy Date           : 2025-06-10
+2025-06-21 18:55:59,943 - INFO -   Sell Date          : 2025-06-11
+2025-06-21 18:55:59,950 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,951 - INFO -   Portfolio Return : -0.0033
+2025-06-21 18:55:59,952 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:55:59,956 - INFO - Backtest simulation for 'EW' on 2025-06-09 completed.
+2025-06-21 18:55:59,958 - INFO - ------------------------------
+2025-06-21 18:55:59,960 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,961 - INFO -   Date          : 2025-06-09
+2025-06-21 18:55:59,963 - INFO -   Scheme        : IV
+2025-06-21 18:55:59,965 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,967 - INFO -   Selection Date Used: 2025-06-09
+2025-06-21 18:55:59,968 - INFO -   Buy Date           : 2025-06-10
+2025-06-21 18:55:59,970 - INFO -   Sell Date          : 2025-06-11
+2025-06-21 18:55:59,977 - INFO -   Trades Executed: 10/10
+2025-06-21 18:55:59,978 - INFO -   Portfolio Return : -0.0011
+2025-06-21 18:55:59,979 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:55:59,983 - INFO - Backtest simulation for 'IV' on 2025-06-09 completed.
+2025-06-21 18:55:59,986 - INFO - ------------------------------
+2025-06-21 18:55:59,989 - INFO - Initiating Backtest Run...
+2025-06-21 18:55:59,990 - INFO -   Date          : 2025-06-09
+2025-06-21 18:55:59,992 - INFO -   Scheme        : SW
+2025-06-21 18:55:59,993 - INFO -   Num Tickers   : 10
+2025-06-21 18:55:59,995 - INFO -   Selection Date Used: 2025-06-09
+2025-06-21 18:55:59,996 - INFO -   Buy Date           : 2025-06-10
+2025-06-21 18:56:00,000 - INFO -   Sell Date          : 2025-06-11
+2025-06-21 18:56:00,005 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,007 - INFO -   Portfolio Return : -0.0046
+2025-06-21 18:56:00,008 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:56:00,011 - INFO - Backtest simulation for 'SW' on 2025-06-09 completed.
+2025-06-21 18:56:00,021 - INFO - ------------------------------
+2025-06-21 18:56:00,021 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,021 - INFO -   Date          : 2025-06-10
+2025-06-21 18:56:00,021 - INFO -   Scheme        : EW
+2025-06-21 18:56:00,021 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,021 - INFO -   Selection Date Used: 2025-06-10
+2025-06-21 18:56:00,021 - INFO -   Buy Date           : 2025-06-11
+2025-06-21 18:56:00,021 - INFO -   Sell Date          : 2025-06-12
+2025-06-21 18:56:00,038 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,038 - INFO -   Portfolio Return : -0.0016
+2025-06-21 18:56:00,038 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:56:00,038 - INFO - Backtest simulation for 'EW' on 2025-06-10 completed.
+2025-06-21 18:56:00,038 - INFO - ------------------------------
+2025-06-21 18:56:00,050 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,052 - INFO -   Date          : 2025-06-10
+2025-06-21 18:56:00,055 - INFO -   Scheme        : IV
+2025-06-21 18:56:00,057 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,059 - INFO -   Selection Date Used: 2025-06-10
+2025-06-21 18:56:00,061 - INFO -   Buy Date           : 2025-06-11
+2025-06-21 18:56:00,062 - INFO -   Sell Date          : 2025-06-12
+2025-06-21 18:56:00,070 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,072 - INFO -   Portfolio Return : -0.0014
+2025-06-21 18:56:00,074 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:56:00,075 - INFO - Backtest simulation for 'IV' on 2025-06-10 completed.
+2025-06-21 18:56:00,077 - INFO - ------------------------------
+2025-06-21 18:56:00,078 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,080 - INFO -   Date          : 2025-06-10
+2025-06-21 18:56:00,083 - INFO -   Scheme        : SW
+2025-06-21 18:56:00,085 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,086 - INFO -   Selection Date Used: 2025-06-10
+2025-06-21 18:56:00,088 - INFO -   Buy Date           : 2025-06-11
+2025-06-21 18:56:00,090 - INFO -   Sell Date          : 2025-06-12
+2025-06-21 18:56:00,094 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,096 - INFO -   Portfolio Return : -0.0021
+2025-06-21 18:56:00,098 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:56:00,100 - INFO - Backtest simulation for 'SW' on 2025-06-10 completed.
+2025-06-21 18:56:00,109 - INFO - ------------------------------
+2025-06-21 18:56:00,111 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,114 - INFO -   Date          : 2025-06-11
+2025-06-21 18:56:00,117 - INFO -   Scheme        : EW
+2025-06-21 18:56:00,119 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,121 - INFO -   Selection Date Used: 2025-06-11
+2025-06-21 18:56:00,123 - INFO -   Buy Date           : 2025-06-12
+2025-06-21 18:56:00,124 - INFO -   Sell Date          : 2025-06-13
+2025-06-21 18:56:00,129 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,133 - INFO -   Portfolio Return : -0.0178
+2025-06-21 18:56:00,134 - INFO -   Win Rate         : 20.00%
+2025-06-21 18:56:00,136 - INFO - Backtest simulation for 'EW' on 2025-06-11 completed.
+2025-06-21 18:56:00,139 - INFO - ------------------------------
+2025-06-21 18:56:00,141 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,142 - INFO -   Date          : 2025-06-11
+2025-06-21 18:56:00,143 - INFO -   Scheme        : IV
+2025-06-21 18:56:00,145 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,147 - INFO -   Selection Date Used: 2025-06-11
+2025-06-21 18:56:00,149 - INFO -   Buy Date           : 2025-06-12
+2025-06-21 18:56:00,151 - INFO -   Sell Date          : 2025-06-13
+2025-06-21 18:56:00,157 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,159 - INFO -   Portfolio Return : -0.0172
+2025-06-21 18:56:00,160 - INFO -   Win Rate         : 20.00%
+2025-06-21 18:56:00,161 - INFO - Backtest simulation for 'IV' on 2025-06-11 completed.
+2025-06-21 18:56:00,166 - INFO - ------------------------------
+2025-06-21 18:56:00,168 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,169 - INFO -   Date          : 2025-06-11
+2025-06-21 18:56:00,170 - INFO -   Scheme        : SW
+2025-06-21 18:56:00,172 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,174 - INFO -   Selection Date Used: 2025-06-11
+2025-06-21 18:56:00,176 - INFO -   Buy Date           : 2025-06-12
+2025-06-21 18:56:00,177 - INFO -   Sell Date          : 2025-06-13
+2025-06-21 18:56:00,185 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,187 - INFO -   Portfolio Return : -0.0184
+2025-06-21 18:56:00,189 - INFO -   Win Rate         : 20.00%
+2025-06-21 18:56:00,190 - INFO - Backtest simulation for 'SW' on 2025-06-11 completed.
+2025-06-21 18:56:00,203 - INFO - ------------------------------
+2025-06-21 18:56:00,205 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,206 - INFO -   Date          : 2025-06-12
+2025-06-21 18:56:00,208 - INFO -   Scheme        : EW
+2025-06-21 18:56:00,209 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,210 - INFO -   Selection Date Used: 2025-06-12
+2025-06-21 18:56:00,212 - INFO -   Buy Date           : 2025-06-13
+2025-06-21 18:56:00,213 - INFO -   Sell Date          : 2025-06-16
+2025-06-21 18:56:00,219 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,222 - INFO -   Portfolio Return : 0.0071
+2025-06-21 18:56:00,223 - INFO -   Win Rate         : 60.00%
+2025-06-21 18:56:00,225 - INFO - Backtest simulation for 'EW' on 2025-06-12 completed.
+2025-06-21 18:56:00,227 - INFO - ------------------------------
+2025-06-21 18:56:00,228 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,231 - INFO -   Date          : 2025-06-12
+2025-06-21 18:56:00,234 - INFO -   Scheme        : IV
+2025-06-21 18:56:00,237 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,239 - INFO -   Selection Date Used: 2025-06-12
+2025-06-21 18:56:00,240 - INFO -   Buy Date           : 2025-06-13
+2025-06-21 18:56:00,242 - INFO -   Sell Date          : 2025-06-16
+2025-06-21 18:56:00,247 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,250 - INFO -   Portfolio Return : 0.0041
+2025-06-21 18:56:00,251 - INFO -   Win Rate         : 60.00%
+2025-06-21 18:56:00,253 - INFO - Backtest simulation for 'IV' on 2025-06-12 completed.
+2025-06-21 18:56:00,257 - INFO - ------------------------------
+2025-06-21 18:56:00,258 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,260 - INFO -   Date          : 2025-06-12
+2025-06-21 18:56:00,261 - INFO -   Scheme        : SW
+2025-06-21 18:56:00,262 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,267 - INFO -   Selection Date Used: 2025-06-12
+2025-06-21 18:56:00,268 - INFO -   Buy Date           : 2025-06-13
+2025-06-21 18:56:00,270 - INFO -   Sell Date          : 2025-06-16
+2025-06-21 18:56:00,275 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,277 - INFO -   Portfolio Return : 0.0220
+2025-06-21 18:56:00,278 - INFO -   Win Rate         : 60.00%
+2025-06-21 18:56:00,279 - INFO - Backtest simulation for 'SW' on 2025-06-12 completed.
+2025-06-21 18:56:00,285 - INFO - ------------------------------
+2025-06-21 18:56:00,285 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,285 - INFO -   Date          : 2025-06-13
+2025-06-21 18:56:00,285 - INFO -   Scheme        : EW
+2025-06-21 18:56:00,285 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,285 - INFO -   Selection Date Used: 2025-06-13
+2025-06-21 18:56:00,302 - INFO -   Buy Date           : 2025-06-16
+2025-06-21 18:56:00,303 - INFO -   Sell Date          : 2025-06-17
+2025-06-21 18:56:00,309 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,310 - INFO -   Portfolio Return : -0.0103
+2025-06-21 18:56:00,312 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:56:00,313 - INFO - Backtest simulation for 'EW' on 2025-06-13 completed.
+2025-06-21 18:56:00,318 - INFO - ------------------------------
+2025-06-21 18:56:00,319 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,320 - INFO -   Date          : 2025-06-13
+2025-06-21 18:56:00,322 - INFO -   Scheme        : IV
+2025-06-21 18:56:00,323 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,325 - INFO -   Selection Date Used: 2025-06-13
+2025-06-21 18:56:00,327 - INFO -   Buy Date           : 2025-06-16
+2025-06-21 18:56:00,328 - INFO -   Sell Date          : 2025-06-17
+2025-06-21 18:56:00,335 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,337 - INFO -   Portfolio Return : -0.0104
+2025-06-21 18:56:00,338 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:56:00,342 - INFO - Backtest simulation for 'IV' on 2025-06-13 completed.
+2025-06-21 18:56:00,345 - INFO - ------------------------------
+2025-06-21 18:56:00,348 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,350 - INFO -   Date          : 2025-06-13
+2025-06-21 18:56:00,352 - INFO -   Scheme        : SW
+2025-06-21 18:56:00,355 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,357 - INFO -   Selection Date Used: 2025-06-13
+2025-06-21 18:56:00,358 - INFO -   Buy Date           : 2025-06-16
+2025-06-21 18:56:00,360 - INFO -   Sell Date          : 2025-06-17
+2025-06-21 18:56:00,368 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,369 - INFO -   Portfolio Return : -0.0116
+2025-06-21 18:56:00,371 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:56:00,372 - INFO - Backtest simulation for 'SW' on 2025-06-13 completed.
+2025-06-21 18:56:00,390 - INFO - ------------------------------
+2025-06-21 18:56:00,391 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,392 - INFO -   Date          : 2025-06-13
+2025-06-21 18:56:00,394 - INFO -   Scheme        : EW
+2025-06-21 18:56:00,397 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,400 - INFO -   Selection Date Used: 2025-06-13
+2025-06-21 18:56:00,401 - INFO -   Buy Date           : 2025-06-16
+2025-06-21 18:56:00,403 - INFO -   Sell Date          : 2025-06-17
+2025-06-21 18:56:00,410 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,411 - INFO -   Portfolio Return : -0.0103
+2025-06-21 18:56:00,414 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:56:00,416 - INFO - Backtest simulation for 'EW' on 2025-06-13 completed.
+2025-06-21 18:56:00,418 - INFO - ------------------------------
+2025-06-21 18:56:00,420 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,422 - INFO -   Date          : 2025-06-13
+2025-06-21 18:56:00,424 - INFO -   Scheme        : IV
+2025-06-21 18:56:00,425 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,428 - INFO -   Selection Date Used: 2025-06-13
+2025-06-21 18:56:00,429 - INFO -   Buy Date           : 2025-06-16
+2025-06-21 18:56:00,432 - INFO -   Sell Date          : 2025-06-17
+2025-06-21 18:56:00,437 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,437 - INFO -   Portfolio Return : -0.0104
+2025-06-21 18:56:00,437 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:56:00,437 - INFO - Backtest simulation for 'IV' on 2025-06-13 completed.
+2025-06-21 18:56:00,449 - INFO - ------------------------------
+2025-06-21 18:56:00,451 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,453 - INFO -   Date          : 2025-06-13
+2025-06-21 18:56:00,457 - INFO -   Scheme        : SW
+2025-06-21 18:56:00,459 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,461 - INFO -   Selection Date Used: 2025-06-13
+2025-06-21 18:56:00,463 - INFO -   Buy Date           : 2025-06-16
+2025-06-21 18:56:00,466 - INFO -   Sell Date          : 2025-06-17
+2025-06-21 18:56:00,473 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,475 - INFO -   Portfolio Return : -0.0116
+2025-06-21 18:56:00,477 - INFO -   Win Rate         : 30.00%
+2025-06-21 18:56:00,480 - INFO - Backtest simulation for 'SW' on 2025-06-13 completed.
+2025-06-21 18:56:00,487 - INFO - ------------------------------
+2025-06-21 18:56:00,487 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,487 - INFO -   Date          : 2025-06-16
+2025-06-21 18:56:00,502 - INFO -   Scheme        : EW
+2025-06-21 18:56:00,504 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,506 - INFO -   Selection Date Used: 2025-06-16
+2025-06-21 18:56:00,507 - INFO -   Buy Date           : 2025-06-17
+2025-06-21 18:56:00,509 - INFO -   Sell Date          : 2025-06-18
+2025-06-21 18:56:00,517 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,519 - INFO -   Portfolio Return : -0.0017
+2025-06-21 18:56:00,523 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:56:00,526 - INFO - Backtest simulation for 'EW' on 2025-06-16 completed.
+2025-06-21 18:56:00,528 - INFO - ------------------------------
+2025-06-21 18:56:00,532 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,534 - INFO -   Date          : 2025-06-16
+2025-06-21 18:56:00,536 - INFO -   Scheme        : IV
+2025-06-21 18:56:00,537 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,537 - INFO -   Selection Date Used: 2025-06-16
+2025-06-21 18:56:00,537 - INFO -   Buy Date           : 2025-06-17
+2025-06-21 18:56:00,537 - INFO -   Sell Date          : 2025-06-18
+2025-06-21 18:56:00,556 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,559 - INFO -   Portfolio Return : -0.0019
+2025-06-21 18:56:00,562 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:56:00,563 - INFO - Backtest simulation for 'IV' on 2025-06-16 completed.
+2025-06-21 18:56:00,569 - INFO - ------------------------------
+2025-06-21 18:56:00,572 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,575 - INFO -   Date          : 2025-06-16
+2025-06-21 18:56:00,577 - INFO -   Scheme        : SW
+2025-06-21 18:56:00,579 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,585 - INFO -   Selection Date Used: 2025-06-16
+2025-06-21 18:56:00,588 - INFO -   Buy Date           : 2025-06-17
+2025-06-21 18:56:00,595 - INFO -   Sell Date          : 2025-06-18
+2025-06-21 18:56:00,609 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,611 - INFO -   Portfolio Return : -0.0026
+2025-06-21 18:56:00,613 - INFO -   Win Rate         : 40.00%
+2025-06-21 18:56:00,619 - INFO - Backtest simulation for 'SW' on 2025-06-16 completed.
+2025-06-21 18:56:00,640 - INFO - ------------------------------
+2025-06-21 18:56:00,642 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,645 - INFO -   Date          : 2025-06-17
+2025-06-21 18:56:00,646 - INFO -   Scheme        : EW
+2025-06-21 18:56:00,652 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,655 - INFO -   Selection Date Used: 2025-06-17
+2025-06-21 18:56:00,658 - INFO -   Buy Date           : 2025-06-18
+2025-06-21 18:56:00,660 - INFO -   Sell Date          : 2025-06-20
+2025-06-21 18:56:00,670 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,673 - INFO -   Portfolio Return : -0.0016
+2025-06-21 18:56:00,677 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:56:00,680 - INFO - Backtest simulation for 'EW' on 2025-06-17 completed.
+2025-06-21 18:56:00,684 - INFO - ------------------------------
+2025-06-21 18:56:00,686 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,689 - INFO -   Date          : 2025-06-17
+2025-06-21 18:56:00,691 - INFO -   Scheme        : IV
+2025-06-21 18:56:00,692 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,694 - INFO -   Selection Date Used: 2025-06-17
+2025-06-21 18:56:00,696 - INFO -   Buy Date           : 2025-06-18
+2025-06-21 18:56:00,699 - INFO -   Sell Date          : 2025-06-20
+2025-06-21 18:56:00,708 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,709 - INFO -   Portfolio Return : -0.0020
+2025-06-21 18:56:00,711 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:56:00,713 - INFO - Backtest simulation for 'IV' on 2025-06-17 completed.
+2025-06-21 18:56:00,717 - INFO - ------------------------------
+2025-06-21 18:56:00,718 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,719 - INFO -   Date          : 2025-06-17
+2025-06-21 18:56:00,722 - INFO -   Scheme        : SW
+2025-06-21 18:56:00,723 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,725 - INFO -   Selection Date Used: 2025-06-17
+2025-06-21 18:56:00,727 - INFO -   Buy Date           : 2025-06-18
+2025-06-21 18:56:00,728 - INFO -   Sell Date          : 2025-06-20
+2025-06-21 18:56:00,736 - INFO -   Trades Executed: 10/10
+2025-06-21 18:56:00,738 - INFO -   Portfolio Return : 0.0026
+2025-06-21 18:56:00,740 - INFO -   Win Rate         : 50.00%
+2025-06-21 18:56:00,741 - INFO - Backtest simulation for 'SW' on 2025-06-17 completed.
+2025-06-21 18:56:00,759 - INFO - ------------------------------
+2025-06-21 18:56:00,760 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,762 - INFO -   Date          : 2025-06-18
+2025-06-21 18:56:00,767 - INFO -   Scheme        : EW
+2025-06-21 18:56:00,771 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,773 - ERROR -   Error: No trading date found after buy date (2025-06-20). Cannot determine sell date.
+2025-06-21 18:56:00,775 - INFO - ------------------------------
+2025-06-21 18:56:00,776 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,777 - INFO -   Date          : 2025-06-18
+2025-06-21 18:56:00,778 - INFO -   Scheme        : IV
+2025-06-21 18:56:00,779 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,784 - ERROR -   Error: No trading date found after buy date (2025-06-20). Cannot determine sell date.
+2025-06-21 18:56:00,788 - INFO - ------------------------------
+2025-06-21 18:56:00,789 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,790 - INFO -   Date          : 2025-06-18
+2025-06-21 18:56:00,791 - INFO -   Scheme        : SW
+2025-06-21 18:56:00,793 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,795 - ERROR -   Error: No trading date found after buy date (2025-06-20). Cannot determine sell date.
+2025-06-21 18:56:00,809 - INFO - ------------------------------
+2025-06-21 18:56:00,810 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,811 - INFO -   Date          : 2025-06-19
+2025-06-21 18:56:00,812 - INFO -   Scheme        : EW
+2025-06-21 18:56:00,817 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,820 - WARNING -   Warning: Exact selection date 2025-06-19 not found. Using previous available date: 2025-06-18
+2025-06-21 18:56:00,823 - ERROR -   Error: No trading date found after buy date (2025-06-20). Cannot determine sell date.
+2025-06-21 18:56:00,825 - INFO - ------------------------------
+2025-06-21 18:56:00,826 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,827 - INFO -   Date          : 2025-06-19
+2025-06-21 18:56:00,829 - INFO -   Scheme        : IV
+2025-06-21 18:56:00,834 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,837 - WARNING -   Warning: Exact selection date 2025-06-19 not found. Using previous available date: 2025-06-18
+2025-06-21 18:56:00,841 - ERROR -   Error: No trading date found after buy date (2025-06-20). Cannot determine sell date.
+2025-06-21 18:56:00,843 - INFO - ------------------------------
+2025-06-21 18:56:00,845 - INFO - Initiating Backtest Run...
+2025-06-21 18:56:00,847 - INFO -   Date          : 2025-06-19
+2025-06-21 18:56:00,851 - INFO -   Scheme        : SW
+2025-06-21 18:56:00,852 - INFO -   Num Tickers   : 10
+2025-06-21 18:56:00,855 - WARNING -   Warning: Exact selection date 2025-06-19 not found. Using previous available date: 2025-06-18
+2025-06-21 18:56:00,857 - ERROR -   Error: No trading date found after buy date (2025-06-20). Cannot determine sell date.
+2025-06-21 18:56:01,137 - INFO - Updating results file at: c:\Users\ping\Files_win10\python\py311\stocks\output\backtest_results\backtest_master_results.parquet
+2025-06-21 18:56:01,142 - INFO - Loading backtest_master_results.parquet to merge with new results.
+2025-06-21 18:56:01,209 - INFO - Successfully saved 111 consolidated records to backtest_master_results.parquet
