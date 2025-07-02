@@ -6,7 +6,7 @@ from pathlib import Path
 # --- File path configuration ---
 DATE_STR = '2025-06-26'
 DOWNLOAD_DIR = Path('C:/Users/ping/Downloads')
-DEST_DIR = Path('c:/Users/ping/Files_win10/python/py311/stocks copy/data')
+DEST_DIR = Path('c:/Users/ping/Files_win10/python/py311/stocks_v1/data')
 
 # --- Analysis Parameters ---
 ANNUAL_RISK_FREE_RATE = 0.04
