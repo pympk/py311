@@ -11,7 +11,8 @@ geckodriver.log
 __pycache__/
 .pytest_cache/
 temp/
-# data/
+data/
+output/
 lumen/
 lumen_/
 # Ignore picks directory (add this if missing)
@@ -19,4 +20,5 @@ stocks/picks/
 stocks/notebooks_mean_reversion/executed/
 stocks/notebooks_mean_reversion/archive/
 stocks/logs/
-
+stocks/data/
+stocks/output/
