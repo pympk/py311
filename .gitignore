@@ -11,8 +11,8 @@ geckodriver.log
 __pycache__/
 .pytest_cache/
 temp/
-data/
-output/
+# data/
+# output/
 lumen/
 lumen_/
 
