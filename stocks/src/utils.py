@@ -2914,53 +2914,152 @@ import os
 from pathlib import Path
 from typing import List
 
-def get_recent_files_in_directory(
+# get_recent_files_in_directory replaced by get_recent_files
+# def get_recent_files_in_directory_obsolete( 
+#     directory_path: Path, 
+#     prefix: str, 
+#     extension: str, 
+#     count: int
+#     ) -> List[str]:
+#     """
+#     Finds and returns a list of the most recent filenames in a given directory
+#     that match a specific prefix and extension.
+
+#     Args:
+#         directory_path (Path): The pathlib.Path object for the directory to search.
+#         prefix (str): The required starting string of the filenames.
+#         extension (str): The required file extension (e.g., 'parquet', 'csv').
+#         count (int): The maximum number of recent files to return.
+
+#     Returns:
+#         List[str]: A list of filenames, sorted from most recent to oldest.
+#     """
+#     if not directory_path.is_dir():
+#         print(f"Warning: Directory not found at {directory_path}")
+#         return []
+
+#     # Construct the glob pattern to find matching files
+#     pattern = f"{prefix}*.{extension}"
+    
+#     # Find all matching files and get their modification times
+#     files_with_mtime = []
+#     for f in directory_path.glob(pattern):
+#         try:
+#             # Use f.stat() to get file metadata, including modification time
+#             mtime = f.stat().st_mtime
+#             files_with_mtime.append((f.name, mtime))
+#         except FileNotFoundError:
+#             # This can happen in rare race conditions if a file is deleted
+#             # while the loop is running.
+#             continue
+            
+#     # Sort the files by modification time in descending order (most recent first)
+#     files_with_mtime.sort(key=lambda x: x[1], reverse=True)
+    
+#     # Return only the filenames from the sorted list, up to the specified count
+#     sorted_filenames = [filename for filename, mtime in files_with_mtime]
+    
+#     return sorted_filenames[:count]
+
+
+
+###############
+import os
+from pathlib import Path
+from typing import List, Optional
+
+def get_recent_files(
     directory_path: Path, 
-    prefix: str, 
     extension: str, 
-    count: int
+    prefix: Optional[str] = None,
+    contains_pattern: Optional[str] = None,
+    count: Optional[int] = None
     ) -> List[str]:
     """
-    Finds and returns a list of the most recent filenames in a given directory
-    that match a specific prefix and extension.
+    Finds and returns a list of recent filenames, sorted by modification time.
+
+    The function can filter by prefix, a contained pattern, or both. If neither
+    is provided, it returns all files with the given extension. It is fully
+    backward-compatible with calls that only use the 'prefix' argument.
 
     Args:
-        directory_path (Path): The pathlib.Path object for the directory to search.
-        prefix (str): The required starting string of the filenames.
+        directory_path (Path): The directory to search.
         extension (str): The required file extension (e.g., 'parquet', 'csv').
-        count (int): The maximum number of recent files to return.
+        prefix (Optional[str]): If provided, filenames must start with this string.
+        contains_pattern (Optional[str]): If provided, filenames must contain this string.
+        count (Optional[int]): The maximum number of recent files to return. 
+                               If None, returns all matching files sorted by date.
 
     Returns:
         List[str]: A list of filenames, sorted from most recent to oldest.
+                   Returns an empty list if the directory does not exist.
     """
     if not directory_path.is_dir():
         print(f"Warning: Directory not found at {directory_path}")
         return []
 
-    # Construct the glob pattern to find matching files
-    pattern = f"{prefix}*.{extension}"
+    # Use a broad glob pattern to find all files with the given extension.
+    # The generator expression is memory-efficient.
+    all_files = (f for f in directory_path.glob(f"*.{extension}") if f.is_file())
     
-    # Find all matching files and get their modification times
-    files_with_mtime = []
-    for f in directory_path.glob(pattern):
+    # --- Sequential Filtering ---
+    # Apply filters one by one if they are provided.
+    filtered_files = all_files
+
+    if prefix:
+        # Filter by prefix.
+        filtered_files = (f for f in filtered_files if f.name.startswith(prefix))
+    
+    if contains_pattern:
+        # Filter by a pattern contained anywhere in the name.
+        filtered_files = (f for f in filtered_files if contains_pattern in f.name)
+
+    # Sort the filtered files by modification time (most recent first).
+    # The try-except block handles rare cases where a file might be deleted
+    # during the sorting process.
+    def get_mtime(f: Path) -> float:
         try:
-            # Use f.stat() to get file metadata, including modification time
-            mtime = f.stat().st_mtime
-            files_with_mtime.append((f.name, mtime))
+            return f.stat().st_mtime
         except FileNotFoundError:
-            # This can happen in rare race conditions if a file is deleted
-            # while the loop is running.
-            continue
+            return -1.0 # Treat missing files as the oldest
             
-    # Sort the files by modification time in descending order (most recent first)
-    files_with_mtime.sort(key=lambda x: x[1], reverse=True)
+    # The list() call consumes the generator, creating a list that can be sorted.
+    sorted_files = sorted(list(filtered_files), key=get_mtime, reverse=True)
     
-    # Return only the filenames from the sorted list, up to the specified count
-    sorted_filenames = [filename for filename, mtime in files_with_mtime]
+    # Extract just the filenames from the sorted Path objects.
+    sorted_filenames = [f.name for f in sorted_files]
     
+    # Return the specified number of files. Slicing with [:None] returns a full copy.
     return sorted_filenames[:count]
 
+# --- Example Usage ---
+# To test this, you would create a dummy directory and files.
+# For example:
+#
+# p = Path('./temp_test_dir')
+# p.mkdir(exist_ok=True)
+# (p / 'data_2023.csv').touch()
+# (p / 'data_2024.csv').touch()
+# (p / 'report_finviz_merged_2023.csv').touch()
+# (p / 'report_finviz_merged_2024.csv').touch()
+# (p / 'temp_file.txt').touch()
 
+# 1. Backward-compatible call (using only prefix)
+# > get_recent_files(p, extension='csv', prefix='data', count=1)
+# > Expected output (newest first): ['data_2024.csv']
+
+# 2. New call (using contains_pattern)
+# > get_recent_files(p, extension='csv', contains_pattern='finviz_merged')
+# > Expected output: ['report_finviz_merged_2024.csv', 'report_finviz_merged_2023.csv']
+
+# 3. Using BOTH prefix and contains_pattern for a specific search
+# > get_recent_files(p, extension='csv', prefix='report', contains_pattern='merged', count=1)
+# > Expected output: ['report_finviz_merged_2024.csv']
+
+# 4. Get ALL sorted files of a type (by omitting both prefix and contains_pattern)
+# > get_recent_files(p, extension='csv')
+# > Expected output (order depends on modification times):
+# > ['report_finviz_merged_2024.csv', 'data_2024.csv', 'report_finviz_merged_2023.csv', 'data_2023.csv']
 
 
 
