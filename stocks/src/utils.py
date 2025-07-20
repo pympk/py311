@@ -3001,7 +3001,7 @@ def get_recent_files(
     # Use a broad glob pattern to find all files with the given extension.
     # The generator expression is memory-efficient.
     all_files = (f for f in directory_path.glob(f"*.{extension}") if f.is_file())
-    
+        
     # --- Sequential Filtering ---
     # Apply filters one by one if they are provided.
     filtered_files = all_files
@@ -3060,7 +3060,5 @@ def get_recent_files(
 # > get_recent_files(p, extension='csv')
 # > Expected output (order depends on modification times):
 # > ['report_finviz_merged_2024.csv', 'data_2024.csv', 'report_finviz_merged_2023.csv', 'data_2023.csv']
-
-
 
 
