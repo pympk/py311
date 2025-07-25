@@ -141,3 +141,181 @@ def plot_single_timeseries(
     plt.gcf().autofmt_xdate()
     plt.tight_layout()
     plt.show()
+
+import plotly.express as px
+import pandas as pd
+import math
+
+def plot_rank_with_criteria(df_rank_history, ticker_list, title_suffix="", filter_criteria=None,
+                            width=1100, height=700):
+    """
+    Plots rank history with period markers, interactive buttons, and size controls.
+    - Adds vertical lines and shaded regions for lookback and recent periods.
+    - 'Clear All' sets traces to 'legendonly', hiding them and graying out the legend item.
+    - 'Reset View' makes all traces fully visible.
+    
+    Args:
+        df_rank_history (pd.DataFrame): The full rank history DataFrame.
+        ticker_list (list): A list of ticker symbols to plot.
+        title_suffix (str, optional): Text to append to the main plot title.
+        filter_criteria (dict, optional): A dictionary of filter parameters to display.
+        width (int, optional): The width of the figure in pixels.
+        height (int, optional): The height of the figure in pixels.
+    """
+    
+    if not ticker_list:
+        print("Ticker list is empty. Nothing to plot.")
+        return
+
+    # Prepare data for plotting
+    plot_df = df_rank_history.loc[ticker_list].T
+    plot_df.index = pd.to_datetime(plot_df.index)
+
+    custom = px.colors.qualitative.Plotly.copy()
+    # Replace the 7th color '#B6E880' with '#1F77B4' with a darker blue
+    custom[7] = '#1F77B4'        
+
+    fig = px.line(
+        plot_df, 
+        x=plot_df.index, 
+        y=plot_df.columns,
+        # Line color sequence 
+        color_discrete_sequence=custom,
+        title=f"Rank History: {title_suffix}",
+        labels={'value': 'Rank', 'x': 'Date', 'variable': 'Ticker'}
+    )
+
+    # Force x-axis title as "Date"
+    fig.update_xaxes(title_text="Date", title_standoff=25)
+
+    # Y-Axis configuration (unchanged and correct)
+    fig.update_yaxes(
+        autorange="reversed", 
+        dtick=100,
+        showgrid=True,
+        gridcolor='LightGrey'
+    )
+    
+    # --- CORRECTED X-Axis configuration ---
+    fig.update_xaxes(
+        type='date',  # Ensures the axis is treated as a continuous date axis
+        
+        # --- Major Ticks and Grid (for labels) ---
+        showgrid=True,
+        gridcolor='LightGrey',
+        dtick="D7",  #<-- MAJOR CHANGE: Place labels and major grid lines only every 7 days
+        tickformat="%b %d",  # Format as "May 04". Now readable with weekly spacing.
+
+        # --- Minor Ticks and Grid (for dense grid lines WITHOUT labels) ---
+        minor=dict(
+            showgrid=True, 
+            gridcolor="rgba(235, 235, 235, 0.5)", # A fainter color for minor lines
+            dtick="D1" #<-- Place an unlabeled minor grid line every 1 day
+        )
+    )
+
+    # --- Vertical lines and shaded regions section (unchanged) ---
+    if filter_criteria and 'recent_days' in filter_criteria and 'lookback_days' in filter_criteria:
+        recent_days = filter_criteria.get('recent_days', 0)
+        lookback_days = filter_criteria.get('lookback_days', 0)
+        all_dates = pd.to_datetime(df_rank_history.columns)
+        if len(all_dates) >= (lookback_days + recent_days):
+            last_date = all_dates[-1]
+            recent_period_start_date = all_dates[-recent_days]
+            lookback_period_end_date = all_dates[-(recent_days + 1)]
+            lookback_period_start_date = all_dates[-(recent_days + lookback_days)]
+            fig.add_vrect(x0=recent_period_start_date, x1=last_date, fillcolor="LightSkyBlue", opacity=0.2, layer="below", line_width=0, annotation_text="Recent", annotation_position="top left")
+            fig.add_vrect(x0=lookback_period_start_date, x1=lookback_period_end_date, fillcolor="LightGreen", opacity=0.2, layer="below", line_width=0, annotation_text="Lookback", annotation_position="top left")
+            fig.add_vline(x=recent_period_start_date, line_width=2, line_dash="dash", line_color="grey")
+
+    # --- Interactive buttons section (unchanged) ---
+    num_traces = len(fig.data)
+    fig.update_layout(
+        updatemenus=[
+            dict(
+                type="buttons", direction="left", x=0.01, xanchor="left",
+                y=1.1, yanchor="top", showactive=False,
+                buttons=list([
+                    dict(label="Reset View", method="restyle", args=[{"visible": [True] * num_traces}]),
+                    dict(label="Clear All", method="restyle", args=[{"visible": ['legendonly'] * num_traces}]),
+                ]),
+            )
+        ]
+    )
+    
+    # --- Filter criteria annotation section (unchanged) ---
+    criteria_text = ""
+    num_rows = 0
+    if filter_criteria:
+        active_criteria = {k: v for k, v in filter_criteria.items() if v is not None}
+        col_width = 38
+        criteria_lines = []
+        items = list(active_criteria.items())
+        for i in range(0, len(items), 3):
+            chunk = items[i:i+3]
+            line_parts = [f"{f'  • {k}: {v}':<{col_width}}" for k, v in chunk]
+            criteria_lines.append("".join(line_parts))
+        num_rows = len(criteria_lines)
+        criteria_text = "<b>Filter Criteria:</b><br>" + "<br>".join(criteria_lines)
+
+    if criteria_text:
+        FONT_SIZE = 14                       # whatever you want
+        LINE_HEIGHT = FONT_SIZE * 1.4        # ~40 % leading is comfortable
+
+        criteria_text = "<b>Filter Criteria:</b><br>" + "<br>".join(criteria_lines)
+
+        fig.add_annotation(
+            showarrow=False,
+            text=criteria_text,
+            xref="paper", yref="paper",
+            x=0, y=-0.25,            
+            xanchor="left", yanchor="top",
+            align="left",
+            font=dict(family="Courier New, monospace", size=FONT_SIZE)
+        )
+
+
+    # compute y-range manually
+    y_vals = plot_df.values.ravel()          # all y values
+    y_range = (y_vals.min(), y_vals.max())
+    
+    # ------------------------------------------------------------------
+    # horizontal red boundary lines – use the data range we just computed
+    # ------------------------------------------------------------------
+    y_min, y_max = y_range       # comes from the manual computation above
+
+    # xref and yref = "paper", uses plot area as a reference. 
+    # x0, y0 = 0, 0 is lower left corner
+    # x1, y1 = 1, 1 is upper right corner
+    fig.add_shape(type="line",
+                  xref="paper", yref="paper",
+                  x0=0, x1=1,
+                  y0=1, y1=1,  
+                  line=dict(color="red", width=2))  # top of plot area
+
+    fig.add_shape(type="line",
+                  xref="paper", yref="paper",
+                  x0=0, x1=1,
+                  y0=0, y1=0,  
+                  line=dict(color="blue", width=2))  # bottom of plot area
+
+    # # optional thin line just below the filter-text annotation
+    # fig.add_shape(type="line",
+    #               xref="paper", yref="paper",
+    #               x0=0, x1=1,
+    #               y0=-0.05, y1=-0.05,                 
+    #               line=dict(color="green", width=2))  # line 5% below the plot area
+
+
+    # --- Layout update section (unchanged) ---
+    bottom_margin = 140 + num_rows * LINE_HEIGHT
+    fig.update_layout(width=width, height=height, margin=dict(b=bottom_margin))
+
+    # Set the x-axis range to a suitable range
+    fig.update_xaxes(range=[plot_df.index.min(), plot_df.index.max()])
+
+    fig.show()
+    return fig
+
+
+

@@ -3032,33 +3032,217 @@ def get_recent_files(
     # Return the specified number of files. Slicing with [:None] returns a full copy.
     return sorted_filenames[:count]
 
-# --- Example Usage ---
-# To test this, you would create a dummy directory and files.
-# For example:
-#
-# p = Path('./temp_test_dir')
-# p.mkdir(exist_ok=True)
-# (p / 'data_2023.csv').touch()
-# (p / 'data_2024.csv').touch()
-# (p / 'report_finviz_merged_2023.csv').touch()
-# (p / 'report_finviz_merged_2024.csv').touch()
-# (p / 'temp_file.txt').touch()
 
-# 1. Backward-compatible call (using only prefix)
-# > get_recent_files(p, extension='csv', prefix='data', count=1)
-# > Expected output (newest first): ['data_2024.csv']
+#################
 
-# 2. New call (using contains_pattern)
-# > get_recent_files(p, extension='csv', contains_pattern='finviz_merged')
-# > Expected output: ['report_finviz_merged_2024.csv', 'report_finviz_merged_2023.csv']
 
-# 3. Using BOTH prefix and contains_pattern for a specific search
-# > get_recent_files(p, extension='csv', prefix='report', contains_pattern='merged', count=1)
-# > Expected output: ['report_finviz_merged_2024.csv']
+import pandas as pd
+from pathlib import Path
 
-# 4. Get ALL sorted files of a type (by omitting both prefix and contains_pattern)
-# > get_recent_files(p, extension='csv')
-# > Expected output (order depends on modification times):
-# > ['report_finviz_merged_2024.csv', 'data_2024.csv', 'report_finviz_merged_2023.csv', 'data_2023.csv']
+def create_rank_history_df(file_list, data_dir):
+    """
+    Reads daily files to compile a history of ranks for each ticker.
 
+    Args:
+        file_list (list): A list of sorted parquet filenames.
+        data_dir (Path): The directory where files are stored.
+
+    Returns:
+        pd.DataFrame: A DataFrame with tickers as the index, dates as columns,
+                      and ranks as the values. NaN indicates the ticker was not
+                      present on that day.
+    """
+    daily_ranks_list = []
+    for filename in file_list:
+        # Extract the date string from the start of the filename
+        date_str = filename.split('_')[0]
+        
+        # Read the daily data file
+        df_daily = pd.read_parquet(data_dir / filename)
+        
+        # Extract the 'Rank' column (it's a Series with tickers as its index)
+        ranks_series = df_daily['Rank']
+        
+        # Rename the Series to the date, which will become the column name
+        ranks_series.name = pd.to_datetime(date_str)
+        
+        daily_ranks_list.append(ranks_series)
+
+    # Concatenate all Series into a single DataFrame, aligning on the ticker index
+    df_tickers_rank_history = pd.concat(daily_ranks_list, axis=1)
+    
+    # Sort columns by date just in case the file list wasn't perfectly sorted
+    df_tickers_rank_history = df_tickers_rank_history.sort_index(axis=1)
+    
+    return df_tickers_rank_history
+
+
+def calculate_rank_metrics(df_rank_history, tickers_list, lookback_days=20, recent_days=4):
+    """
+    Calculates a comprehensive set of rank metrics for a given list of tickers.
+
+    This function does NOT filter tickers based on performance criteria. It processes
+    every ticker provided in the tickers_list and returns its calculated metrics,
+    making it suitable for generating features for analysis or other models.
+
+    Args:
+        df_rank_history (pd.DataFrame): DataFrame with tickers as index and dates as columns.
+        tickers_list (list): A list of ticker symbols to calculate metrics for.
+        lookback_days (int): The number of days for the "lookback" period.
+        recent_days (int): The number of days for the "recent" period.
+
+    Returns:
+        list: A list of dictionaries, where each dictionary contains the calculated
+              rank metrics for one ticker. Tickers with insufficient data in the
+              specified period are skipped.
+    """
+    # --- Guard Clause & Date Setup ---
+    total_days_needed = lookback_days + recent_days
+    if len(df_rank_history.columns) < total_days_needed:
+        print(f"Error: Not enough data. Need {total_days_needed} days, have {len(df_rank_history.columns)}.")
+        return []
+
+    all_dates = df_rank_history.columns
+    last_date = all_dates[-1]
+    recent_period_start_date = all_dates[-recent_days]
+    lookback_period_end_date = all_dates[-(recent_days + 1)]
+    lookback_period_start_date = all_dates[-(recent_days + lookback_days)]
+    
+    lookback_dates = df_rank_history.loc[:, lookback_period_start_date:lookback_period_end_date].columns
+    recent_dates = df_rank_history.loc[:, recent_period_start_date:last_date].columns
+    
+    all_ticker_metrics = []
+
+    print(f"Calculating metrics for {len(tickers_list)} tickers...")
+
+    # --- Calculation Loop ---
+    for ticker in tickers_list:
+        # Skip if ticker is not in the dataframe index
+        if ticker not in df_rank_history.index:
+            continue
+
+        lookback_ranks = df_rank_history.loc[ticker, lookback_dates].dropna()
+        recent_ranks = df_rank_history.loc[ticker, recent_dates].dropna()
+        
+        # Skip if there's not enough data for this specific ticker in the required periods
+        if len(lookback_ranks) < lookback_days or len(recent_ranks) < recent_days:
+            continue
+            
+        # --- Perform all calculations without any filtering 'if' statements ---
+        slope, _ = np.polyfit(np.arange(len(lookback_ranks)), lookback_ranks, 1)
+        all_ranks_in_period = pd.concat([lookback_ranks, recent_ranks])
+
+        # Key reference points
+        current_rank = int(recent_ranks.iloc[-1])
+        rank_at_start_of_recent = int(recent_ranks.iloc[0])
+        recent_bottom_rank = int(recent_ranks.max()) # Worst rank in recent period
+        total_peak_rank = int(all_ranks_in_period.min()) # Best rank over the whole period
+        
+        # This dictionary holds all calculated metrics for one ticker
+        metrics_dict = {
+            'ticker': ticker,
+            'lookback_slope': round(slope, 2),
+            
+            # Key Ranks
+            'current': current_rank,
+            'recent_start': rank_at_start_of_recent,
+            'lookback_start': int(lookback_ranks.iloc[0]),
+            'lookback_end': int(lookback_ranks.iloc[-1]),
+
+            # Best/Worst Ranks by Period
+            'best_lookback': int(lookback_ranks.min()),
+            'worst_lookback': int(lookback_ranks.max()),
+            'best_recent': int(recent_ranks.min()),
+            'worst_recent': recent_bottom_rank, # Same value, more descriptive name
+            'best_total': total_peak_rank,
+            'worst_total': int(all_ranks_in_period.max()),
+
+            # Derived Metrics (using clearer names)
+            'current_to_total_peak': current_rank - total_peak_rank,
+            'current_to_recent_start': current_rank - rank_at_start_of_recent,
+            'recent_bottom_to_recent_start': recent_bottom_rank - rank_at_start_of_recent,
+            'recent_bottom_to_current': recent_bottom_rank - current_rank,
+        }
+        all_ticker_metrics.append(metrics_dict)
+
+    return all_ticker_metrics
+
+
+def filter_rank_metrics(
+    all_metrics_data,
+    min_lookback_improvement=15,
+    # --- Mode-specific parameters ---
+    min_current_to_recent_start=None,  # Only used in 'Dip' mode, positive number means recent_start is better than current 
+    min_recent_bottom_to_recent_start=None, # Only used in 'Reversal' mode, positive number means recent_start is better than recent_bottom
+    min_recent_bottom_to_current=None,  # Only used in 'Reversal' mode, positive number means current is better than recent_bottom 
+    # --- General filters ---
+    current_rank_bracket_start=1, 
+    current_rank_bracket_end=None):
+    """
+    Filters a DataFrame of pre-calculated rank metrics based on specified criteria.
+
+    This function acts as the second stage in a two-part pipeline, taking the output of
+    `calculate_rank_metrics` and applying filtering rules to find specific opportunities.
+
+    Args:
+        all_metrics_data (list or pd.DataFrame): The list of dictionaries or DataFrame
+                                                  from `calculate_rank_metrics`.
+        min_lookback_improvement (int): Min improvement from the start to the end of the lookback period.
+        min_current_to_recent_start (int, optional): For 'Dip' mode, positive number means recent_start is better than current.
+        min_recent_bottom_to_recent_start (int, optional): For 'Reversal' mode, positive number means recent_start is better than recent_bottom.
+        min_recent_bottom_to_current (int, optional): For 'Reversal' mode, positive number means current is better than recent_bottom.
+        current_rank_bracket_start (int): The minimum current rank to include.
+        current_rank_bracket_end (int, optional): The maximum current rank to include.
+
+    Returns:
+        pd.DataFrame: A filtered and sorted DataFrame containing the tickers that meet all criteria.
+    """
+    # --- Parameter Validation (Mode Detection) ---
+    # This logic is identical to the original function to ensure correct mode is selected.
+    if min_current_to_recent_start is not None and (min_recent_bottom_to_recent_start is not None or min_recent_bottom_to_current is not None):
+        raise ValueError("Cannot specify parameters for both 'Dip' and 'Reversal' modes.")
+    
+    # --- Data Preparation ---
+    if not isinstance(all_metrics_data, pd.DataFrame):
+        df = pd.DataFrame(all_metrics_data)
+    else:
+        df = all_metrics_data.copy() # Use a copy to avoid modifying the original DataFrame
+
+    if df.empty:
+        return df # Return an empty DataFrame if there's no data
+
+    # --- Apply Filters Sequentially ---
+    
+    # Filter 1: Lookback period must show a minimum rank improvement
+    # This is calculated from 'lookback_start' - 'lookback_end'
+    lookback_improvement = df['lookback_start'] - df['lookback_end']
+    df = df[lookback_improvement >= min_lookback_improvement]
+
+    # Filter 2: Lookback trend slope must be negative (improving rank)
+    df = df[df['lookback_slope'] < 0]
+
+    # Filter 3: Ticker's current rank must be within the specified bracket
+    df = df[df['current'] >= current_rank_bracket_start]
+    if current_rank_bracket_end is not None:
+        df = df[df['current'] <= current_rank_bracket_end]
+
+    # Filter 4: Mode-specific filtering
+    if min_current_to_recent_start is not None:
+        # --- Dip Mode ---
+        # The metric 'min_current_to_recent_start' corresponds to the required drop.
+        print("Filtering in 'Dip' mode...")
+        df = df[df['current_to_recent_start'] >= min_current_to_recent_start]
+    elif min_recent_bottom_to_recent_start is not None and min_recent_bottom_to_current is not None:
+        # --- Reversal Mode ---
+        print("Filtering in 'Reversal' mode...")
+        df = df[df['recent_bottom_to_recent_start'] >= min_recent_bottom_to_recent_start]
+        df = df[df['recent_bottom_to_current'] >= min_recent_bottom_to_current]
+    else:
+        print("Warning: No mode-specific filters applied. Returning candidates based on general filters only.")
+
+    # --- Final Sorting ---
+    # Sort the final list of candidates by the strength of their past uptrend.
+    df_filtered = df.sort_values(by='lookback_slope', ascending=True)
+    
+    return df_filtered
 
