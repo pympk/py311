@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "./src" // Tells Pylance to also look in the 'src' directory
+                // relative to the workspace root (ROOT_DIR)
+    ]
+}
