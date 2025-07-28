@@ -69,6 +69,10 @@ ipympl = "^0.9.7"
 numpy = "<1.27"
 numba = "^0.61.2"
 llvmlite = "^0.44.0"
+cvxpy = {extras = ["cbc"], version = "^1.7.1"}
+#scip = "^0.1.12"
+#pyscipopt = "^5.5.0"
+#scip-math = { version = "*", python = "*" }
 
 
 [build-system]
