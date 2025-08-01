@@ -860,81 +860,6 @@ def get_cov_corr_ewm_matrices_chunked(df, span=21, return_corr=True, return_cov=
     return tuple(results) if len(results) > 1 else results[0]
 
 
-# def main_processor_(data_dir='../data', downloads_dir=None, downloads_limit=20,
-#                    clean_name_override=None, start_file_pattern='df_OHLCV_',
-#                    contains_pattern=None):
-#     """
-#     Orchestrate file selection with configurable start and contains patterns.
-#     Uses the base name of data_dir as the origin label for its files.
-
-#     Args:
-#         data_dir (str): Path to the primary data directory.
-#         downloads_dir (str, optional): Path to the downloads directory. Defaults to ~/Downloads.
-#         downloads_limit (int): Maximum number of files to consider from downloads.
-#         clean_name_override (str, optional): If provided, overrides the generated destination filename.
-#         start_file_pattern (str): Pattern for the start of filenames to search for.
-#         contains_pattern (str, optional): Additional pattern that must be contained within the filename.
-#                                          Defaults to None (no contains filtering).
-
-#     Returns:
-#         tuple: (selected_file_path, destination_path) or (None, None) if no files found or selected.
-#     """
-#     if downloads_dir is None:
-#         downloads_dir = os.path.join(os.path.expanduser('~'), 'Downloads')
-
-#     # Normalize data_dir path for consistent processing and get its base name
-#     data_dir_abs = os.path.abspath(data_dir)
-#     data_dir_label = os.path.basename(data_dir_abs) or data_dir_abs # Use basename, fallback to full path if basename is empty (e.g., root dir)
-
-#     # Get data directory files matching BOTH patterns
-#     data_files_raw = get_matching_files(data_dir_abs, create_dir=True, start_file_pattern=start_file_pattern)
-#     data_files = [(os.path.join(data_dir_abs, f), data_dir_label) # <-- Use base name as origin label
-#                   for f in data_files_raw
-#                   if not contains_pattern or contains_pattern in f] # Apply contains_pattern filter
-
-#     # Get downloads files matching BOTH patterns
-#     downloads_files = []
-#     if os.path.exists(downloads_dir):
-#         raw_downloads = process_downloads_dir(downloads_dir, downloads_limit, start_file_pattern=start_file_pattern)
-#         # Apply contains_pattern filter to downloads files (checking basename)
-#         filtered_downloads = [f for f in raw_downloads
-#                               if not contains_pattern or contains_pattern in os.path.basename(f)]
-#         downloads_files = [(f, 'downloads') for f in filtered_downloads] # Keep 'downloads' label distinct
-
-#     ohlcv_files = data_files + downloads_files
-
-#     # Construct informative error/selection messages
-#     search_criteria = f"'{start_file_pattern}'"
-#     if contains_pattern:
-#         search_criteria += f" and containing '{contains_pattern}'"
-
-#     if not ohlcv_files:
-#         display(Markdown(f"**Error:** No files found matching {search_criteria}! "
-#                          f"(Searched: '{data_dir_label}' dir and 'downloads')")) # <-- Use label in error msg
-#         return None, None
-
-#     # Pass the combined search criteria description to display
-#     display_file_selector(ohlcv_files, search_criteria)
-#     selected_file = get_user_choice(ohlcv_files)
-
-#     if selected_file is None: # Handle case where user cancels
-#          display(Markdown(f"**Info:** No file selected."))
-#          return None, None
-
-#     clean_name = generate_clean_filename(os.path.basename(selected_file))
-#     if clean_name_override is not None:
-#         clean_name = clean_name_override
-#     # Destination path still uses the full absolute path for reliability
-#     dest_path = os.path.join(data_dir_abs, clean_name)
-
-#     display(Markdown(f"""
-#     **Selected paths:**
-#     - Source: `{selected_file}`
-#     - Destination: `{dest_path}`
-#     """))
-#     return selected_file, dest_path
-
-
 def main_processor(data_dir='../data', downloads_dir=None, downloads_limit=20,
                    clean_name_override=None, start_file_pattern='df_OHLCV_',
                    contains_pattern=None):
@@ -2914,55 +2839,6 @@ import os
 from pathlib import Path
 from typing import List
 
-# get_recent_files_in_directory replaced by get_recent_files
-# def get_recent_files_in_directory_obsolete( 
-#     directory_path: Path, 
-#     prefix: str, 
-#     extension: str, 
-#     count: int
-#     ) -> List[str]:
-#     """
-#     Finds and returns a list of the most recent filenames in a given directory
-#     that match a specific prefix and extension.
-
-#     Args:
-#         directory_path (Path): The pathlib.Path object for the directory to search.
-#         prefix (str): The required starting string of the filenames.
-#         extension (str): The required file extension (e.g., 'parquet', 'csv').
-#         count (int): The maximum number of recent files to return.
-
-#     Returns:
-#         List[str]: A list of filenames, sorted from most recent to oldest.
-#     """
-#     if not directory_path.is_dir():
-#         print(f"Warning: Directory not found at {directory_path}")
-#         return []
-
-#     # Construct the glob pattern to find matching files
-#     pattern = f"{prefix}*.{extension}"
-    
-#     # Find all matching files and get their modification times
-#     files_with_mtime = []
-#     for f in directory_path.glob(pattern):
-#         try:
-#             # Use f.stat() to get file metadata, including modification time
-#             mtime = f.stat().st_mtime
-#             files_with_mtime.append((f.name, mtime))
-#         except FileNotFoundError:
-#             # This can happen in rare race conditions if a file is deleted
-#             # while the loop is running.
-#             continue
-            
-#     # Sort the files by modification time in descending order (most recent first)
-#     files_with_mtime.sort(key=lambda x: x[1], reverse=True)
-    
-#     # Return only the filenames from the sorted list, up to the specified count
-#     sorted_filenames = [filename for filename, mtime in files_with_mtime]
-    
-#     return sorted_filenames[:count]
-
-
-
 ###############
 import os
 from pathlib import Path
@@ -3245,4 +3121,5 @@ def filter_rank_metrics(
     df_filtered = df.sort_values(by='lookback_slope', ascending=True)
     
     return df_filtered
+
 

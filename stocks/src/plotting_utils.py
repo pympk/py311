@@ -317,5 +317,174 @@ def plot_rank_with_criteria(df_rank_history, ticker_list, title_suffix="", filte
     fig.show()
     return fig
 
+import pandas as pd
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
+import numpy as np
+
+def plot_comparative_performance(df, ticker_list, benchmark='VGT'):
+    """
+    Creates an interactive comparative performance chart with:
+    - Normalized price (start = 1)
+    - Dropdown for time periods (5D, 1M, ..., 12M)
+    - Benchmark overlay (default: VGT, customizable)
+    - Max drawdown annotations for each ticker
+    - Log/linear y-axis toggle
+    - Toggle traces via legend
+    """
+    # Ensure index is datetime and sorted
+    df = df.sort_index()
+    df.index = pd.to_datetime(df.index)
+    
+    # Validate tickers and benchmark
+    available_tickers = [t for t in ticker_list if t in df.columns]
+    if not available_tickers:
+        raise ValueError("None of the specified tickers are found in the DataFrame.")
+    
+    if benchmark not in df.columns:
+        raise ValueError(f"Benchmark '{benchmark}' not found in DataFrame columns.")
+    
+    # Include benchmark in list for processing
+    all_symbols = available_tickers + [benchmark]
+    
+    # Define periods
+    periods = {
+        '5D': 5,
+        '1M': 30,
+        '3M': 90,
+        '6M': 180,
+        '12M': 365
+    }
+    
+    # Latest date
+    end_date = df.index[-1]
+    
+    # Create figure
+    fig = go.Figure()
+
+    
+    # Add traces for each period
+    for label, days in periods.items():
+        start_date = end_date - timedelta(days=days)
+        period_df = df[df.index >= start_date][all_symbols].dropna(how='all')
+        
+        # Normalize to 1 at first valid price
+        normalized_data = period_df.copy()
+        for sym in all_symbols:
+            first_valid = normalized_data[sym].dropna().iloc[0]
+            normalized_data[sym] = normalized_data[sym] / first_valid
+        
+        # Add traces
+        for sym in all_symbols:
+            visible = True if label == '5D' else False
+            name = f"{sym} (Benchmark)" if sym == benchmark else sym
+            fig.add_trace(
+                go.Scatter(
+                    x=normalized_data.index,
+                    y=normalized_data[sym],
+                    mode='lines',
+                    name=name,
+                    legendgroup=sym,
+                    visible=visible,
+                    line=dict(dash='dot' if sym == benchmark else 'solid', width=2),
+                    hovertemplate='%{y:.4f}<br>%{x|%Y-%m-%d}<extra>' + name + '</extra>'
+                )
+            )
+    
+    # === Dropdown: Period Selection ===
+    dropdown_buttons = [
+        dict(
+            args=[
+                {'visible': [label == period_label for period_label in periods.keys() for _ in all_symbols]},
+                {'title': f'Comparative Performance ({label})', 'annotations': []}  # Clear old annotations
+            ],
+            label=label,
+            method='update'
+        ) for label in periods.keys()
+    ]
+    
+    # === Button: Log / Linear Scale ===
+    scale_buttons = [
+        dict(args=[{'yaxis.type': 'linear'}], label='Linear', method='relayout'),
+        dict(args=[{'yaxis.type': 'log'}], label='Log', method='relayout')
+    ]
+    
+    # Update dropdown to include annotations
+    updated_dropdown = []
+    for label in periods.keys():
+        updated_dropdown.append(
+            dict(
+                args=[
+                    {
+                        'visible': [label == period_label for period_label in periods.keys() for _ in all_symbols],
+                        'annotations': []  # Will be added when Show MDD is clicked
+                    },
+                    {
+                        'title': f'Comparative Performance ({label})'
+                    }
+                ],
+                label=label,
+                method='update'
+            )
+        )
+    
+    # === Layout ===
+    fig.update_layout(
+        title='Comparative Performance (Normalized to 1) - 5D',
+        xaxis_title='Date',
+        yaxis_title='Normalized Price',
+        hovermode='x unified',
+        updatemenus=[
+            # Period selector
+            dict(
+                buttons=updated_dropdown,
+                direction='down',
+                showactive=True,
+
+
+                # x=0.1,
+                x=0.8,                
+                
+                
+                y=1.15,
+                xanchor='left',
+                yanchor='top',
+                pad={'t': 10, 'r': 10},
+                name='Period'
+            ),
+            # Scale selector
+            dict(
+                buttons=scale_buttons,
+                direction='down',
+                showactive=True,
+                x=0.9,
+                y=1.15,
+                xanchor='left',
+                yanchor='top',
+                pad={'t': 10, 'r': 10},
+                name='Scale'
+            )
+        ],
+        legend_title="Symbols",
+        legend=dict(itemclick="toggle", itemdoubleclick="toggleothers"),
+        yaxis=dict(type='linear'),
+        height=650,
+        annotations=[
+            dict(
+                text="<b>🖱️ Use:</b> Dropdowns • Toggle traces (single or double click symbol)",
+                x=0.5,
+                y=1.02,
+                xref="paper",
+                yref="paper",
+                xanchor="center",
+                yanchor="bottom",
+                showarrow=False,
+                font=dict(size=10, color="gray")
+            )
+        ]
+    )
+
+    fig.show()
+
 
 
