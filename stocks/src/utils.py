@@ -2,7 +2,6 @@ import sys
 import os
 import regutil
 import time
-import datetime
 import numpy as np
 import pandas as pd
 import empyrical  
@@ -10,18 +9,15 @@ import warnings
 import re
 import json
 import logging
-import datetime
 import pprint
 import io
 import traceback
 
 from scipy.stats import zscore
 from IPython.display import display, Markdown
-from typing import Tuple, Dict, Any, Optional, List
+from typing import Tuple, Dict, Any, Optional, List, Set
 from pathlib import Path
-
-
-
+from datetime import datetime, timedelta
 
 warnings.filterwarnings("ignore", message="Module \"zipline.assets\" not found.*")
 
@@ -273,7 +269,7 @@ def find_sorted_intersection(list1, list2):
     return intersection_list
 
 
-def filter_df_dates_to_reference_symbol_obsolete(df, reference_symbol="AAPL"):
+def filter_df_dates_to_reference_symbol_obsolete_0(df, reference_symbol="AAPL"):
     """
     Filters symbols in a DataFrame based on date index matching a reference symbol (default AAPL)
     and provides analysis of the filtering results.
@@ -336,7 +332,7 @@ def filter_df_dates_to_reference_symbol_obsolete(df, reference_symbol="AAPL"):
     return df_filtered
 
 
-def filter_df_dates_to_reference_symbol(df, reference_symbol="AAPL"):
+def filter_df_dates_to_reference_symbol_obsolete_1(df, reference_symbol="AAPL"):
     """
     Filters symbols in a DataFrame based on date index matching a reference symbol
     and provides analysis of the filtering results. The function will adapt
@@ -460,6 +456,48 @@ def filter_df_dates_to_reference_symbol(df, reference_symbol="AAPL"):
     return df_filtered, filtered_out_symbols
 
 
+def filter_df_dates_to_reference_symbol(
+    df: pd.DataFrame, 
+    reference_symbol: str
+) -> Tuple[pd.DataFrame, List[str]]:
+    """
+    Filters a DataFrame to include only dates present in a reference symbol's index.
+
+    Args:
+        df (pd.DataFrame): DataFrame with a ('Ticker', 'Date') MultiIndex.
+        reference_symbol (str): The ticker to use as the date reference.
+
+    Returns:
+        Tuple[pd.DataFrame, List[str]]: A tuple containing:
+            - The filtered DataFrame, guaranteed to have the original MultiIndex structure.
+            - A list of ticker symbols that were present before but are now empty after filtering.
+    """
+    # --- Pre-condition Assertions: Validate Input ---
+    assert isinstance(df.index, pd.MultiIndex), "Input must be a DataFrame with a MultiIndex."
+    assert df.index.names == ['Ticker', 'Date'], "Input DataFrame must have a ('Ticker', 'Date') MultiIndex."
+    
+    all_tickers = set(df.index.get_level_values('Ticker').unique())
+    
+    # Get the "golden" date index from the reference symbol
+    reference_dates = df.loc[reference_symbol].index
+    
+    # Filter the DataFrame. Using .isin on the index level is efficient and preserves the index structure.
+    df_filtered = df[df.index.get_level_values('Date').isin(reference_dates)]
+    
+    # Identify which tickers were completely removed by this operation
+    remaining_tickers = set(df_filtered.index.get_level_values('Ticker').unique())
+    removed_tickers = sorted(list(all_tickers - remaining_tickers))
+    
+    # CRITICAL FIX: Ensure the MultiIndex structure is preserved, even if df_filtered is empty
+    if not df_filtered.empty:
+        df_filtered.index = df_filtered.index.remove_unused_levels()
+    
+    # --- Post-condition Assertions: Guarantee Output ---
+    assert isinstance(df_filtered.index, pd.MultiIndex), "Function failed to preserve the MultiIndex."
+    assert df_filtered.index.names == ['Ticker', 'Date'], "Function failed to preserve the ('Ticker', 'Date') MultiIndex."
+
+    return df_filtered, removed_tickers
+
 
 def get_latest_dfs(df, num_rows):
     """
@@ -522,7 +560,7 @@ def get_latest_dfs(df, num_rows):
     return result_list
 
 
-def filter_symbols_with_missing_values(df):
+def filter_symbols_with_missing_values_obsolete_0(df):
     """
     Filters out symbols from a MultiIndex DataFrame that have:
     1. Any missing values in any columns
@@ -573,6 +611,68 @@ def filter_symbols_with_missing_values(df):
         filtered_df = pd.DataFrame()
 
     return filtered_df, symbols_with_missing
+
+
+def filter_symbols_with_missing_values(
+    df: pd.DataFrame
+) -> Tuple[pd.DataFrame, List[str]]:
+    """
+    Removes tickers that have NaN values or an incomplete date history.
+
+    This function assumes it runs after date alignment, so it determines the
+    target number of rows from the most common group size.
+
+    Args:
+        df (pd.DataFrame): DataFrame with a ('Ticker', 'Date') MultiIndex.
+
+    Returns:
+        Tuple[pd.DataFrame, List[str]]: A tuple containing:
+            - The cleaned DataFrame, guaranteed to have the original MultiIndex structure.
+            - A list of the ticker symbols that were removed.
+    """
+    # --- Pre-condition Assertions: Validate Input ---
+    assert isinstance(df.index, pd.MultiIndex), "Input must be a DataFrame with a MultiIndex."
+    assert df.index.names == ['Ticker', 'Date'], "Input DataFrame must have a ('Ticker', 'Date') MultiIndex."
+
+    # 1. Find tickers with any NaN values in any of their rows
+
+    nan_mask = df.isnull().any(axis=1)
+    tickers_with_nans = set(df[nan_mask].index.get_level_values('Ticker').unique())
+
+    # 2. Find tickers with an incomplete number of rows
+    ticker_counts = df.groupby(level='Ticker').size()
+    if ticker_counts.empty:
+        # If the input is empty, it already satisfies the contract. Return it as is.
+        return df, []
+    
+    # The target count is the number of rows of the most common ticker
+    target_count = ticker_counts.mode()[0]
+    incomplete_tickers = set(ticker_counts[ticker_counts < target_count].index)
+
+    # 3. Combine the sets of tickers to be removed
+    all_tickers_to_drop = tickers_with_nans.union(incomplete_tickers)
+    
+    if not all_tickers_to_drop:
+        # --- Post-condition (No change case) ---
+        assert df.index.names == ['Ticker', 'Date']
+        return df, []
+
+    # 4. Drop all data for these tickers from the original DataFrame
+
+    # Using .drop with level='Ticker' correctly preserves the MultiIndex.
+
+    df_clean = df.drop(index=list(all_tickers_to_drop), level='Ticker')
+
+    # Ensure the MultiIndex structure is preserved
+
+    if not df_clean.empty:
+        df_clean.index = df_clean.index.remove_unused_levels()
+        
+    # --- Post-condition Assertions: Guarantee Output ---
+    assert isinstance(df_clean.index, pd.MultiIndex), "Function failed to preserve the MultiIndex."
+    assert df_clean.index.names == ['Ticker', 'Date'], "Function failed to preserve the ('Ticker', 'Date') MultiIndex."
+
+    return df_clean, sorted(list(all_tickers_to_drop))
 
 
 def convert_volume(value):
@@ -704,8 +804,8 @@ def display_file_selector(files_with_source, start_file_pattern):
         timestamp = os.path.getmtime(file_path)
         
         size_mb = size / (1024 * 1024)
-        formatted_date = datetime.datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M')
-        
+        formatted_date = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M')
+
         file_info = (
             f"- ({idx}) `[{source.upper()}]` `{name}` "
             f"<span style='color:#00ffff'>"
@@ -955,7 +1055,6 @@ def main_processor(data_dir='../data', downloads_dir=None, downloads_limit=20,
     return selected_file, dest_path, displayed_filenames
 
 
-
 def print_stock_selection_report(output: Dict[str, Any]) -> None:
     """
     Prints a detailed report summarizing the results of the stock selection process,
@@ -1068,7 +1167,6 @@ def print_stock_selection_report(output: Dict[str, Any]) -> None:
         print(selected_stocks['Cluster_ID'].value_counts().to_string())
     else:
         print("No stocks were selected after applying all filters and criteria.")
-
 
 
 def select_stocks_from_clusters(cluster_stats_df, detailed_clusters_df,
@@ -1213,11 +1311,6 @@ def select_stocks_from_clusters(cluster_stats_df, detailed_clusters_df,
 
     return results_bundle
 
-
-
-import pandas as pd
-import numpy as np
-import logging      # Assuming logging is set up elsewhere
 
 # Define a small epsilon to prevent division by zero
 EPSILON = 1e-9
@@ -1473,7 +1566,6 @@ def select_stocks_from_clusters_ai(
     return results_bundle
 
 
-
 def extract_date_from_string(text_to_search: str) -> Optional[str]:
     """
     Extracts the first valid YYYY-MM-DD date string found anywhere in the text.
@@ -1504,8 +1596,7 @@ def extract_date_from_string(text_to_search: str) -> Optional[str]:
         # --- Optional but recommended: Validate if it's a valid date ---
         try:
             # Attempt to parse the extracted string as a date
-            # datetime.strptime(potential_date_str, '%Y-%m-%d')
-            datetime.datetime.strptime(potential_date_str, '%Y-%m-%d')
+            datetime.strptime(potential_date_str, '%Y-%m-%d')
             # If parsing succeeds, it's a valid format AND a valid calendar date
             return potential_date_str
         except ValueError:
@@ -1517,10 +1608,6 @@ def extract_date_from_string(text_to_search: str) -> Optional[str]:
         # Pattern was not found anywhere in the string
         return None
 
-
-
-from pathlib import Path
-import os # Used for os.path.expanduser to robustly find the home directory
 
 def get_recent_files_in_directory_obsolete(
     prefix: str = '',
@@ -1593,9 +1680,6 @@ def get_recent_files_in_directory_obsolete(
         return []
 
 
-
-#########################
-
 DEFAULT_FILTERS_ST = {
     'min_price': 10.0,
     'min_avg_volume_m': 2.0,
@@ -1611,6 +1695,8 @@ DEFAULT_SCORING_WEIGHTS_ST = {
 }
 
 DEFAULT_INV_VOL_COL_ST = 'ATR/Price %'
+
+
 def select_short_term_stocks_debug(
     df_finviz,
     # df_cov, # Kept for signature compatibility, but not used in provided logic
@@ -2045,9 +2131,6 @@ def load_selection_results(
     return df_selected, parameters_used
 
 
-import pandas as pd
-from typing import List, Optional
-
 def add_columns_from_source(
     base_df: pd.DataFrame,
     source_df: pd.DataFrame,
@@ -2183,28 +2266,10 @@ def z_score_series(series: pd.Series) -> pd.Series:
     return pd.Series(zscore(numeric_series, nan_policy='omit'), index=series.index).rename(f"z_{series.name}")
 
 
-
-# =================================================================================
-# NEW ADDITIONS FOR BACKTESTING ENGINE - APPEND TO src/utils.py
-# =================================================================================
-
-import logging
-import datetime
-import json
-import pprint
-import io
-import traceback
-import numpy as np
-import pandas as pd
-from pathlib import Path
-from typing import List, Dict, Tuple, Any, Optional
-
-# --- Backtesting Setup and File Handling ---
-
 def setup_backtest_logging(log_dir: Path) -> Path:
     """Configures logging for a backtest run and returns the log file path."""
     log_dir.mkdir(exist_ok=True)
-    log_filename = datetime.datetime.now().strftime("backtest_run_%Y%m%d_%H%M%S.log")
+    log_filename = datetime.now().strftime("backtest_run_%Y%m%d_%H%M%S.log")    
     log_filepath = log_dir / log_filename
 
     logger = logging.getLogger()
@@ -2226,6 +2291,7 @@ def setup_backtest_logging(log_dir: Path) -> Path:
     logging.info(f"Logging initialized. Log file: {log_filepath}")
     return log_filepath
 
+
 def load_price_data(price_file_path: Path) -> Optional[pd.DataFrame]:
     """Loads historical price data and prepares it for backtesting."""
     logging.info(f"Loading historical price data from: {price_file_path}")
@@ -2243,6 +2309,7 @@ def load_price_data(price_file_path: Path) -> Optional[pd.DataFrame]:
     except Exception as e:
         logging.error(f"Failed to load or process price data: {e}", exc_info=True)
         return None
+
 
 def find_and_pair_selection_files(selection_dir: Path) -> List[Tuple[Path, Path]]:
     """Finds and pairs selection data (.parquet) and parameter (.json) files."""
@@ -2267,7 +2334,6 @@ def find_and_pair_selection_files(selection_dir: Path) -> List[Tuple[Path, Path]
     logging.info(f"Found {len(file_pairs)} paired data and parameter files.")
     return file_pairs
 
-# --- Core Backtesting Logic ---
 
 def run_single_backtest(
     selection_date: str,
@@ -2393,6 +2459,7 @@ def run_single_backtest(
         logging.critical(f"  FATAL ERROR during backtest run for {selection_date}, {scheme_name}: {e}", exc_info=True)
         return None
 
+
 def update_and_save_results_obsolete(
     new_records: List[Dict[str, Any]],
     results_path: Path,
@@ -2440,14 +2507,6 @@ def update_and_save_results_obsolete(
     
     logging.info(f"Successfully saved {len(df_final)} consolidated records to {results_path.name}")
 
-
-
-# In your utils.py file
-
-import pandas as pd
-from pathlib import Path
-import logging
-from typing import List, Dict, Any
 
 def update_and_save_results(
     new_records: List[Dict[str, Any]],
@@ -2523,8 +2582,6 @@ def update_and_save_results(
     logging.info(f"Duplicate records removed:      {num_before - num_after}")
     logging.info(f"Final records in file:          {num_after}")
     logging.info("-" * 50)
-
-
 
 
 # IN src/utils.py, REPLACE THE OLD process_backtest_for_pair FUNCTION WITH THIS ONE:
@@ -3121,5 +3178,180 @@ def filter_rank_metrics(
     df_filtered = df.sort_values(by='lookback_slope', ascending=True)
     
     return df_filtered
+
+
+import pandas as pd
+from pathlib import Path
+from typing import List
+
+# ... (other existing functions in utils.py)
+
+def create_rolling_window_chunks(
+    returns_df: pd.DataFrame,
+    window_width: int,
+    step_size: int
+) -> List[pd.DataFrame]:
+    """
+    Generates a list of rolling window dataframes from a returns dataframe.
+
+    Args:
+        returns_df (pd.DataFrame): DataFrame of asset returns with a DatetimeIndex.
+        window_width (int): The total number of rows (days) in each window.
+        step_size (int): The number of rows to step forward for the next window.
+
+    Returns:
+        List[pd.DataFrame]: A list of DataFrame chunks, each representing a
+                            rolling window.
+    """
+    rolling_chunks = []
+    num_rows = len(returns_df)
+
+    if num_rows < window_width:
+        print(f"Warning: Data length ({num_rows}) is less than window width ({window_width}). No chunks created.")
+        return []
+
+    for start in range(0, num_rows - window_width + 1, step_size):
+        end = start + window_width
+        chunk = returns_df.iloc[start:end]
+        rolling_chunks.append(chunk)
+
+    return rolling_chunks
+
+
+def align_weekend_data_files_to_fridays(search_dir: Path, prefix: str, file_ext: str,):
+    """
+    Scans a directory for files with date string in the file name, and the
+    date is a weekend date.
+
+    This function is designed to handle cases where data scraped on a weekend
+    (Saturday or Sunday) should be associated with the preceding Friday's market date.
+    If weekend data exist, regardless whether Friday data exist or not,
+    it will renames weekend files to the corresponding Friday's date.
+    It expects the date is the first item after the split (e.g. replace(prefix, '').split('_')[0])
+
+    Args:
+        search_dir (Path): The directory to scan for files.
+        prefix (str): The prefix of the files to check (e.g., 'df_finviz_').
+        file_ext (str): The file extension (e.g., 'txt').
+    """
+    if not search_dir.is_dir():
+        print(f"Error: Search directory not found at '{search_dir}'")
+        return
+
+    print(f"Scanning '{search_dir}' for files with prefix '{prefix}...{file_ext}'")
+    all_files = list(search_dir.glob(f"{prefix}*.{file_ext}"))
+
+    for weekend_file_path in all_files:
+        try:
+            # Extract date string like '2023-10-29' from 'df_finviz_2023-10-29_stocks_etfs.parquet'
+            # Expects the date to be first item in list after removing prefix
+            date_str = weekend_file_path.name.replace(prefix, '').split('_')[0]
+            file_date = datetime.strptime(date_str, "%Y-%m-%d")
+        except (ValueError, IndexError):
+            # Skip files that don't match the expected date format
+            continue
+
+        # Check if the file date is a Saturday (5) or Sunday (6) Weekday (0 - 4)
+        if file_date.weekday() >= 5:
+            if file_date.weekday() == 5:  # Saturday
+                delta_days = 1
+            else:  # Sunday
+                delta_days = 2
+            
+            friday_date = file_date - timedelta(days=delta_days)
+            friday_date_str = friday_date.strftime("%Y-%m-%d")
+
+            # Construct the target filename by replacing only the date part of the original filename.
+            # This preserves the rest of the name (e.g., '_stocks_etfs.parquet').
+            friday_filename = weekend_file_path.name.replace(date_str, friday_date_str)
+            target_friday_path = search_dir / friday_filename
+            
+            print(f"\nFound weekend file: '{weekend_file_path.name}'")
+            print(f"  -> Aligning to Friday target: '{target_friday_path.name}'")
+
+            # --- Critical Overwrite Check ---
+            # We check if a file with the *exact* target name already exists.
+            # This prevents a file like '..._stocks_etfs.parquet' from overwriting
+            # a different file like '..._stocks.parquet'.
+            if target_friday_path.exists():
+                print(f"  -> Target file already exists. It will be overwritten to ensure the latest data is used.")
+                target_friday_path.unlink()
+            else:     
+                print(f"  -> Target file does not exists. Created Friday file from weekend file.")
+
+            # Rename the weekend file to the Friday file, if Friday file exists
+            # Create the file, if Friday file does not exists
+            weekend_file_path.rename(target_friday_path)
+            print(f"  -> Success: Renamed to '{target_friday_path.name}'")
+
+    print("\nFile alignment check complete.")
+
+
+def filter_symbols_with_extreme_changes(
+    df: pd.DataFrame, 
+    threshold: float
+) -> Tuple[pd.DataFrame, List[str]]:
+    """
+    Removes all data for tickers that exhibit an extreme single-day price change.
+
+    Args:
+        df (pd.DataFrame): Clean DataFrame with a ('Ticker', 'Date') MultiIndex.
+        threshold (float): The maximum allowed absolute daily percentage change (e.g., 0.5 for 50%).
+
+    Returns:
+        Tuple[pd.DataFrame, List[str]]: A tuple containing:
+            - The cleaned DataFrame with offending tickers removed.
+            - A list of the ticker symbols that were removed.
+    """
+    print(f"Filtering symbols with daily 'Adj Close' changes > {threshold:.0%}")
+    
+    # Calculate daily percent change for each ticker independently
+    daily_pct_change = df.groupby(level='Ticker')['Adj Close'].pct_change()
+    
+    # Find rows where the absolute change exceeds the threshold
+    extreme_change_mask = daily_pct_change.abs() > threshold
+    
+    if not extreme_change_mask.any():
+        print("No tickers with extreme daily changes found.")
+        return df, []
+
+    # Get a unique list of tickers that have at least one extreme change
+    tickers_to_remove = df[extreme_change_mask].index.get_level_values('Ticker').unique().tolist()
+    
+    # Remove all data for these tickers
+    df_clean = df.drop(index=tickers_to_remove, level='Ticker')
+    
+    print(f"Removed {len(tickers_to_remove)} tickers due to extreme price changes.")
+    return df_clean, sorted(tickers_to_remove)
+
+
+def trim_dataframe_to_recent_days(
+    df: pd.DataFrame, 
+    days_to_keep: int
+) -> pd.DataFrame:
+    """
+    Trims a multi-index DataFrame to keep only the most recent N days for each ticker.
+
+    Args:
+        df (pd.DataFrame): DataFrame with a ('Ticker', 'Date') MultiIndex.
+        days_to_keep (int): The number of most recent data points to keep for each ticker.
+
+    Returns:
+        pd.DataFrame: A trimmed DataFrame.
+    """
+    print(f"Trimming data to keep the last {days_to_keep} days for each ticker...")
+    
+    # Ensure data is sorted by date within each ticker group for tail() to work correctly
+    df_sorted = df.sort_index(level='Date', ascending=True)
+    
+    # Get the last N rows for each ticker
+    df_trimmed = df_sorted.groupby(level='Ticker').tail(days_to_keep)
+    
+    # Clean up the index to remove old, unused levels for efficiency
+    df_trimmed.index = df_trimmed.index.remove_unused_levels()
+    
+    print(f"Trimming complete. Data shape: {df_trimmed.shape}")
+    return df_trimmed
+
 
 

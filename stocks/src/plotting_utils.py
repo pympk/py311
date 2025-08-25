@@ -82,7 +82,8 @@ def plot_market_sentiment_dashboard(df_history: pd.DataFrame):
         return
         
     sns.set_style("whitegrid")
-    plt.rcParams.update({'font.size': 10, 'axes.titlesize': 14, 'figure.titlesize': 18})
+    # plt.rcParams.update({'font.size': 10, 'axes.titlesize': 14, 'figure.titlesize': 18})
+    plt.rcParams.update({'font.size': 12, 'axes.titlesize': 16, 'figure.titlesize': 20})
 
     fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(20, 18), sharex=True)
     axes = axes.flatten()
@@ -350,6 +351,9 @@ def plot_comparative_performance(df, ticker_list, benchmark='VGT'):
     # Define periods
     periods = {
         '5D': 5,
+        '10D': 10,
+        '15D': 15,
+        '20D': 20,
         '1M': 30,
         '3M': 90,
         '6M': 180,

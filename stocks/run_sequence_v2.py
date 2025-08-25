@@ -21,7 +21,7 @@ NOTEBOOKS_DIR = ROOT_DIR / 'notebooks_mean_reversion'
 # Use the full, correct filenames of your refactored notebooks.
 notebooks_to_run = [
     "py1_clean_df_finviz_v15.ipynb",
-    "py2_clean_df_OHLCV_v10.ipynb",
+    "py2_clean_df_OHLCV_v12.ipynb",
     "py2_save_df_adj_close_v2.ipynb",    
     "py3_calc_perf_ratios_v17.ipynb",
     "py4_append_ratios_v10.ipynb",
@@ -31,7 +31,7 @@ notebooks_to_run = [
     "py7_view_daily_market_snapshot_v0.ipynb",
     "py8_portf_picks_short_term_v6.ipynb",
     "py9_backtest_v3.ipynb",
-    "py10_backtest_verification_v1.ipynb",
+    "py10_backtest_verification_v2.ipynb",
     "py90_interactive_backtest_v0.ipynb",  # Executed notebook won't display chart, run manually
 ]
 
