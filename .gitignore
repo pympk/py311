@@ -20,5 +20,5 @@ lumen_/
 stocks/notebooks_mean_reversion/executed/
 stocks/notebooks_mean_reversion/archive/
 stocks/logs/
-# stocks/data/
+stocks/data/
 # stocks/output/
