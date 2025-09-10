@@ -3010,7 +3010,7 @@ def create_rank_history_df(file_list, data_dir):
     return df_tickers_rank_history
 
 
-def calculate_rank_metrics(df_rank_history, tickers_list, lookback_days=20, recent_days=4):
+def calculate_rank_metrics_obsolete(df_rank_history, tickers_list, lookback_days=20, recent_days=4):
     """
     Calculates a comprehensive set of rank metrics for a given list of tickers.
 
@@ -3099,6 +3099,174 @@ def calculate_rank_metrics(df_rank_history, tickers_list, lookback_days=20, rece
         all_ticker_metrics.append(metrics_dict)
 
     return all_ticker_metrics
+
+
+import numpy as np
+import pandas as pd
+# The 'analyze_rank_series' function is assumed to be defined as you provided
+# from scipy import stats # This would be needed by analyze_rank_series
+
+def calculate_rank_metrics(df_rank_history, tickers_list, lookback_days=20, recent_days=4):
+    """
+    Calculates a comprehensive set of rank metrics for a given list of tickers.
+
+    This function does NOT filter tickers based on performance criteria. It processes
+    every ticker provided in the tickers_list and returns its calculated metrics,
+    making it suitable for generating features for analysis or other models.
+
+    Args:
+        df_rank_history (pd.DataFrame): DataFrame with tickers as index and dates as columns.
+        tickers_list (list): A list of ticker symbols to calculate metrics for.
+        lookback_days (int): The number of days for the "lookback" period.
+        recent_days (int): The number of days for the "recent" period.
+
+    Returns:
+        list: A list of dictionaries, where each dictionary contains the calculated
+              rank metrics for one ticker. Tickers with insufficient data in the
+              specified period are skipped.
+    """
+    # --- Guard Clause & Date Setup ---
+    total_days_needed = lookback_days + recent_days
+    if len(df_rank_history.columns) < total_days_needed:
+        print(f"Error: Not enough data. Need {total_days_needed} days, have {len(df_rank_history.columns)}.")
+        return []
+
+    all_dates = df_rank_history.columns
+    last_date = all_dates[-1]
+    recent_period_start_date = all_dates[-recent_days]
+    lookback_period_end_date = all_dates[-(recent_days + 1)]
+    lookback_period_start_date = all_dates[-(recent_days + lookback_days)]
+    
+    lookback_dates = df_rank_history.loc[:, lookback_period_start_date:lookback_period_end_date].columns
+    recent_dates = df_rank_history.loc[:, recent_period_start_date:last_date].columns
+    
+    all_ticker_metrics = []
+
+    print(f"Calculating metrics for {len(tickers_list)} tickers...")
+
+    # --- Calculation Loop ---
+    for ticker in tickers_list:
+        # Skip if ticker is not in the dataframe index
+        if ticker not in df_rank_history.index:
+            continue
+
+        lookback_ranks = df_rank_history.loc[ticker, lookback_dates].dropna()
+        recent_ranks = df_rank_history.loc[ticker, recent_dates].dropna()
+        
+        # Skip if there's not enough data for this specific ticker in the required periods
+        if len(lookback_ranks) < lookback_days or len(recent_ranks) < recent_days:
+            continue
+            
+        # --- Perform all calculations without any filtering 'if' statements ---
+        
+        # MODIFICATION: Use analyze_rank_series to calculate slope, r_squared, and penalty_score.
+        analysis_results = analyze_rank_series(lookback_ranks.values)
+        
+        # The analyze_rank_series function returns None if there's not enough data,
+        # so we add a check here just in case.
+        if not analysis_results:
+            continue
+            
+        slope = analysis_results['slope']
+        r_squared = analysis_results['r_squared']
+        penalty_score = analysis_results['penalty_score']
+        
+        all_ranks_in_period = pd.concat([lookback_ranks, recent_ranks])
+
+        # Key reference points
+        current_rank = int(recent_ranks.iloc[-1])
+        rank_at_start_of_recent = int(recent_ranks.iloc[0])
+        recent_bottom_rank = int(recent_ranks.max()) # Worst rank in recent period
+        total_peak_rank = int(all_ranks_in_period.min()) # Best rank over the whole period
+        
+        # This dictionary holds all calculated metrics for one ticker
+        metrics_dict = {
+            'ticker': ticker,
+            'lookback_slope': round(slope, 2),
+            'r_squared': round(r_squared, 4),      # Added r_squared
+            'penalty_score': round(penalty_score, 4), # Added penalty_score
+            
+            # Key Ranks
+            'current': current_rank,
+            'recent_start': rank_at_start_of_recent,
+            'lookback_start': int(lookback_ranks.iloc[0]),
+            'lookback_end': int(lookback_ranks.iloc[-1]),
+
+            # Best/Worst Ranks by Period
+            'best_lookback': int(lookback_ranks.min()),
+            'worst_lookback': int(lookback_ranks.max()),
+            'best_recent': int(recent_ranks.min()),
+            'worst_recent': recent_bottom_rank, # Same value, more descriptive name
+            'best_total': total_peak_rank,
+            'worst_total': int(all_ranks_in_period.max()),
+
+            # Derived Metrics (using clearer names)
+            'current_to_total_peak': current_rank - total_peak_rank,
+            'current_to_recent_start': current_rank - rank_at_start_of_recent,
+            'recent_bottom_to_recent_start': recent_bottom_rank - rank_at_start_of_recent,
+            'recent_bottom_to_current': recent_bottom_rank - current_rank,
+        }
+        all_ticker_metrics.append(metrics_dict)
+
+    return all_ticker_metrics
+
+import numpy as np
+from scipy import stats
+import pandas as pd
+import matplotlib.pyplot as plt
+
+def analyze_rank_series(ranks: np.ndarray):
+    """
+    Performs linear regression on a rank series and calculates metrics
+    to quantify its steadiness and volatility.
+
+    Args:
+        ranks (np.ndarray): A 1D array of ranks.
+
+    Returns:
+        dict: A dictionary containing key metrics about the series.
+    """
+    if len(ranks) < 2:
+        return None # Not enough data to perform regression
+
+    # Create the time-step variable (x-axis)
+    time_steps = np.arange(len(ranks))
+
+    # --- Perform Linear Regression using SciPy (fast and efficient) ---
+    slope, intercept, r_value, p_value, std_err = stats.linregress(time_steps, ranks)
+    
+    # --- Calculate Key Metrics ---
+    
+    # 1. R-squared: The primary measure of "steadiness" or linearity
+    r_squared = r_value**2
+
+    # 2. Predicted values and residuals
+    predicted_ranks = intercept + slope * time_steps
+    residuals = ranks - predicted_ranks
+
+    # 3. Maximum Absolute Residual: The single biggest jump from the trend
+    max_abs_residual = np.max(np.abs(residuals))
+
+    # 4. Standard Deviation of Returns: The primary measure of "jumpiness"
+    # Use pandas for a convenient way to calculate percentage change
+    returns = pd.Series(ranks).pct_change().dropna()
+    std_dev_returns = returns.std()
+    
+    # 5. Create a combined penalty score (example)
+    # A higher score means more penalty (less desirable series)
+    # We use (1 - r_squared) because a high r_squared is good.
+    # We add a small epsilon to avoid division by zero if std_dev is 0.
+    penalty_score = (1 - r_squared) * (std_dev_returns + 1e-9)
+
+    return {
+        "slope": slope,
+        "intercept": intercept,
+        "r_squared": r_squared,
+        "std_dev_returns": std_dev_returns,
+        "max_abs_residual": max_abs_residual,
+        "penalty_score": penalty_score,
+        "predicted_ranks": predicted_ranks # For plotting
+    }
 
 
 def filter_rank_metrics(
