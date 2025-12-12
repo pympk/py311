@@ -48,6 +48,7 @@ xarray = "0.16.1"                   # Required by aicsimageio
 # llama-index = "^0.10.37"
 papermill = "^2.6.0"
 kaleido = "0.2.1"
+pytest = "^9.0.2"
 
 [build-system]
 requires = ["poetry-core"]

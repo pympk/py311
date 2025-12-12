@@ -31,7 +31,7 @@ notebooks_to_run = [
     "py7_view_daily_market_snapshot_v0.ipynb",
     "py8_portf_picks_short_term_v6.ipynb",
     "py9_backtest_v3.ipynb",
-    "py10_backtest_verification_v2.ipynb",
+    "py10_backtest_verification_v3.ipynb",
     "py90_interactive_backtest_v0.ipynb",  # Executed notebook won't display chart, run manually
 ]
 
