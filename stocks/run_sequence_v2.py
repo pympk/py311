@@ -13,7 +13,7 @@ from pathlib import Path
 # location of this script (`__file__`) and getting its parent folder.
 # This ensures the script works correctly regardless of where it's called from.
 ROOT_DIR = Path(__file__).resolve().parent
-NOTEBOOKS_DIR = ROOT_DIR / 'notebooks_mean_reversion'
+NOTEBOOKS_DIR = ROOT_DIR / "notebooks_mean_reversion"
 
 # --- Master Control List for the Pipeline ---
 # This list defines the exact sequence of notebooks to be executed.
@@ -22,7 +22,7 @@ NOTEBOOKS_DIR = ROOT_DIR / 'notebooks_mean_reversion'
 notebooks_to_run = [
     "py1_clean_df_finviz_v15.ipynb",
     "py2_clean_df_OHLCV_v12.ipynb",
-    "py2_save_df_adj_close_v2.ipynb",    
+    "py2_save_df_adj_close_v2.ipynb",
     "py3_calc_perf_ratios_v17.ipynb",
     "py4_append_ratios_v10.ipynb",
     "py5_append_columns_v8.ipynb",
@@ -36,10 +36,10 @@ notebooks_to_run = [
 ]
 
 
-
 # =============================================================================
 # === 2. CORE EXECUTION FUNCTION
 # =============================================================================
+
 
 def run_notebook(notebook_path: Path) -> bool:
     """
@@ -63,36 +63,37 @@ def run_notebook(notebook_path: Path) -> bool:
     # Create a subdirectory named 'executed' inside the notebooks folder.
     # This prevents cluttering the main directory with output files.
     executed_dir = notebook_path.parent / "executed"
-    executed_dir.mkdir(parents=True, exist_ok=True) # `exist_ok=True` prevents errors if the dir already exists.
-    
+    executed_dir.mkdir(
+        parents=True, exist_ok=True
+    )  # `exist_ok=True` prevents errors if the dir already exists.
+
     # Define a clear output filename, e.g., "executed_py1_clean_df_finviz_v14.ipynb".
     output_path = executed_dir / f"executed_{notebook_path.name}"
-    
+
     # --- Command Construction: Build the command to run nbconvert ---
     # This list will be passed to the subprocess.
     command = [
-        sys.executable,        # Use the Python executable from the current environment.
-        "-m", "jupyter",       # A robust way to call jupyter, ensuring it's from the same env.
+        sys.executable,  # Use the Python executable from the current environment.
+        "-m",
+        "jupyter",  # A robust way to call jupyter, ensuring it's from the same env.
         "nbconvert",
-        "--to", "notebook",
-        "--execute",           # This flag tells nbconvert to run all cells in the notebook.
-        "--output", str(output_path),  # Specify the full output path.
-        str(notebook_path)     # The input notebook to run.
+        "--to",
+        "notebook",
+        "--execute",  # This flag tells nbconvert to run all cells in the notebook.
+        "--output",
+        str(output_path),  # Specify the full output path.
+        str(notebook_path),  # The input notebook to run.
     ]
-    
+
     print(f"\nRunning command: {' '.join(command)}")
-    
+
     # --- Subprocess Execution: Run the command and capture its output ---
     # The `cwd` argument is CRITICAL. It sets the working directory for the command.
     # We set it to the notebook's own folder, which ensures that any relative paths
     # inside the notebook (like importing `config.py` from the root) work correctly.
     # `check=False` prevents the script from crashing on error, so we can handle it.
     process = subprocess.run(
-        command, 
-        capture_output=True, 
-        text=True, 
-        check=False, 
-        cwd=notebook_path.parent 
+        command, capture_output=True, text=True, check=False, cwd=notebook_path.parent
     )
 
     # --- Error Handling: Check if the notebook ran successfully ---
@@ -108,6 +109,7 @@ def run_notebook(notebook_path: Path) -> bool:
         print(f"Output saved to: {output_path}")
         return True  # Signal success
 
+
 # =============================================================================
 # === 3. MAIN WORKFLOW
 # =============================================================================
@@ -116,12 +118,12 @@ print("Starting notebook execution sequence...")
 
 # Loop through the master list of notebooks defined at the top.
 for nb_filename in notebooks_to_run:
-    
+
     # Build the full, unambiguous path to the notebook.
     full_notebook_path = NOTEBOOKS_DIR / nb_filename
-    
+
     print(f"\n--- Running {nb_filename} ---")
-    
+
     # --- Fail-Fast Logic: Stop the entire sequence if any notebook fails ---
     # This is essential for automation. If a step like data cleaning fails,
     # we should not proceed to the analysis steps with bad data.

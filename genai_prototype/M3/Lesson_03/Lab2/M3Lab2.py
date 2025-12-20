@@ -30,16 +30,20 @@ with tab1:
 
     # Average sentiment by product
     st.header("Average Sentiment by Product")
-    avg_sentiment_product = df.groupby("PRODUCT")["SENTIMENT_SCORE"].mean().sort_values()
+    avg_sentiment_product = (
+        df.groupby("PRODUCT")["SENTIMENT_SCORE"].mean().sort_values()
+    )
 
-    fig1, ax1 = plt.subplots(figsize=(8,5))
+    fig1, ax1 = plt.subplots(figsize=(8, 5))
     avg_sentiment_product.plot(kind="barh", color="skyblue", ax=ax1)
     ax1.set_xlabel("Sentiment Score")
     ax1.set_ylabel("Product")
     st.pyplot(fig1)
 
     # Filter by product selection
-    product = st.selectbox("Choose a product", ["All Products"] + list(df["PRODUCT"].unique()))
+    product = st.selectbox(
+        "Choose a product", ["All Products"] + list(df["PRODUCT"].unique())
+    )
 
     if product != "All Products":
         filtered_data = df[df["PRODUCT"] == product]
@@ -52,9 +56,11 @@ with tab1:
 
     # Average sentiment by delivery status
     st.header(f"Average Sentiment by Delivery Status for {product}")
-    avg_sentiment_status = filtered_data.groupby("STATUS")["SENTIMENT_SCORE"].mean().sort_values()
+    avg_sentiment_status = (
+        filtered_data.groupby("STATUS")["SENTIMENT_SCORE"].mean().sort_values()
+    )
 
-    fig2, ax2 = plt.subplots(figsize=(8,5))
+    fig2, ax2 = plt.subplots(figsize=(8, 5))
     avg_sentiment_status.plot(kind="barh", color="slateblue", ax=ax2)
     ax2.set_xlabel("Sentiment Score")
     ax2.set_ylabel("Delivery Status")
@@ -74,23 +80,21 @@ with tab2:
             root = Root(session)
 
             # Query service
-            svc = (root
-                .databases["AVALANCHE_DB"]
+            svc = (
+                root.databases["AVALANCHE_DB"]
                 .schemas["AVALANCHE_SCHEMA"]
                 .cortex_search_services["AVALANCHE_SEARCH_SERVICE"]
             )
 
             resp = svc.search(
-                query=prompt,
-                columns=["CHUNK", "file_name"],
-                limit=3
+                query=prompt, columns=["CHUNK", "file_name"], limit=3
             ).to_json()
 
             # JSON formatting
             json_conv = json.loads(resp) if isinstance(resp, str) else resp
-            search_df = pd.json_normalize(json_conv['results'])
+            search_df = pd.json_normalize(json_conv["results"])
 
             for _, row in search_df.iterrows():
                 st.write(f"**{row['CHUNK']}**")
-                st.caption(row['file_name'])
-                st.write('---')
+                st.caption(row["file_name"])
+                st.write("---")

@@ -2,7 +2,7 @@ import subprocess
 import subprocess
 import sys
 import os
-from pathlib import Path # <--- Import Path from pathlib
+from pathlib import Path  # <--- Import Path from pathlib
 
 # List of notebooks to run in order
 notebooks = [
@@ -20,6 +20,7 @@ notebooks = [
     # "py11_calc_portf_performance_v0.ipynb",
 ]
 
+
 def run_notebook(notebook_path):
     """Executes a notebook using nbconvert and saves it to an 'executed' subdirectory."""
 
@@ -27,7 +28,7 @@ def run_notebook(notebook_path):
     p_notebook = Path(notebook_path)
 
     # Define the target directory name
-    executed_dir_name = "executed" # Use a string
+    executed_dir_name = "executed"  # Use a string
 
     # Create the full path to the target directory
     # p_notebook.parent is the directory containing the original notebook
@@ -35,7 +36,7 @@ def run_notebook(notebook_path):
 
     # --- Ensure the target directory exists ---
     # os.makedirs(executed_dir_path, exist_ok=True) # Using os module
-    executed_dir_path.mkdir(parents=True, exist_ok=True) # Using pathlib (preferred)
+    executed_dir_path.mkdir(parents=True, exist_ok=True)  # Using pathlib (preferred)
 
     # # --- Clear the contents of the executed directory ---
     # # Added section to delete existing contents
@@ -66,7 +67,7 @@ def run_notebook(notebook_path):
 
     # Create the new Path object by joining the target directory path
     # with the new filename.
-    output_path_obj = executed_dir_path / output_filename # Corrected join
+    output_path_obj = executed_dir_path / output_filename  # Corrected join
 
     # Convert the Path object back to a string for use with subprocess
     output_path = str(output_path_obj)
@@ -74,20 +75,26 @@ def run_notebook(notebook_path):
     # Ensure you are using the jupyter from the correct environment,
     # sys.executable often points to the python interpreter.
     # Constructing the path to jupyter might be more robust in complex setups.
-    jupyter_executable = os.path.join(os.path.dirname(sys.executable), 'jupyter') # More robust way to find jupyter
+    jupyter_executable = os.path.join(
+        os.path.dirname(sys.executable), "jupyter"
+    )  # More robust way to find jupyter
 
     command = [
-        jupyter_executable, # Use the specific jupyter executable
+        jupyter_executable,  # Use the specific jupyter executable
         "nbconvert",
-        "--to", "notebook",
+        "--to",
+        "notebook",
         "--execute",
-        "--output", output_path, # Use the correctly constructed path
+        "--output",
+        output_path,  # Use the correctly constructed path
         # "--inplace", # Uncomment if you want to modify the original
         # "--allow-errors", # Uncomment to continue on errors
-        notebook_path
+        notebook_path,
     ]
     print(f"\nRunning command: {' '.join(command)}")
-    process = subprocess.run(command, capture_output=True, text=True, check=False) # check=False allows us to handle errors manually
+    process = subprocess.run(
+        command, capture_output=True, text=True, check=False
+    )  # check=False allows us to handle errors manually
 
     if process.returncode != 0:
         print(f"Error executing {notebook_path}:")
@@ -110,6 +117,6 @@ for nb in notebooks:
     print(f"\n--- Running {nb} ---")
     if not run_notebook(nb):
         print(f"Execution failed for {nb}. Stopping sequence.")
-        sys.exit(1) # Exit with error code
+        sys.exit(1)  # Exit with error code
 
 print("\n--- All notebooks executed successfully! ---")

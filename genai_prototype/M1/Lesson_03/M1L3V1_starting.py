@@ -16,4 +16,3 @@ def get_dataset_path():
 
 st.title("Hello, GenAI!")
 st.write("This is your GenAI-powered data processing app.")
-

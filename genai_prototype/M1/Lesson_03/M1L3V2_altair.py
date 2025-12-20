@@ -18,7 +18,7 @@ def get_dataset_path():
 # Helper function to clean text
 def clean_text(text):
     text = text.lower().strip()
-    text = re.sub(r'[^\w\s]', '', text)
+    text = re.sub(r"[^\w\s]", "", text)
     return text
 
 
@@ -40,7 +40,9 @@ with col1:
 with col2:
     if st.button("🧹 Parse Reviews"):
         if "df" in st.session_state:
-            st.session_state["df"]["CLEANED_SUMMARY"] = st.session_state["df"]["SUMMARY"].apply(clean_text)
+            st.session_state["df"]["CLEANED_SUMMARY"] = st.session_state["df"][
+                "SUMMARY"
+            ].apply(clean_text)
             st.success("Reviews parsed and cleaned!")
         else:
             st.warning("Please ingest the dataset first.")
@@ -49,27 +51,34 @@ with col2:
 if "df" in st.session_state:
     # Product filter dropdown
     st.subheader("🔍 Filter by Product")
-    product = st.selectbox("Choose a product", ["All Products"] + list(st.session_state["df"]["PRODUCT"].unique()))
+    product = st.selectbox(
+        "Choose a product",
+        ["All Products"] + list(st.session_state["df"]["PRODUCT"].unique()),
+    )
     st.subheader(f"📁 Reviews for {product}")
 
     if product != "All Products":
-        filtered_df = st.session_state["df"][st.session_state["df"]["PRODUCT"] == product]
+        filtered_df = st.session_state["df"][
+            st.session_state["df"]["PRODUCT"] == product
+        ]
     else:
         filtered_df = st.session_state["df"]
     st.dataframe(filtered_df)
-    
+
     st.subheader(f"Sentiment Score Distribution for {product}")
     # Create Altair histogram using add_params instead of add_selection
     interval = alt.selection_interval()
-    chart = alt.Chart(filtered_df).mark_bar().add_params(
-        interval
-    ).encode(
-        alt.X("SENTIMENT_SCORE:Q", bin=alt.Bin(maxbins=10), title="Sentiment Score"),
-        alt.Y("count():Q", title="Frequency"),
-        tooltip=["count():Q"]
-    ).properties(
-        width=600,
-        height=400,
-        title="Distribution of Sentiment Scores"
+    chart = (
+        alt.Chart(filtered_df)
+        .mark_bar()
+        .add_params(interval)
+        .encode(
+            alt.X(
+                "SENTIMENT_SCORE:Q", bin=alt.Bin(maxbins=10), title="Sentiment Score"
+            ),
+            alt.Y("count():Q", title="Frequency"),
+            tooltip=["count():Q"],
+        )
+        .properties(width=600, height=400, title="Distribution of Sentiment Scores")
     )
     st.altair_chart(chart, use_container_width=True)

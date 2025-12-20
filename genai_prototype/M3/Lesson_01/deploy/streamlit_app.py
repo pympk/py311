@@ -20,12 +20,14 @@ df_reviews = session.sql(query).to_pandas()
 df_string = df_reviews.to_string(index=False)
 
 # Convert date columns to datetime
-df_reviews['REVIEW_DATE'] = pd.to_datetime(df_reviews['REVIEW_DATE'])
-df_reviews['SHIPPING_DATE'] = pd.to_datetime(df_reviews['SHIPPING_DATE'])
+df_reviews["REVIEW_DATE"] = pd.to_datetime(df_reviews["REVIEW_DATE"])
+df_reviews["SHIPPING_DATE"] = pd.to_datetime(df_reviews["SHIPPING_DATE"])
 
 # Visualization: Average Sentiment by Product
 st.subheader("Average Sentiment by Product")
-product_sentiment = df_reviews.groupby("PRODUCT")["SENTIMENT_SCORE"].mean().sort_values()
+product_sentiment = (
+    df_reviews.groupby("PRODUCT")["SENTIMENT_SCORE"].mean().sort_values()
+)
 
 fig, ax = plt.subplots()
 product_sentiment.plot(kind="barh", ax=ax, title="Average Sentiment by Product")
@@ -36,7 +38,9 @@ st.pyplot(fig)
 # Product filter on the main page
 st.subheader("Filter by Product")
 
-product = st.selectbox("Choose a product", ["All Products"] + list(df_reviews["PRODUCT"].unique()))
+product = st.selectbox(
+    "Choose a product", ["All Products"] + list(df_reviews["PRODUCT"].unique())
+)
 
 if product != "All Products":
     filtered_data = df_reviews[df_reviews["PRODUCT"] == product]
@@ -51,7 +55,7 @@ st.dataframe(filtered_data)
 # Visualization: Sentiment Distribution for Selected Products
 st.subheader(f"Sentiment Distribution for {product}")
 fig, ax = plt.subplots()
-filtered_data['SENTIMENT_SCORE'].hist(ax=ax, bins=20)
+filtered_data["SENTIMENT_SCORE"].hist(ax=ax, bins=20)
 ax.set_title("Distribution of Sentiment Scores")
 ax.set_xlabel("Sentiment Score")
 ax.set_ylabel("Frequency")
@@ -65,5 +69,7 @@ if user_question:
     # The cortex complete does not work outside Snowflake
     # response = complete(model="claude-3-5-sonnet", prompt=f"Answer this question using the dataset: {user_question} <context>{df_string}</context>", session=session)
     # Use SQL instead:
-    response = session.sql(f"SELECT SNOWFLAKE.CORTEX.COMPLETE('claude-3-5-sonnet', '{user_question}');").collect()[0][0]
+    response = session.sql(
+        f"SELECT SNOWFLAKE.CORTEX.COMPLETE('claude-3-5-sonnet', '{user_question}');"
+    ).collect()[0][0]
     st.write(response)

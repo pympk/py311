@@ -3,9 +3,10 @@ import pandas as pd
 from snowflake.snowpark.context import get_active_session
 
 # --- Constants and Configuration ---
-MODELS = ['claude-3-5-sonnet', 'mistral-large', 'gemma-7b', 'llama3-8b']
+MODELS = ["claude-3-5-sonnet", "mistral-large", "gemma-7b", "llama3-8b"]
 CONTEXT_TABLE = "AVALANCHE_DB.AVALANCHE_SCHEMA.COMBINED_REVIEWS_SHIPPING"
 DEFAULT_HISTORY_LENGTH = 5
+
 
 # --- Data Loading (Cached) ---
 @st.cache_data
@@ -17,6 +18,7 @@ def load_context_dataframe(table_name: str) -> pd.DataFrame:
         st.error(f"Error loading data from {table_name}: {e}")
         return pd.DataFrame()
 
+
 # --- Session State Initialization ---
 def initialize_session_state():
     """Initializes required session state variables if they don't exist."""
@@ -27,12 +29,15 @@ def initialize_session_state():
     if "use_chat_history" not in st.session_state:
         st.session_state.use_chat_history = True
     if "debug" not in st.session_state:
-         st.session_state.debug = False
+        st.session_state.debug = False
+
 
 # --- UI Setup ---
 def setup_sidebar():
     """Sets up the sidebar widgets."""
-    st.sidebar.button("Clear conversation", on_click=lambda: st.session_state.update({"messages": []}))
+    st.sidebar.button(
+        "Clear conversation", on_click=lambda: st.session_state.update({"messages": []})
+    )
     st.sidebar.toggle("Debug", key="debug")
     st.sidebar.toggle("Use chat history", key="use_chat_history")
 
@@ -71,8 +76,7 @@ def complete(model: str, prompt: str) -> str:
     """Calls the Snowflake Cortex complete function using parameterized query."""
     try:
         result = session.sql(
-            "SELECT snowflake.cortex.complete(?, ?)",
-            params=[model, prompt]
+            "SELECT snowflake.cortex.complete(?, ?)", params=[model, prompt]
         ).collect()
         if not result:
             return "Sorry, received no response from the model."
@@ -80,6 +84,7 @@ def complete(model: str, prompt: str) -> str:
     except Exception as e:
         st.error(f"Error calling Cortex complete function: {e}")
         return "Sorry, I encountered an error trying to generate a response."
+
 
 def format_dataframe_context(df: pd.DataFrame) -> str:
     """Formats the DataFrame into a string for the prompt context."""
@@ -121,6 +126,7 @@ Answer:
         st.sidebar.text_area("Generated Prompt", prompt, height=400)
     return prompt
 
+
 # --- Main Application Logic ---
 def main():
     st.title("💬 Chatbot Augmented with DataFrame Context")
@@ -130,7 +136,9 @@ def main():
 
     context_df = load_context_dataframe(CONTEXT_TABLE)
     if context_df.empty and CONTEXT_TABLE:
-        st.warning(f"Could not load data from {CONTEXT_TABLE} or it is empty. No DataFrame context will be used.")
+        st.warning(
+            f"Could not load data from {CONTEXT_TABLE} or it is empty. No DataFrame context will be used."
+        )
 
     icons = {"assistant": "❄️", "user": "👤"}
     for message in st.session_state.messages:
@@ -149,12 +157,17 @@ def main():
             with st.spinner("Thinking..."):
                 dataframe_context_str = format_dataframe_context(context_df)
                 chat_history_str = get_formatted_chat_history()
-                full_prompt = create_prompt(user_input, dataframe_context_str, chat_history_str)
+                full_prompt = create_prompt(
+                    user_input, dataframe_context_str, chat_history_str
+                )
                 model_to_use = st.session_state.model_name
                 generated_response = complete(model_to_use, full_prompt)
                 message_placeholder.markdown(generated_response)
 
-        st.session_state.messages.append({"role": "assistant", "content": generated_response})
+        st.session_state.messages.append(
+            {"role": "assistant", "content": generated_response}
+        )
+
 
 # --- Entry Point ---
 if __name__ == "__main__":
@@ -163,4 +176,6 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         st.error(f"Failed to get active Snowflake session: {e}")
-        st.info("Please ensure you are running this Streamlit app within a Snowflake environment.")
+        st.info(
+            "Please ensure you are running this Streamlit app within a Snowflake environment."
+        )
