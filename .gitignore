@@ -24,3 +24,8 @@ stocks/data/
 stocks/notebooks_rank/_working/export_csv/
 # stocks/output/
 
+# --- NEW: Large Data Files ---
+stocks/notebooks_RLVR/*.csv
+stocks/notebooks_RLVR/bot_verification/*.parquet
+stocks/notebooks_RLVR/bot_verification/*.csv
+
