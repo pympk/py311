@@ -32,7 +32,7 @@ notebooks_to_run = [
     "py8_portf_picks_short_term_v6.ipynb",
     "py9_backtest_v3.ipynb",
     "py10_backtest_verification_v3.ipynb",
-    "py90_interactive_backtest_v0.ipynb",  # Executed notebook won't display chart, run manually
+    "py90_interactive_backtest_v1.ipynb",  # Executed notebook won't display chart, run manually
 ]
 
 
