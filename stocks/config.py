@@ -4,7 +4,7 @@
 from pathlib import Path
 
 # --- File path configuration ---
-DATE_STR = '2026-01-26'
+DATE_STR = '2026-01-29'
 DOWNLOAD_DIR = Path('C:/Users/ping/Downloads')
 DEST_DIR = Path('c:/Users/ping/Files_win10/python/py311/stocks/data')
 
