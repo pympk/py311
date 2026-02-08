@@ -4084,3 +4084,73 @@ def trim_dataframe_to_recent_days(df: pd.DataFrame, days_to_keep: int) -> pd.Dat
 
     print(f"Trimming complete. Data shape: {df_trimmed.shape}")
     return df_trimmed
+
+
+def generate_ohlcv(
+    tickers: list[str],
+    start_date: str,
+    end_date: str,
+    price_range: tuple[float, float] = (100, 200),
+    vol_range: tuple[float, float] = (0.01, 0.05),
+    seed: int = 24,
+) -> pd.DataFrame:
+    """
+    Generate realistic OHLCV dataframe with proper High/Low constraints.
+
+    Parameters
+    ----------
+    tickers : list
+        List of ticker symbols (e.g., ["AAPL", "GOOG"])
+    start_date : str
+        Start date in "YYYY-MM-DD" format
+    end_date : str
+        End date in "YYYY-MM-DD" format
+    price_range : tuple, optional
+        Min and max price for Open generation, default (100, 200)
+    vol_range : tuple, optional
+        Min and max daily volatility range (as decimal), default (0.01, 0.05)
+    seed : int, optional
+        Random seed for reproducibility, default 24
+
+    Returns
+    -------
+    pd.DataFrame
+        MultiIndex DataFrame with Ticker, Date and OHLCV columns
+    """
+    np.random.seed(seed)
+
+    # Create date range (business days)
+    dates = pd.date_range(start=start_date, end=end_date, freq="B")
+
+    # Build MultiIndex
+    index = pd.MultiIndex.from_product([tickers, dates], names=["Ticker", "Date"])
+    n = len(index)
+
+    # Generate prices with realistic intraday structure
+    open_prices = np.random.uniform(price_range[0], price_range[1], n)
+    daily_range = np.random.uniform(vol_range[0], vol_range[1], n)
+
+    # High must be >= Open, Low must be <= Open
+    high_prices = open_prices * (1 + np.random.uniform(0, daily_range, n))
+    low_prices = open_prices * (1 - np.random.uniform(0, daily_range, n))
+
+    # Close between Low and High
+    close_weight = np.random.uniform(0, 1, n)
+    close_prices = low_prices + close_weight * (high_prices - low_prices)
+
+    # Assemble
+    data = {
+        "Open": open_prices,
+        "High": high_prices,
+        "Low": low_prices,
+        "Close": close_prices,
+        "Volume": np.random.randint(1_000_000, 2_000_000, n),
+    }
+
+    df = pd.DataFrame(data=data, index=index)
+
+    # Compact but complete
+    assert (df["High"] == df[["Open", "High", "Low", "Close"]].max(axis=1)).all()
+    assert (df["Low"] == df[["Open", "High", "Low", "Close"]].min(axis=1)).all()
+
+    return df
