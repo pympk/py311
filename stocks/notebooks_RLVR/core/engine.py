@@ -1,124 +1,20 @@
 import pandas as pd
 import numpy as np
-from typing import List, Dict, Any, Tuple, Optional
-from dataclasses import dataclass, field
+
+from typing import List
+
 from core.result import Result
-
-# # Assume GLOBAL_SETTINGS and MarketObservation are defined elsewhere or imported
-# # For now, we'll define minimal placeholders to make the code runnable.
-# GLOBAL_SETTINGS = {
-#     "calendar_ticker": "SPY",
-#     "handle_zeros_as_nan": True,
-#     "max_data_gap_ffill": 2,
-#     "nan_price_replacement": 0.0,
-# }
-
-
-class MarketObservation(dict):  # Placeholder
-    pass
-
-
-@dataclass
-class EngineInput:
-    # Placeholder for actual EngineInput fields
-    mode: str = "Manual List"
-    manual_tickers: List[str] = field(default_factory=list)
-    universe_subset: Optional[List[str]] = None
-    debug: bool = False
-    quality_thresholds: Dict[str, Any] = field(default_factory=dict)
-    metric: str = "Sharpe"
-    rank_start: int = 0
-    rank_end: int = 5
-    benchmark_ticker: str = "SPY"
-    lookback_period: int = 21
-    holding_period: int = 5
-    start_date: pd.Timestamp = pd.Timestamp.now()
-
-
-@dataclass
-class EngineOutput:
-    # Placeholder for actual EngineOutput fields
-    portfolio_series: Optional[pd.Series] = None
-    benchmark_series: Optional[pd.Series] = None
-    portfolio_atrp_series: Optional[pd.Series] = None
-    benchmark_atrp_series: Optional[pd.Series] = None
-    portfolio_trp_series: Optional[pd.Series] = None
-    benchmark_trp_series: Optional[pd.Series] = None
-    normalized_plot_data: Optional[pd.DataFrame] = None
-    tickers: List[str] = field(default_factory=list)
-    initial_weights: Optional[pd.Series] = None
-    perf_metrics: Dict[str, float] = field(default_factory=dict)
-    results_df: pd.DataFrame = field(default_factory=pd.DataFrame)
-    start_date: pd.Timestamp = pd.Timestamp.min
-    decision_date: pd.Timestamp = pd.Timestamp.min
-    buy_date: pd.Timestamp = pd.Timestamp.min
-    holding_end_date: pd.Timestamp = pd.Timestamp.min
-    error_msg: Optional[str] = None
-    debug_data: Optional[Dict[str, Any]] = None
-    macro_df: Optional[pd.DataFrame] = None  # Added placeholder
-
-
-# --- Placeholder for QuantUtils and calculate_buy_and_hold_performance ---
-# These will be moved to their respective modules later.
-class QuantUtils:
-    @staticmethod
-    def calculate_gain(series):
-        return (
-            series.iloc[-1] / series.iloc[0] - 1
-            if not series.empty and series.iloc[0] != 0
-            else 0
-        )
-
-    @staticmethod
-    def calculate_sharpe(series):
-        return (
-            series.mean() / series.std() * np.sqrt(252)
-            if not series.empty and series.std() != 0
-            else 0
-        )
-
-    @staticmethod
-    def calculate_sharpe_vol(returns, vol):
-        return returns.mean() / vol * np.sqrt(252) if vol != 0 else 0
-
-    # Add other QuantUtils methods as needed based on METRIC_REGISTRY
-
-
-def calculate_buy_and_hold_performance(*args, **kwargs):
-    # This will be replaced by actual logic from trading/performance.py
-    print("Placeholder: calculate_buy_and_hold_performance called")
-    # Simulate returning data structure similar to original
-    # (price_series, returns_series, atrp_series, trp_series)
-    dummy_dates = pd.date_range(start="2023-01-01", periods=10, freq="B")
-    dummy_prices = pd.Series(np.random.rand(10) * 100, index=dummy_dates)
-    dummy_returns = dummy_prices.pct_change().dropna()
-    dummy_atrp = pd.Series(np.random.rand(10), index=dummy_dates)
-    dummy_trp = pd.Series(np.random.rand(10), index=dummy_dates)
-    return dummy_prices, dummy_returns, dummy_atrp, dummy_trp
-
-
-# --- End Placeholder ---
-
-# Placeholder for METRIC_REGISTRY - will move to strategy/registry.py
-METRIC_REGISTRY = {
-    "Price Gain": lambda obs: QuantUtils.calculate_gain(obs.get("lookback_close")),
-    "Sharpe": lambda obs: QuantUtils.calculate_sharpe(obs.get("lookback_returns")),
-    "Sharpe (ATRP)": lambda obs: QuantUtils.calculate_sharpe_vol(
-        obs.get("lookback_returns"), obs.get("atrp")
-    ),
-    "Sharpe (TRP)": lambda obs: QuantUtils.calculate_sharpe_vol(
-        obs.get("lookback_returns"), obs.get("trp")
-    ),
-    "Momentum (21d)": lambda obs: obs.get("mom_21"),
-    "Info Ratio (Stdev_Alpha, 63d)": lambda obs: obs.get("ir_63"),
-    "Consistency (WinRate 5d)": lambda obs: obs.get("consistency"),
-    "Oversold (-RSI)": lambda obs: -obs.get("rsi"),
-    "Dip Buyer (Drawdown -dd_21)": lambda obs: -obs.get("dd_21"),
-    "Low Volatility (-ATRP)": lambda obs: -obs.get("atrp"),
-}
+from core.contracts import EngineInput, EngineOutput, MarketObservation
+from core.settings import GLOBAL_SETTINGS
+from core.quant import (
+    QuantUtils,
+    calculate_buy_and_hold_performance,
+)
+from strategy.registry import METRIC_REGISTRY
 
 
 class AlphaEngine:
+
     def __init__(
         self,
         df_ohlcv: pd.DataFrame,
@@ -297,19 +193,33 @@ class AlphaEngine:
             return self.Result(err=f"❌ Math Error in '{metric_name}': {str(e)}")
 
     def _rank_and_slice(self, raw_scores, inputs, observation) -> Result:
-        # This will be refactored into core/engine.py or a dedicated ranking module
-        if raw_scores.isna().all():
-            return self.Result(err="❌ All strategy scores are NaN. Check your data.")
+        # 1. Strip out the NaNs before ranking
+        clean_scores = raw_scores.dropna()
+        dropped_tickers = raw_scores[
+            raw_scores.isna()
+        ].index.tolist()  # Track what we removed
 
-        sorted_tickers = raw_scores.sort_values(ascending=False)
+        if clean_scores.empty:
+            return Result(
+                err="❌ All strategy scores are NaN or missing.",
+                debug={
+                    "dropped_tickers": dropped_tickers
+                },  # Still useful even on failure
+            )
 
+        # 2. Rank only the valid data
+        sorted_tickers = clean_scores.sort_values(ascending=False)
         start_idx = max(0, inputs.rank_start - 1)
         end_idx = inputs.rank_end
         selected_tickers = sorted_tickers.iloc[start_idx:end_idx].index.tolist()
 
         if not selected_tickers:
             return self.Result(
-                err=f"❌ Ranking returned zero tickers for range {inputs.rank_start}-{inputs.rank_end}."
+                err=f"❌ Ranking returned zero tickers for range {inputs.rank_start}-{inputs.rank_end}.",
+                debug={
+                    "dropped_tickers": dropped_tickers,
+                    "available_count": len(clean_scores),
+                },
             )
 
         try:
@@ -320,6 +230,9 @@ class AlphaEngine:
                     "Lookback_ATRP": observation["atrp"],
                 }
             )
+
+            # Add visibility into data quality issues
+            debug_artifact["Was_Dropped"] = debug_artifact.index.isin(dropped_tickers)
 
             results_table = pd.DataFrame(
                 {
@@ -335,11 +248,22 @@ class AlphaEngine:
                 val={
                     "tickers": selected_tickers,
                     "table": results_table,
-                    "debug": {"full_universe_ranking": debug_artifact},
+                    "debug": {
+                        "full_universe_ranking": debug_artifact,
+                        "meta": {
+                            "dropped_count": len(dropped_tickers),
+                            "dropped_tickers": dropped_tickers,  # Explicit list
+                            "clean_count": len(clean_scores),
+                            "selection_range": f"{inputs.rank_start}-{inputs.rank_end}",
+                        },
+                    },
                 }
             )
         except Exception as e:
-            return self.Result(err=f"❌ Ranking/Slicing Error: {str(e)}")
+            return self.Result(
+                err=f"❌ Ranking/Slicing Error: {str(e)}",
+                debug={"dropped_tickers": dropped_tickers},  # Preserve context on crash
+            )
 
     def _select_tickers(self, inputs, start_date, decision_date):
         # This logic will be moved to core/engine.py or a dedicated selection module
