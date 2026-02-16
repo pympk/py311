@@ -44,6 +44,21 @@ class QuantUtils:
         if len(clean) < min_points:
             return 0.0
 
+        if len(clean) < min_points:
+            return 0.0
+
+        # --- FIX START ---
+        first_val = clean.iloc[0]
+        last_val = clean.iloc[-1]
+
+        # Logarithms require positive numbers.
+        # If price is 0 (or negative), the investment is effectively a total loss (-inf).
+        # We handle this to avoid the RuntimeWarning.
+        if first_val <= 0 or last_val <= 0:
+            # If the price dropped to 0, return a very large negative number
+            # or -1.0 (representing 100% loss) depending on your preference.
+            return -10.0
+
         # Calculate Logarithmic Gain: ln(last_price / first_price)
         # This represents the continuously compounded rate of return
         gain_val = float(np.log(clean.iloc[-1] / clean.iloc[0]))
