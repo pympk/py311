@@ -36,6 +36,18 @@ class MarketObservation(TypedDict):
 
 
 @dataclass
+class FilterPack:
+    """The 'Saved List' and state for the second filter pass."""
+
+    decision_date: Optional[pd.Timestamp] = None
+    eligible_pool: List[str] = field(default_factory=list)  # Survivors of Stage 1
+    selected_tickers: List[str] = field(default_factory=list)  # Final output
+
+    def __repr__(self):
+        return f"FilterPack(Date: {self.decision_date}, Eligible: {len(self.eligible_pool)}, Selected: {len(self.selected_tickers)})"
+
+
+@dataclass
 class EngineInput:
     mode: str
     start_date: pd.Timestamp
