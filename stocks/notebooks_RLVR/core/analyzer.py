@@ -388,20 +388,14 @@ class WalkForwardAnalyzer:
                 self.fig.data[51].visible = False
 
             # --- B. Rows 2 & 3: Macro Data ---
-            # Check if macro_df exists and slice to current window
+            macro_slice = pd.DataFrame()  # Initialize empty
             if (
                 hasattr(res, "macro_df")
                 and res.macro_df is not None
                 and not res.normalized_plot_data.empty
             ):
                 plot_dates = res.normalized_plot_data.index
-                # Ensure macro_df has DatetimeIndex
-                if not isinstance(res.macro_df.index, pd.DatetimeIndex):
-                    macro_index = pd.to_datetime(res.macro_df.index)
-                else:
-                    macro_index = res.macro_df.index
-
-                # Slice macro data to match plot window for performance and visual alignment
+                macro_index = pd.to_datetime(res.macro_df.index)
                 mask = (macro_index >= plot_dates.min()) & (
                     macro_index <= plot_dates.max()
                 )
@@ -413,13 +407,11 @@ class WalkForwardAnalyzer:
                         x=macro_slice.index, y=macro_slice["Macro_Trend"], visible=True
                     )
 
-                    # Update Trend Velocity (Trace 53) --- ADD THIS BLOCK
+                    # Update Trend Velocity (Trace 53)
                     if "Macro_Trend_Vel_Z" in macro_slice.columns:
                         self.fig.data[53].update(
                             x=macro_slice.index,
-                            y=macro_slice[
-                                "Macro_Trend_Vel_Z"
-                            ],  # Changed from Macro_Trend_Vel
+                            y=macro_slice["Macro_Trend_Vel_Z"],
                             visible=True,
                         )
 
@@ -432,39 +424,10 @@ class WalkForwardAnalyzer:
                         )
 
             else:
-                # Hide macro traces if no data
-                self.fig.data[52].visible = False
-                self.fig.data[53].visible = False
-                self.fig.data[54].visible = False  # <-- ADD THIS LINE
+                for idx in [52, 53, 54]:
+                    self.fig.data[idx].visible = False
 
-            # --- C. Vertical Event Lines (Span all rows) ---
-            # Using yref="paper" spans 0-1 across all subplots
-            shapes = [
-                dict(
-                    type="line",
-                    x0=res.decision_date,
-                    y0=0,
-                    x1=res.decision_date,
-                    y1=1,
-                    xref="x",
-                    yref="paper",  # Critical: spans all subplots
-                    line=dict(color="red", width=2, dash="dash"),
-                    name="Decision Date",
-                ),
-                dict(
-                    type="line",
-                    x0=res.buy_date,
-                    y0=0,
-                    x1=res.buy_date,
-                    y1=1,
-                    xref="x",
-                    yref="paper",
-                    line=dict(color="blue", width=2, dash="dot"),
-                    name="Execution Date",
-                ),
-            ]
-
-            # Vertical event lines spanning all rows (yref='paper')
+            # --- C. Vertical Event Lines ---
             event_shapes = [
                 dict(
                     type="line",
@@ -488,10 +451,8 @@ class WalkForwardAnalyzer:
                 ),
             ]
 
-            # Static horizontal reference lines (manualdicts to avoid add_hline bugs)
-            # yref mapping: row2='y2', row3='y3', row4='y4'
+            # --- D. Static horizontal reference lines ---
             static_shapes = [
-                # Row 2: Trend zero line
                 dict(
                     type="line",
                     y0=0,
@@ -502,7 +463,6 @@ class WalkForwardAnalyzer:
                     yref="y2",
                     line=dict(color="gray", width=1, dash="dot"),
                 ),
-                # Row 3: Velocity Accel (+2)
                 dict(
                     type="line",
                     y0=2,
@@ -513,7 +473,6 @@ class WalkForwardAnalyzer:
                     yref="y3",
                     line=dict(color="red", width=1, dash="dash"),
                 ),
-                # Row 3: Velocity Decel (-2)
                 dict(
                     type="line",
                     y0=-2,
@@ -524,7 +483,6 @@ class WalkForwardAnalyzer:
                     yref="y3",
                     line=dict(color="green", width=1, dash="dash"),
                 ),
-                # Row 3: Velocity Zero
                 dict(
                     type="line",
                     y0=0,
@@ -535,7 +493,6 @@ class WalkForwardAnalyzer:
                     yref="y3",
                     line=dict(color="gray", width=1, dash="dot"),
                 ),
-                # Row 4: VIX Fear (+2)
                 dict(
                     type="line",
                     y0=2,
@@ -546,7 +503,6 @@ class WalkForwardAnalyzer:
                     yref="y4",
                     line=dict(color="red", width=1, dash="dash"),
                 ),
-                # Row 4: VIX Calm (-1.5)
                 dict(
                     type="line",
                     y0=-1.5,
@@ -559,7 +515,72 @@ class WalkForwardAnalyzer:
                 ),
             ]
 
-            self.fig.layout.shapes = event_shapes + static_shapes
+            # --- E. NEW: MULTI-REGIME VOLATILITY SHADING ---
+            regime_shapes = []
+            curr_ratio = 1.0  # Default fallback
+            if not macro_slice.empty and "Macro_Vix_Ratio" in macro_slice.columns:
+                ratio = macro_slice["Macro_Vix_Ratio"]
+                curr_ratio = ratio.iloc[-1]  # Get the most recent value
+
+                regimes = [
+                    {"mask": ratio < 0.9, "color": "rgba(0, 255, 0, 0.08)"},  # Green
+                    {
+                        "mask": (ratio >= 0.9) & (ratio <= 1.0),
+                        "color": "rgba(128, 128, 128, 0.05)",
+                    },  # Grey
+                    {"mask": ratio > 1.0, "color": "rgba(255, 0, 0, 0.15)"},  # Red
+                ]
+                for reg in regimes:
+                    crit = reg["mask"]
+                    if not crit.any():
+                        continue
+                    diff = crit.astype(int).diff().fillna(0)
+                    starts = macro_slice.index[diff == 1]
+                    ends = macro_slice.index[diff == -1]
+                    if crit.iloc[0]:
+                        starts = starts.insert(0, macro_slice.index[0])
+                    if crit.iloc[-1]:
+                        ends = ends.append(pd.Index([macro_slice.index[-1]]))
+                    for s, e in zip(starts, ends):
+                        regime_shapes.append(
+                            dict(
+                                type="rect",
+                                x0=s,
+                                x1=e,
+                                y0=-3,
+                                y1=5,
+                                xref="x",
+                                yref="y4",
+                                fillcolor=reg["color"],
+                                line_width=0,
+                                layer="below",
+                            )
+                        )
+
+            # --- F. NEW: DYNAMIC VOLATILITY TITLE ---
+            # Determine Regime Name based on the current ratio
+            if curr_ratio < 0.9:
+                regime_label = "STABILITY"
+            elif curr_ratio <= 1.0:
+                regime_label = "TRANSITION"
+            else:
+                regime_label = "SYSTEMIC SHOCK"
+
+            # Create the descriptive title string
+            dynamic_vix_title = (
+                f"Volatility Regime: {regime_label} (VIX Ratio: {curr_ratio:.2f})"
+            )
+            dynamic_vix_subtitle = "Line: Intensity (Z-Score) | Background: Structure (Ratio < 1.0 = Healthy, > 1.0 = Crisis)"
+
+            # Update the Plotly annotations (Titles)
+            for ann in self.fig.layout.annotations:
+                # Find the title for the Volatility subplot
+                if "Volatility Regime" in ann.text:
+                    ann.text = f"{dynamic_vix_title}<br><span style='font-size:10px'>{dynamic_vix_subtitle}</span>"
+
+            # --- G. FINAL LAYOUT ASSIGNMENT ---
+            # Combine all visual elements
+            self.fig.layout.shapes = event_shapes + static_shapes + regime_shapes
 
     def _display_audit_and_metrics(self, res: EngineOutput, inputs: EngineInput):
         self.output_area.layout = widgets.Layout(margin="10px 0px 20px 0px")
@@ -747,3 +768,6 @@ def create_walk_forward_analyzer(engine, universe_subset=None, filter_pack=None)
         engine, universe_subset=universe_subset, filter_pack=pack
     )
     return analyzer, pack
+
+
+#

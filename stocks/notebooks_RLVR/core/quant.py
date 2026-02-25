@@ -172,3 +172,6 @@ def calculate_buy_and_hold_performance(
     return QuantUtils.compute_portfolio_stats(
         p_slice, a_slice, t_slice, initial_weights
     )
+
+
+#
