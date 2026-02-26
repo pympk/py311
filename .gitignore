@@ -28,5 +28,5 @@ stocks/notebooks_rank/_working/export_csv/
 stocks/notebooks_RLVR/*.csv
 stocks/notebooks_RLVR/bot_verification/*.parquet
 stocks/notebooks_RLVR/bot_verification/*.csv
+stocks/notebooks_RLVR/debug/
 stocks/notebooks_RLVR/output/
-

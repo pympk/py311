@@ -282,12 +282,12 @@ class WalkForwardAnalyzer:
         self.w_rank_range.layout.display = "flex" if is_ranking else "none"
         self.w_manual_list.layout.display = "none" if is_ranking else "flex"
 
-    def _on_run_clicked(self, b):
+    def _on_run_clicked(self, b=None):  # <-- Added =None
         # 1. UI Feedback
         self.w_run_btn.disabled = True
         self.w_run_btn.description = "Calculating..."
 
-        # 2. CLEAR THE OUTPUT (Use wait=True to prevent flickering/doubling)
+        # 2. CLEAR THE OUTPUT
         self.output_area.clear_output(wait=True)
 
         with self.output_area:
@@ -322,11 +322,11 @@ class WalkForwardAnalyzer:
                     print(f"⚠️ {res.error_msg}")
                     return
 
-                # 3. Update FilterPack (The "Save" Step)
+                # 5. Update FilterPack
                 self.filter_pack.decision_date = res.decision_date
                 self.filter_pack.selected_tickers = res.tickers
 
-                # Extract eligible pool (Survivors) from audit data if available
+                # Extract eligible pool
                 if res.debug_data and "audit_liquidity" in res.debug_data:
                     audit = res.debug_data["audit_liquidity"]
                     if "universe_snapshot" in audit and isinstance(
@@ -337,7 +337,7 @@ class WalkForwardAnalyzer:
                             snap["Passed_Final"]
                         ].index.tolist()
 
-                # 4. Render Visuals
+                # 6. Render Visuals
                 self._update_plots(res, inputs)
                 self._display_audit_and_metrics(res, inputs)
 
@@ -757,7 +757,7 @@ class WalkForwardAnalyzer:
 
         # display(ui)
         # Auto-run on display
-        self._on_run_clicked(None)
+        self._on_run_clicked()
         return ui  # <--- Changed from display(ui)
 
 
