@@ -325,6 +325,8 @@ class AlphaEngine:
             "debug": {**debug_dict, **rank_results.get("debug", {})},
         }
 
+    #
+
     def _get_debug_components(self, tickers, start, end):
         # This will be moved to core/engine.py or a dedicated analyzer module
         idx = pd.IndexSlice
@@ -476,6 +478,135 @@ class AlphaEngine:
         )
 
     # --- End Methods to be moved/refactored ---
+
+    # def run(self, inputs: EngineInput) -> EngineOutput:
+    #     # --- 1. Timeline ---
+    #     try:
+    #         # CLEAN: No more .ok checks. Tuple unpacking gives us variables directly.
+    #         safe_start, safe_decision, safe_buy, safe_end = self._validate_timeline(
+    #             inputs
+    #         )
+    #     except ValueError as e:
+    #         # If any 'raise ValueError' triggers inside the timeline, we catch it here.
+    #         return self._error_result(str(e))
+
+    #     # --- 2. Selection (We'll clean this up next) ---
+    #     res_sel = self._select_tickers(inputs, safe_start, safe_decision)
+    #     if not res_sel.ok:
+    #         return self._error_result(res_sel.err)
+
+    #     tickers_to_trade = res_sel.val["tickers"]
+    #     results_table = res_sel.val["table"]
+    #     debug_dict = res_sel.val["debug"]
+
+    #     # --- 2. Unified Performance Loop ---
+    #     targets = [
+    #         ("p", tickers_to_trade),  # Portfolio
+    #         ("b", [inputs.benchmark_ticker]),  # Benchmark
+    #     ]
+
+    #     perf_store = {}
+    #     all_metrics = {}
+    #     verification_slices = {}
+
+    #     for prefix, tks in targets:
+    #         try:
+    #             # Call to calculate_buy_and_hold_performance (will be in trading/performance.py)
+    #             full = calculate_buy_and_hold_performance(
+    #                 self.df_close, self.df_atrp, self.df_trp, tks, safe_start, safe_end
+    #             )
+    #             hold = calculate_buy_and_hold_performance(
+    #                 self.df_close, self.df_atrp, self.df_trp, tks, safe_buy, safe_end
+    #             )
+
+    #             # SANITY CHECK
+    #             if full[0].empty or full[0].isna().all():
+    #                 return self._error_result(
+    #                     f"❌ No price data found for {prefix} in the selected period."
+    #                 )
+
+    #         except Exception as e:
+    #             return self._error_result(
+    #                 f"❌ Backtest Math Error ({prefix}): {str(e)}"
+    #             )
+
+    #         # Call to _calculate_period_metrics (will be in trading/performance.py)
+    #         m, slices = self._calculate_period_metrics(
+    #             *full, safe_decision, *hold, prefix=prefix
+    #         )
+
+    #         all_metrics.update(m)
+    #         verification_slices[prefix] = slices
+    #         perf_store[prefix] = full
+
+    #     # --- 3. Consolidated Debug Logic ---
+    #     if inputs.debug:
+    #         # Call to _get_debug_components (will be in this file for now)
+    #         portfolio_debug_comps = self._get_debug_components(
+    #             tickers_to_trade, safe_start, safe_end
+    #         )
+    #         benchmark_debug_comps = self._get_debug_components(
+    #             [inputs.benchmark_ticker], safe_start, safe_end
+    #         )
+    #         # Call to _get_normalized_plot_data (will be in this file for now)
+    #         normalized_plot_data = self._get_normalized_plot_data(
+    #             tickers_to_trade, safe_start, safe_end
+    #         )
+
+    #         debug_dict.update(
+    #             {
+    #                 "inputs_snapshot": inputs,
+    #                 "verification": verification_slices,
+    #                 "portfolio_raw_components": portfolio_debug_comps,
+    #                 "benchmark_raw_components": benchmark_debug_comps,
+    #                 "selection_audit": debug_dict.get("full_universe_ranking"),
+    #             }
+    #         )
+    #     else:
+    #         normalized_plot_data = (
+    #             pd.DataFrame()
+    #         )  # Ensure it's not None if debug is False
+
+    #     # Prepare initial weights (will be in a helper/utils file)
+    #     initial_weights = self._prepare_initial_weights(tickers_to_trade)
+
+    #     return EngineOutput(
+    #         portfolio_series=perf_store["p"][0] if "p" in perf_store else None,
+    #         benchmark_series=perf_store["b"][0] if "b" in perf_store else None,
+    #         portfolio_atrp_series=(
+    #             perf_store["p"][2]
+    #             if "p" in perf_store and len(perf_store["p"]) > 2
+    #             else None
+    #         ),
+    #         benchmark_atrp_series=(
+    #             perf_store["b"][2]
+    #             if "b" in perf_store and len(perf_store["b"]) > 2
+    #             else None
+    #         ),
+    #         portfolio_trp_series=(
+    #             perf_store["p"][3]
+    #             if "p" in perf_store and len(perf_store["p"]) > 3
+    #             else None
+    #         ),
+    #         benchmark_trp_series=(
+    #             perf_store["b"][3]
+    #             if "b" in perf_store and len(perf_store["b"]) > 3
+    #             else None
+    #         ),
+    #         normalized_plot_data=normalized_plot_data,
+    #         tickers=tickers_to_trade,
+    #         initial_weights=initial_weights,
+    #         perf_metrics=all_metrics,
+    #         results_df=results_table,
+    #         start_date=safe_start,
+    #         decision_date=safe_decision,
+    #         buy_date=safe_buy,
+    #         holding_end_date=safe_end,
+    #         debug_data=(
+    #             debug_dict if inputs.debug else None
+    #         ),  # Only include if debug is True
+    #         macro_df=self.macro_df,
+    #     )
 
     def run(self, inputs: EngineInput) -> EngineOutput:
 
