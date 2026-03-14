@@ -2,7 +2,7 @@ import pandas as pd
 
 from core.settings import GLOBAL_SETTINGS
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional, TypedDict
+from typing import List, Dict, Any, Optional
 
 
 @dataclass(frozen=True)

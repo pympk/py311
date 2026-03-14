@@ -1,145 +1,143 @@
 import pandas as pd
 import numpy as np
 
-from typing import List
-from core.quant import QuantUtils
+from typing import Tuple
+from core.quant import QuantUtils, TickerEngine
 from core.settings import GLOBAL_SETTINGS
-from typing import List, Union, Tuple
 
 
 def generate_features(
-    df_ohlcv: pd.DataFrame, df_indices: pd.DataFrame = None, **kwargs
+    df_ohlcv: pd.DataFrame,
+    df_indices: pd.DataFrame = None,
+    benchmark_ticker: str = GLOBAL_SETTINGS["benchmark_ticker"],
+    atr_period: int = GLOBAL_SETTINGS["atr_period"],
+    rsi_period: int = GLOBAL_SETTINGS["rsi_period"],
+    win_5d: int = GLOBAL_SETTINGS["5d_window"],
+    win_21d: int = GLOBAL_SETTINGS["21d_window"],
+    win_63d: int = GLOBAL_SETTINGS["63d_window"],
+    feature_zscore_clip: float = GLOBAL_SETTINGS["feature_zscore_clip"],
+    quality_window: int = GLOBAL_SETTINGS["quality_window"],
+    quality_min_periods: int = GLOBAL_SETTINGS["quality_min_periods"],
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """
-    Orchestrates feature generation by delegating math to QuantUtils.
-    """
 
-    # --- PREP & CONFIG ---
-    cfg = {**GLOBAL_SETTINGS, **kwargs}
+    print(f"⚡ Generating Decoupled Features (Benchmark: {benchmark_ticker})...")
 
-    # 1. Map Windows (Handles the previous KeyError)
-    win_5 = cfg.get("5d_window", 5)
-    win_21 = cfg.get("21d_window", 21)
-    win_63 = cfg.get("63d_window", 63)
-
-    # 2. Extract specific settings safely
-    benchmark = cfg.get("benchmark_ticker", "SPY")
-    clip_val = cfg.get("feature_zscore_clip", 3.0)
-
-    # 3. Prepare Data (Essential for rolling math)
+    # --- 0. PREP ---
     df_ohlcv = df_ohlcv.sort_index(level=["Ticker", "Date"])
     all_dates = df_ohlcv.index.get_level_values("Date").unique().sort_values()
 
-    benchmark = cfg["benchmark_ticker"]
-    clip_val = cfg["feature_zscore_clip"]
-
-    print(f"Generating Features (Benchmark: {benchmark})...")
-
     # --- 1. MACRO ENGINE ---
     macro_df = pd.DataFrame(index=all_dates)
-    if benchmark in df_ohlcv.index.get_level_values("Ticker"):
+    if benchmark_ticker in df_ohlcv.index.get_level_values("Ticker"):
         mkt_close = (
-            df_ohlcv.xs(benchmark, level="Ticker")["Adj Close"]
+            df_ohlcv.xs(benchmark_ticker, level="Ticker")["Adj Close"]
             .reindex(all_dates)
             .ffill()
         )
         macro_df["Mkt_Ret"] = mkt_close.pct_change().fillna(0.0)
         macro_df["Macro_Trend"] = (mkt_close / mkt_close.rolling(200).mean()) - 1.0
     else:
-        macro_df["Mkt_Ret"], macro_df["Macro_Trend"] = 0.0, 0.0
+        macro_df["Mkt_Ret"] = 0.0
+        macro_df["Macro_Trend"] = 0.0
 
-    macro_df["Macro_Trend_Vel"] = macro_df["Macro_Trend"].diff(win_21)
+    # --- TREND VELOCITY & MOMENTUM ---
+    macro_df["Macro_Trend_Vel"] = macro_df["Macro_Trend"].diff(win_21d)
     macro_df["Macro_Trend_Vel_Z"] = (
-        macro_df["Macro_Trend_Vel"] / macro_df["Macro_Trend"].rolling(win_63).std()
-    ).clip(-clip_val, clip_val)
-
+        macro_df["Macro_Trend_Vel"] / macro_df["Macro_Trend"].rolling(win_63d).std()
+    ).clip(-feature_zscore_clip, feature_zscore_clip)
     macro_df["Macro_Trend_Mom"] = (
         np.sign(macro_df["Macro_Trend"])
         * np.sign(macro_df["Macro_Trend_Vel"])
         * np.abs(macro_df["Macro_Trend_Vel"])
     ).fillna(0)
 
-    # VIX Extraction
-    macro_df["Macro_Vix_Z"], macro_df["Macro_Vix_Ratio"] = 0.0, 1.0
+    # VIX Extraction (Same as before)
+    macro_df["Macro_Vix_Z"] = 0.0
+    macro_df["Macro_Vix_Ratio"] = 1.0
     if df_indices is not None:
         idx_names = df_indices.index.get_level_values(0).unique()
         if "^VIX" in idx_names:
             v = df_indices.xs("^VIX", level=0)["Adj Close"].reindex(all_dates).ffill()
             macro_df["Macro_Vix_Z"] = (
                 (v - v.rolling(63).mean()) / v.rolling(63).std()
-            ).clip(-clip_val, clip_val)
-            if "^VIX3M" in idx_names:
-                v3 = (
-                    df_indices.xs("^VIX3M", level=0)["Adj Close"]
-                    .reindex(all_dates)
-                    .ffill()
-                )
-                macro_df["Macro_Vix_Ratio"] = (v / v3).fillna(1.0)
+            ).clip(-feature_zscore_clip, feature_zscore_clip)
+        if "^VIX" in idx_names and "^VIX3M" in idx_names:
+            v3 = (
+                df_indices.xs("^VIX3M", level=0)["Adj Close"].reindex(all_dates).ffill()
+            )
+            macro_df["Macro_Vix_Ratio"] = (v / v3).fillna(1.0)
     macro_df.fillna(0.0, inplace=True)
 
-    # --- 2. TICKER ENGINE (MICRO) ---
-    grouped = df_ohlcv.groupby(level="Ticker", group_keys=False)
-    adj_close = df_ohlcv["Adj Close"]
+    # --- 2. TICKER ENGINE ---
+    grouped = df_ohlcv.groupby(level="Ticker")
 
-    ###########
-    # Calculate returns for the specific price column
-    rets = grouped["Adj Close"].pct_change()
+    # STEP 1: Refactor Returns via TickerEngine Orchestrator
+    # No more manual groupby or reset_index needed.
+    rets = TickerEngine.map_kernels(df_ohlcv["Adj Close"], QuantUtils.compute_returns)
 
-    # Beta: Perform per-ticker to avoid data leaking between different symbols
-    mkt_rets_aligned = macro_df["Mkt_Ret"].reindex(df_ohlcv.index, level="Date")
+    mkt_ret_series = macro_df["Mkt_Ret"]  # The "Master" market vector
 
-    # We use apply on the group to keep the rolling window bounded by Ticker
-    beta_63 = grouped.apply(
-        lambda x: QuantUtils.calculate_rolling_beta(
-            x["Adj Close"].pct_change(), mkt_rets_aligned.loc[x.index], win_63
-        )
-    )
-
-    active_ret = rets - mkt_rets_aligned
-    roll_active = active_ret.groupby(level="Ticker").rolling(win_63)
-
+    # A. Hybrid Metrics (Beta & IR)
+    # 1. IR_63 (Remains same for now as it uses internal rolling logic)
+    active_ret = rets.sub(mkt_ret_series, axis=0, level="Date")
+    roll_active = active_ret.groupby(level="Ticker").rolling(win_63d)
     ir_63 = (
         (roll_active.mean() / roll_active.std())
         .reset_index(level=0, drop=True)
         .fillna(0)
     )
 
-    atr = grouped.apply(
-        lambda x: QuantUtils.calculate_atr(
-            x["Adj High"], x["Adj Low"], x["Adj Close"], cfg["atr_period"]
+    # 2. Beta_63 - Refactored using TickerEngine Orchestrator
+    # We pass the market series as a keyword argument (benchmark_rets)
+    beta_63 = TickerEngine.map_kernels(
+        rets,
+        QuantUtils.calculate_rolling_beta,
+        benchmark_rets=mkt_ret_series,
+        window=win_63d,
+    )
+
+    # B. Volatility (ATR / TRP) - Using TickerEngine to bridge multiple kernels
+    def get_ticker_vol(df_slice):
+        """Internal bridge to call multiple TR/ATR kernels for a single ticker."""
+        h, l, c = df_slice["Adj High"], df_slice["Adj Low"], df_slice["Adj Close"]
+        return pd.DataFrame(
+            {
+                "TR_Raw": QuantUtils.calculate_tr(h, l, c),
+                "ATR_Smooth": QuantUtils.calculate_atr(h, l, c, atr_period),
+            },
+            index=df_slice.index,
         )
-    )
 
-    natr = (atr / adj_close).fillna(0)
+    # The Orchestrator handles the ticker-by-ticker application
+    vol_bundle = TickerEngine.map_kernels(df_ohlcv, get_ticker_vol)
 
-    # Vectorized True Range for TRP
-    tr = np.maximum(
-        df_ohlcv["Adj High"] - df_ohlcv["Adj Low"],
-        np.maximum(
-            (df_ohlcv["Adj High"] - adj_close.shift(1)).abs(),
-            (df_ohlcv["Adj Low"] - adj_close.shift(1)).abs(),
-        ),
-    )
-    trp = (tr / adj_close).fillna(0)
+    # Alignment is guaranteed by the Orchestrator
+    atr = vol_bundle["ATR_Smooth"]
+    natr = (atr / df_ohlcv["Adj Close"]).fillna(0)  # ATRP (normalized)
+    trp = (vol_bundle["TR_Raw"] / df_ohlcv["Adj Close"]).fillna(0)  # TRP (raw)
 
-    # C. RSI & Momentum
-    rsi = grouped["Adj Close"].apply(QuantUtils.calculate_rsi, period=cfg["rsi_period"])
-    mom_21 = grouped["Adj Close"].pct_change(win_21)
+    # C. Momentum & Consistency (Keep existing for this step)
+    mom_21 = grouped["Adj Close"].pct_change(win_21d)
     consistency = (
         (rets > 0)
         .astype(float)
         .groupby(level="Ticker")
-        .rolling(win_5)
+        .rolling(win_5d)
         .mean()
         .reset_index(level=0, drop=True)
     )
-
     dd_21 = (
-        adj_close
-        / grouped["Adj Close"].rolling(win_21).max().reset_index(level=0, drop=True)
+        df_ohlcv["Adj Close"]
+        / grouped["Adj Close"].rolling(win_21d).max().reset_index(level=0, drop=True)
     ) - 1.0
 
-    # D. Assemble Features
+    # STEP 2: Refactor RSI via TickerEngine Orchestrator
+    # Clean, declarative call to the Wilder's RSI math kernel
+    rsi = TickerEngine.map_kernels(
+        df_ohlcv["Adj Close"], QuantUtils.calculate_rsi, period=rsi_period
+    )
+
+    # E. Assemble Features (Remains the same)
     features_df = pd.DataFrame(
         {
             "ATR": atr,
@@ -152,11 +150,10 @@ def generate_features(
             "Beta_63": beta_63,
             "DD_21": dd_21.fillna(0),
             "Ret_1d": rets,
-        },
-        index=df_ohlcv.index,
+        }
     )
 
-    # E. Quality Filtering
+    # F. Quality (Universe Filtering) - Optimized
     quality_temp = pd.DataFrame(
         {
             "IsStale": np.where(
@@ -165,31 +162,26 @@ def generate_features(
                 1,
                 0,
             ),
-            "DollarVolume": adj_close * df_ohlcv["Volume"],
+            "DollarVolume": df_ohlcv["Adj Close"] * df_ohlcv["Volume"],
             "HasSameVolume": (grouped["Volume"].diff() == 0).astype(int),
         },
         index=df_ohlcv.index,
     )
 
-    grp_q = quality_temp.groupby(level="Ticker")
+    # Calculate rolling stats separately (avoid slow dict agg) and use .values to bypass index alignment overhead
+    grp = quality_temp.groupby(level="Ticker")
     rolling_quality = pd.DataFrame(
         {
-            "RollingStalePct": grp_q["IsStale"]
-            .rolling(
-                window=cfg["quality_window"], min_periods=cfg["quality_min_periods"]
-            )
+            "RollingStalePct": grp["IsStale"]
+            .rolling(window=quality_window, min_periods=quality_min_periods)
             .mean()
             .values,
-            "RollMedDollarVol": grp_q["DollarVolume"]
-            .rolling(
-                window=cfg["quality_window"], min_periods=cfg["quality_min_periods"]
-            )
+            "RollMedDollarVol": grp["DollarVolume"]
+            .rolling(window=quality_window, min_periods=quality_min_periods)
             .median()
             .values,
-            "RollingSameVolCount": grp_q["HasSameVolume"]
-            .rolling(
-                window=cfg["quality_window"], min_periods=cfg["quality_min_periods"]
-            )
+            "RollingSameVolCount": grp["HasSameVolume"]
+            .rolling(window=quality_window, min_periods=quality_min_periods)
             .sum()
             .values,
         },

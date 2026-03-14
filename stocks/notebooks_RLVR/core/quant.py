@@ -1,9 +1,7 @@
 import pandas as pd
 import numpy as np
 
-from typing import Union, Tuple, List
-
-# from collections import Counter  # <--- Add this import!
+from typing import Union, Tuple
 from core.settings import GLOBAL_SETTINGS
 
 
@@ -152,14 +150,21 @@ class QuantUtils:
         return rsi.replace({np.inf: 100, -np.inf: 0}).fillna(50)
 
     @staticmethod
-    def calculate_atr(
-        high: pd.Series, low: pd.Series, close: pd.Series, period: int
-    ) -> pd.Series:
-        """Average True Range (ATR)."""
+    def calculate_tr(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
+        """True Range (TR)."""
         prev_close = close.shift(1)
+        # Vectorized max of (H-L, |H-Cp|, |L-Cp|)
         tr = np.maximum(
             high - low, np.maximum((high - prev_close).abs(), (low - prev_close).abs())
         )
+        return tr
+
+    @staticmethod
+    def calculate_atr(
+        high: pd.Series, low: pd.Series, close: pd.Series, period: int
+    ) -> pd.Series:
+        """Average True Range (ATR) using Wilder's Smoothing."""
+        tr = QuantUtils.calculate_tr(high, low, close)  # Use the TR kernel
         return tr.ewm(alpha=1 / period, adjust=False).mean()
 
     @staticmethod
@@ -176,39 +181,17 @@ class QuantUtils:
         return (cov / var).fillna(1.0)
 
 
-# def _prepare_initial_weights(tickers: List[str]) -> pd.Series:
-#     """
-#     METADATA: Converts a list of tickers into a weight map.
-#     Example: ['AAPL', 'AAPL', 'TSLA'] -> {'AAPL': 0.66, 'TSLA': 0.33}
-#     """
-#     ticker_counts = Counter(tickers)
-#     total = len(tickers)
-#     return pd.Series({t: c / total for t, c in ticker_counts.items()})
+class TickerEngine:
+    """
+    The Orchestrator: Bridges MultiIndex DataFrames with QuantUtils Kernels.
+    """
 
-
-# # --- STANDALONE WORKFLOW FUNCTION ---
-# def calculate_buy_and_hold_performance(
-#     df_close_wide: pd.DataFrame,  # Use the WIDE version
-#     df_atrp_wide: pd.DataFrame,  # Use the WIDE version
-#     df_trp_wide: pd.DataFrame,  # <--- Added
-#     tickers: List[str],
-#     start_date: pd.Timestamp,
-#     end_date: pd.Timestamp,
-# ):
-#     if not tickers:
-#         return pd.Series(), pd.Series(), pd.Series()
-
-#     initial_weights = _prepare_initial_weights(tickers)
-
-#     # SLICE (Fix Part B)
-#     ticker_list = initial_weights.index.tolist()
-#     p_slice = df_close_wide.reindex(columns=ticker_list).loc[start_date:end_date]
-#     a_slice = df_atrp_wide.reindex(columns=ticker_list).loc[start_date:end_date]
-#     t_slice = df_trp_wide.reindex(columns=ticker_list).loc[start_date:end_date]
-#     # KERNEL - Pure Math
-#     return QuantUtils.compute_portfolio_stats(
-#         p_slice, a_slice, t_slice, initial_weights
-#     )
+    @staticmethod
+    def map_kernels(data, kernel_func, *args, **kwargs):
+        # The standardized bridge pattern we tested
+        return data.groupby(level="Ticker", group_keys=False).apply(
+            lambda x: kernel_func(x, *args, **kwargs)
+        )
 
 
 #

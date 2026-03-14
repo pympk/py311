@@ -33,5 +33,6 @@ stocks/notebooks_RLVR/bot_verification/*.csv
 stocks/notebooks_RLVR/debug/
 stocks/notebooks_RLVR/output/
 stocks/notebooks_RLVR/archive/
+stocks/notebooks_RLVR/verification/
 
 archive/

@@ -1,23 +1,3 @@
-# from pathlib import Path
-
-# # Base paths
-# NOTEBOOKS_RLVR_ROOT = Path(__file__).parent.parent
-
-# # Output directories
-# OUTPUT_DIR = NOTEBOOKS_RLVR_ROOT / "output"
-# # OUTPUT_DATA = OUTPUT_DIR / "data"
-# # OUTPUT_PLOTS = OUTPUT_DIR / "plots"
-# # OUTPUT_REPORTS = OUTPUT_DIR / "reports"
-
-# create_dirs = [OUTPUT_DIR]
-
-# # Auto-create all directories
-# # for d in [OUTPUT_DIR, OUTPUT_DATA, OUTPUT_PLOTS, OUTPUT_REPORTS]:
-# for d in create_dirs:
-#     d.mkdir(parents=True, exist_ok=True)
-
-###############################
-
 from pathlib import Path
 
 

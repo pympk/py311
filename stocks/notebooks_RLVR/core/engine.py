@@ -2,7 +2,8 @@ import pandas as pd
 import numpy as np
 
 from typing import List
-from core.result import Result
+from core.quant import QuantUtils
+from core.result import TaskResult
 from core.contracts import MarketObservation, SelectionResult, EngineInput, EngineOutput
 from core.settings import GLOBAL_SETTINGS
 from core.performance import calculate_buy_and_hold_performance, PerformanceCalculator
@@ -29,7 +30,7 @@ class AlphaEngine:
         # We call a helper to do the "dirty work"
         self._prepare_data(df_close_wide, df_atrp_wide, df_trp_wide, master_ticker)
 
-        self.Result = Result
+        self.Result = TaskResult
 
     def _prepare_data(self, df_close_wide, df_atrp_wide, df_trp_wide, master_ticker):
         self.df_close = (
@@ -177,8 +178,10 @@ class AlphaEngine:
             raise ValueError(f"❌ Math Error in '{metric_name}': {str(e)}")
 
     def _rank_and_slice(self, raw_scores, inputs, observation):
+
         # 1. Strip out the NaNs
         clean_scores = raw_scores.dropna()
+
         dropped_tickers = raw_scores[raw_scores.isna()].index.tolist()
 
         if clean_scores.empty:
@@ -523,3 +526,186 @@ class AlphaEngine:
             return pd.Series()
         # Simple equal weighting for now
         return pd.Series(1.0 / len(tickers), index=tickers)
+
+    # RL helpers
+    def compute_alpha_matrix(
+        self, decision_date: pd.Timestamp, lookback_period: int
+    ) -> pd.DataFrame:
+        """
+        HEADLESS SCORER: Computes all metrics in METRIC_REGISTRY for the
+        entire universe in a single vectorized pass.
+        """
+        # 1. Timeline alignment (Using existing logic)
+        # We simulate an EngineInput to reuse the validation logic
+        mock_input = EngineInput(
+            mode="Discovery",
+            start_date=decision_date,
+            lookback_period=lookback_period,
+            holding_period=1,  # Irrelevant for scoring
+            metric="All",
+            benchmark_ticker=GLOBAL_SETTINGS["benchmark_ticker"],
+        )
+
+        try:
+            safe_start, safe_decision, _, _ = self._validate_timeline(mock_input)
+        except ValueError as e:
+            print(f"Timeline Error for {decision_date.date()}: {e}")
+            return pd.DataFrame()
+
+        # 2. Extract Full Universe Candidates (Survivors only for this date)
+        # We use an empty audit container as this is headless
+        candidates = self._filter_universe(
+            safe_decision, GLOBAL_SETTINGS["thresholds"], audit_container={}
+        )
+
+        if not candidates:
+            return pd.DataFrame()
+
+        # 3. Build a "Bulk Observation" (Entire Universe for this date)
+        # This uses your existing MarketObservation dataclass but with FULL data
+        obs = self._build_observation(safe_decision, candidates, safe_start)
+
+        # 4. Vectorized Execution of the Registry
+        # We avoid a for loop over tickers. We only loop over the Strategy names (usually < 20).
+        alpha_results = {}
+
+        for name, metric_func in METRIC_REGISTRY.items():
+            try:
+                # Most of your registry functions are already vectorized (QuantUtils)
+                # and will return a pd.Series where index = Tickers.
+                scores = metric_func(obs)
+
+                # Ensure the output is a Series for consistency
+                if isinstance(scores, (pd.Series, pd.DataFrame)):
+                    alpha_results[name] = scores
+                else:
+                    # Fallback for scalar returns (unlikely given current registry)
+                    alpha_results[name] = pd.Series(scores, index=candidates)
+
+            except Exception as e:
+                print(f"Warning: Strategy '{name}' failed during headless run: {e}")
+                alpha_results[name] = pd.Series(np.nan, index=candidates)
+
+        # 5. Assemble the Alpha Matrix
+        # Final shape: [Tickers x Strategies]
+        alpha_matrix = pd.DataFrame(alpha_results)
+
+        # Metadata attachment for the RL Agent
+        alpha_matrix.index.name = "Ticker"
+        return alpha_matrix
+
+    def normalize_alpha_matrix(self, alpha_matrix: pd.DataFrame) -> pd.DataFrame:
+        """
+        STEP 2: Normalizes the Alpha Matrix so the RL Agent sees
+        comparable scales across different metrics.
+        """
+        if alpha_matrix.empty:
+            return alpha_matrix
+
+        # 1. Handle Outliers (The "Clipping" Logic)
+        # We don't want a 1,000% gain stock to break the neural network's gradients.
+        # We use the clip value from your core.settings.py
+        clip_val = GLOBAL_SETTINGS.get("feature_zscore_clip", 4.0)
+
+        # 2. Cross-Sectional Z-Score (Vectorized)
+        # Calculation: (Value - Mean) / Std
+        # We use axis=0 to normalize each column (strategy) across all tickers.
+        normalized = (alpha_matrix - alpha_matrix.mean()) / alpha_matrix.std().replace(
+            0, 1
+        )
+
+        # 3. Apply the Clip and Fill NaNs
+        # NaNs happen if a ticker has no data; we fill with 0.0 (the neutral average)
+        normalized = normalized.clip(-clip_val, clip_val).fillna(0.0)
+
+        return normalized
+
+    def compute_context_vector(self, decision_date: pd.Timestamp) -> pd.Series:
+        """
+        Gathers the 'Market Weather' from the macro_df for the decision date.
+        This provides the Regime Awareness shown in the charts.
+        """
+        if self.macro_df is None or decision_date not in self.macro_df.index:
+            # Fallback to neutral values if data is missing
+            return pd.Series(
+                {
+                    "Context_Trend": 0.0,
+                    "Context_Vel_Z": 0.0,
+                    "Context_Vix_Z": 0.0,
+                    "Context_Vix_Ratio": 1.0,
+                }
+            )
+
+        macro_row = self.macro_df.loc[decision_date]
+
+        # We normalize the raw Macro_Trend (usually -0.3 to 0.3)
+        # so it's on a similar scale to Z-scores.
+        context = pd.Series(
+            {
+                "Context_Trend": float(macro_row.get("Macro_Trend", 0.0))
+                * 10,  # Scaled for visibility
+                "Context_Vel_Z": float(macro_row.get("Macro_Trend_Vel_Z", 0.0)),
+                "Context_Vix_Z": float(macro_row.get("Macro_Vix_Z", 0.0)),
+                "Context_Vix_Ratio": float(macro_row.get("Macro_Vix_Ratio", 1.0))
+                - 1.0,  # Centered at 0.0
+            }
+        )
+
+        return context
+
+    def run_discovery_action(
+        self,
+        decision_date: pd.Timestamp,
+        lookback_period: int,
+        holding_period: int,
+        weights: np.ndarray,  # The Agent's Action: [w1, w2, w3...]
+    ) -> float:
+        """
+        STEP 3: Takes the Agent's Weight Vector, creates a synthetic strategy,
+        and returns the VERITABLE REWARD (Holding Period Sharpe).
+        """
+        # 1. Get the Agent's Vision (Normalized Alpha Matrix)
+        raw_matrix = self.compute_alpha_matrix(decision_date, lookback_period)
+        norm_matrix = self.normalize_alpha_matrix(raw_matrix)
+
+        if norm_matrix.empty:
+            return -1.0  # Penalty for invalid dates
+
+        # 2. CREATE THE DISCOVERY SCORE (The "Novel Strategy")
+        # Dot Product: Tickers x Weights
+        # This collapses all metrics into a single score per ticker
+        discovery_scores = norm_matrix.values @ weights
+        discovery_series = pd.Series(discovery_scores, index=norm_matrix.index)
+
+        # 3. SELECT TOP TICKERS (Using your existing ranking logic)
+        # We take the top 10 (Rank Start 1, End 10)
+        top_tickers = (
+            discovery_series.sort_values(ascending=False).head(10).index.tolist()
+        )
+
+        # 4. CALCULATE VERITABLE REWARD (Holding Period)
+        # We need to get the 'Safe Dates' for the holding period
+        mock_input = EngineInput(
+            mode="Ranking",
+            start_date=decision_date,
+            lookback_period=lookback_period,
+            holding_period=holding_period,
+            metric="Manual",
+            manual_tickers=top_tickers,
+            benchmark_ticker="SPY",
+        )
+        _, _, safe_buy, safe_end = self._validate_timeline(mock_input)
+
+        # Execute performance logic
+        perf = calculate_buy_and_hold_performance(
+            self.df_close, self.df_atrp, self.df_trp, top_tickers, safe_buy, safe_end
+        )
+
+        # We use 'Holding Sharpe' as the reward
+        # perf[1] is the returns series
+        reward = QuantUtils.calculate_sharpe(perf[1])
+
+        return float(reward)
+
+
+#

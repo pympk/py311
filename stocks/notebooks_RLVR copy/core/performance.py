@@ -2,7 +2,7 @@ import pandas as pd
 
 from collections import Counter
 from core.quant import QuantUtils
-from typing import Union, Tuple, List
+from typing import List
 
 
 def _prepare_initial_weights(tickers: List[str]) -> pd.Series:
