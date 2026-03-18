@@ -1,10 +1,17 @@
 import pandas as pd
 import numpy as np
 
-from typing import List
+from typing import List, Dict
+from dataclasses import dataclass
 from core.quant import QuantUtils
 from core.result import TaskResult
-from core.contracts import MarketObservation, SelectionResult, EngineInput, EngineOutput
+from core.contracts import (
+    MarketObservation,
+    SelectionResult,
+    EngineInput,
+    EngineOutput,
+    DiscoveryResult,
+)
 from core.settings import GLOBAL_SETTINGS
 from core.performance import calculate_buy_and_hold_performance, PerformanceCalculator
 from strategy.registry import METRIC_REGISTRY
@@ -115,18 +122,25 @@ class AlphaEngine:
     def _build_observation(
         self, decision_date, candidates, start_date
     ) -> MarketObservation:
-
         try:
+            # 1. Identify the full range of dates in the window
+            full_window_dates = self.trading_calendar[
+                (self.trading_calendar >= start_date)
+                & (self.trading_calendar <= decision_date)
+            ]
+
+            # 2. Define the 'Active Window' (Everything EXCEPT the first day anchor)
+            active_dates = full_window_dates[1:]
+
+            # 3. Slice Features using the Active Window only (Ensures N=21, not 22)
             idx = pd.IndexSlice
 
-            # 1. Feature Window Check
-            feat_window = self.features_df.loc[
-                idx[candidates, start_date:decision_date], :
-            ]
-            if feat_window.empty:
-                return self.Result(
-                    err=f"❌ No feature data found between {start_date.date()} and {decision_date.date()}"
-                )
+            feat_window = self.features_df.loc[idx[candidates, active_dates], :]
+
+            # 4. Calculate Means on the Active Window
+            # This ensures SHV Sharpe (ATRP) returns 0.8410
+            obs_atrp = feat_window["ATRP"].groupby(level="Ticker").mean()
+            obs_trp = feat_window["TRP"].groupby(level="Ticker").mean()
 
             # 2. Current Snapshot Check (Decision Date)
             if decision_date not in self.features_df.index.get_level_values("Date"):
@@ -138,16 +152,19 @@ class AlphaEngine:
                 candidates
             )
             macro_snapshot = self.macro_df.loc[decision_date]
-            lookback_close = self.df_close.loc[start_date:decision_date, candidates]
 
-            # NEW: Return the class.
-            # If you forget a field, Python will tell you NOW.
+            # Ensure lookback_close still uses start_date (P0) so returns have an anchor
+            lookback_close = self.df_close.loc[full_window_dates, candidates]
+
             return MarketObservation(
                 lookback_close=lookback_close,
-                lookback_returns=lookback_close.ffill().pct_change(),
-                atrp=feat_window["ATRP"].groupby(level="Ticker").mean(),
-                trp=feat_window["TRP"].groupby(level="Ticker").mean(),
-                atr=feat_now.get("ATR"),
+                lookback_returns=lookback_close.pct_change(),  # P0 becomes NaN
+                atrp=obs_atrp,
+                trp=obs_trp,
+                # Snapshot features remain at decision_date
+                atr=self.features_df.xs(decision_date, level="Date")
+                .reindex(candidates)
+                .get("ATR"),
                 rsi=feat_now.get("RSI"),
                 consistency=feat_now.get("Consistency", 0.0),
                 mom_21=feat_now.get("Mom_21"),
@@ -653,59 +670,202 @@ class AlphaEngine:
 
         return context
 
+    def precompute_reward_matrix(self, holding_period: int):
+        """
+        PRECOMPUTE: We store Arithmetic Returns for proper portfolio averaging later.
+        """
+        # Arithmetic: (P_future / P_now) - 1
+        self.reward_matrix = (
+            self.df_close.shift(-(holding_period + 1)) / self.df_close.shift(-1)
+        ) - 1.0
+        self.reward_matrix = self.reward_matrix.fillna(0.0)
+
+    def get_batch_reward(
+        self, decision_date: pd.Timestamp, tickers: List[str]
+    ) -> float:
+        """
+        Step 1: Calculate the Arithmetic Mean of the group (The Real World).
+        Step 2: Log-transform the result (The Agent's Math).
+        """
+        if decision_date not in self.reward_matrix.index:
+            return 0.0
+
+        # Calculate arithmetic mean of the group
+        arithmetic_group_return = self.reward_matrix.loc[decision_date, tickers].mean()
+
+        # Transform to Log Gain: ln(1 + R)
+        # This makes the rewards additive for the RL agent's episode total.
+        veritable_log_reward = np.log1p(arithmetic_group_return)
+
+        return float(veritable_log_reward)
+
     def run_discovery_action(
         self,
         decision_date: pd.Timestamp,
         lookback_period: int,
         holding_period: int,
-        weights: np.ndarray,  # The Agent's Action: [w1, w2, w3...]
-    ) -> float:
-        """
-        STEP 3: Takes the Agent's Weight Vector, creates a synthetic strategy,
-        and returns the VERITABLE REWARD (Holding Period Sharpe).
-        """
-        # 1. Get the Agent's Vision (Normalized Alpha Matrix)
+        weights: np.ndarray,
+    ) -> DiscoveryResult:
+
         raw_matrix = self.compute_alpha_matrix(decision_date, lookback_period)
         norm_matrix = self.normalize_alpha_matrix(raw_matrix)
 
         if norm_matrix.empty:
-            return -1.0  # Penalty for invalid dates
+            return None
 
-        # 2. CREATE THE DISCOVERY SCORE (The "Novel Strategy")
-        # Dot Product: Tickers x Weights
-        # This collapses all metrics into a single score per ticker
         discovery_scores = norm_matrix.values @ weights
         discovery_series = pd.Series(discovery_scores, index=norm_matrix.index)
-
-        # 3. SELECT TOP TICKERS (Using your existing ranking logic)
-        # We take the top 10 (Rank Start 1, End 10)
         top_tickers = (
             discovery_series.sort_values(ascending=False).head(10).index.tolist()
         )
+        veritable_reward = self.get_batch_reward(decision_date, top_tickers)
 
-        # 4. CALCULATE VERITABLE REWARD (Holding Period)
-        # We need to get the 'Safe Dates' for the holding period
-        mock_input = EngineInput(
-            mode="Ranking",
-            start_date=decision_date,
-            lookback_period=lookback_period,
-            holding_period=holding_period,
-            metric="Manual",
-            manual_tickers=top_tickers,
-            benchmark_ticker="SPY",
-        )
-        _, _, safe_buy, safe_end = self._validate_timeline(mock_input)
-
-        # Execute performance logic
-        perf = calculate_buy_and_hold_performance(
-            self.df_close, self.df_atrp, self.df_trp, top_tickers, safe_buy, safe_end
+        return DiscoveryResult(
+            action_weights=dict(zip(list(METRIC_REGISTRY.keys()), weights)),
+            selected_tickers=top_tickers,
+            veritable_reward=veritable_reward,
+            metric_values=discovery_series.loc[top_tickers],
+            raw_alpha_matrix=raw_matrix,  # Included here for your SHV check
         )
 
-        # We use 'Holding Sharpe' as the reward
-        # perf[1] is the returns series
-        reward = QuantUtils.calculate_sharpe(perf[1])
+    def compute_alpha_ensemble(
+        self, decision_date: pd.Timestamp, lookback_periods: List[int]
+    ) -> pd.DataFrame:
+        """
+        ENSEMBLE SCORER: Generates a multi-resolution feature set
+        for all tickers at a specific decision date.
+        """
+        ensemble_parts = []
 
-        return float(reward)
+        # We loop over the lookbacks (usually only 3-4 periods),
+        # but the ticker calculation inside is fully vectorized.
+        for lb in lookback_periods:
+            # 1. Compute the Alpha Matrix for this specific resolution
+            # Reuses the verified headless scorer
+            raw_matrix = self.compute_alpha_matrix(decision_date, lb)
+
+            if raw_matrix.empty:
+                continue
+
+            # 2. Normalize WITHIN the resolution
+            # This ensures that 'Relative Strength' is consistent across timeframes
+            norm_matrix = self.normalize_alpha_matrix(raw_matrix)
+
+            # 3. Rename columns to include the resolution prefix (e.g., '21d_Sharpe')
+            norm_matrix.columns = [f"{lb}d_{col}" for col in norm_matrix.columns]
+            ensemble_parts.append(norm_matrix)
+
+        if not ensemble_parts:
+            return pd.DataFrame()
+
+        # 4. Join all resolutions on Ticker index
+        # Shape: [Tickers x (Metrics * Lookbacks)]
+        ensemble_df = pd.concat(ensemble_parts, axis=1)
+
+        return ensemble_df
+
+
+# class AlphaCache:
+#     """
+#     THE FEATURE CUBE: Pre-calculates and flattens all resolutions into a
+#     high-speed lookup table. This is the 'VRAM' for our RL Agent.
+#     """
+
+#     def __init__(self, engine, lookbacks: List[int]):
+#         self.engine = engine
+#         self.lookbacks = lookbacks
+#         # This will store our flattened Feature Cube: MultiIndex (Date, Ticker)
+#         self.feature_cube = pd.DataFrame()
+#         self.reward_cube = pd.DataFrame()  # Pre-calculated forward returns
+
+#     def build(self):
+#         """Iterates through the calendar ONCE to bake all features."""
+#         all_dates = self.engine.trading_calendar
+#         cache_parts = []
+
+#         print(f"🏗️ Building AlphaCache for {len(all_dates)} days...")
+
+#         # Expert Note: We loop over dates once here, so we never have to do it
+#         # during the millions of steps in training.
+#         for date in all_dates:
+#             # 1. Get the multi-resolution ensemble for this date
+#             # This already uses the engine's vectorized logic
+#             ensemble = self.engine.compute_alpha_ensemble(date, self.lookbacks)
+
+#             if ensemble.empty:
+#                 continue
+
+#             # Add the date index for the multi-index join
+#             ensemble["Date"] = date
+#             ensemble = ensemble.set_index("Date", append=True).swaplevel(0, 1)
+#             cache_parts.append(ensemble)
+
+#         self.feature_cube = pd.concat(cache_parts).sort_index()
+#         print(f"✅ AlphaCache built. Shape: {self.feature_cube.shape}")
+
+#     def get_vision(self, date: pd.Timestamp) -> pd.DataFrame:
+#         """Instant lookup: O(1) relative to recalculating."""
+#         try:
+#             return self.feature_cube.loc[date]
+#         except KeyError:
+#             return pd.DataFrame()
+
+
+class AlphaCache:
+    """
+    THE FEATURE CUBE: Now with 'Time-Slicing' to prevent 60-year loops.
+    """
+
+    def __init__(self, engine, lookbacks: List[int]):
+        self.engine = engine
+        self.lookbacks = lookbacks
+        self.feature_cube = pd.DataFrame()
+
+    def build(self, start_date: str = "2024-01-01"):
+        """Only 'bakes' the features from the start_date onwards."""
+        all_dates = self.engine.trading_calendar
+
+        # SLICE: Filter the calendar to only include dates from start_date
+        # This reduces 16,000 days to ~500 days.
+        target_dates = [d for d in all_dates if d >= pd.Timestamp(start_date)]
+
+        cache_parts = []
+        print(
+            f"🏗️ Building AlphaCache for {len(target_dates)} days (Starting {start_date})..."
+        )
+
+        for i, date in enumerate(target_dates):
+            # The engine already handles the lookback logic internally
+            # It will skip dates if there isn't enough history behind 'date'
+            ensemble = self.engine.compute_alpha_ensemble(date, self.lookbacks)
+
+            if ensemble.empty:
+                continue
+
+            # Prepare for MultiIndex: (Date, Ticker)
+            ensemble["Date"] = date
+            ensemble = ensemble.set_index(["Date", ensemble.index])
+            cache_parts.append(ensemble)
+
+            if i % 20 == 0:
+                print(f"  Processed {i}/{len(target_dates)} days...")
+
+        if not cache_parts:
+            print(
+                "❌ Error: No features were generated. Check if start_date is too early for lookbacks."
+            )
+            return
+
+        self.feature_cube = pd.concat(cache_parts).sort_index()
+        print(f"✅ AlphaCache built. Shape: {self.feature_cube.shape}")
+
+    def get_vision(self, date: pd.Timestamp) -> pd.DataFrame:
+        """Instant O(1) lookup."""
+        try:
+            # Note: Because of how we built it, date is level 0
+            return self.feature_cube.xs(date, level="Date")
+        except KeyError:
+            return pd.DataFrame()
 
 
 #

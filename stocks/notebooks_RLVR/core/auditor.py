@@ -507,6 +507,7 @@ class SystemAuditor:
                 vals = group.values
                 results = np.zeros_like(vals)
                 results[0] = initial_val
+
                 for i in range(1, len(vals)):
                     results[i] = (vals[i] * alpha) + (results[i - 1] * (1 - alpha))
                 return pd.Series(results, index=group.index)
@@ -528,24 +529,31 @@ class SystemAuditor:
         def run_period_audit(df_p, df_atrp, df_trp, weights):
             if df_p.empty:
                 return 0, 0, 0, 0
+
             norm = df_p.div(df_p.bfill().iloc[0])
             equity = (norm * weights).sum(axis=1)
+            # Portfolio risk is rebalance everyday, portfolio is not rebalanced everyday
             drift_w = (norm * weights).div(equity, axis=0)
 
             # Weighted Volatility
             p_atrp_manual = (drift_w * df_atrp).sum(axis=1)
             p_trp_manual = (drift_w * df_trp).sum(axis=1)
 
+            # FIX: The Engine uses Log Returns for Gain
+            # np.log(Ending_Equity) assumes starting equity was 1.0
+            gain = np.log(equity.iloc[-1])
+
+            # dropna drops day_0 from rets series
             rets = equity.pct_change().dropna()
             if rets.empty:
                 return 0, 0, 0, 0
 
-            gain = np.log(equity.iloc[-1])
+            # Ensure annualization factor matches GLOBAL_SETTINGS (usually 252)
             sharpe = (rets.mean() / rets.std() * np.sqrt(252)) if rets.std() > 0 else 0
-
             return (
                 gain,
                 sharpe,
+                # day_0 was dropped from rets series by dropna
                 rets.mean() / p_atrp_manual.loc[rets.index].mean(),
                 rets.mean() / p_trp_manual.loc[rets.index].mean(),
             )
@@ -580,6 +588,7 @@ class SystemAuditor:
                     m_trp.loc[d_start:d_end],
                     weights,
                 )
+
                 for m_name, m_val, e_key in [
                     ("Gain", mg, f"{p_label.lower()}_{prefix}_gain"),
                     ("Sharpe", ms, f"{p_label.lower()}_{prefix}_sharpe"),
@@ -657,9 +666,7 @@ class SystemAuditor:
                     f"   Survival Integrity: {s_match} (Engine: {audit_liq['tickers_passed']} vs Auditor: {len(m_survivors)})"
                 )
 
-        # --------------------------------------------------------------------------
-        # PART 3: UNIVERSAL SELECTION AUDIT (Strategy Registry Math)
-        # --------------------------------------------------------------------------
+        # --- PART 3: UNIVERSAL SELECTION AUDIT ---
         if inputs.mode == "Ranking":
             print("\n" + "=" * 85)
             print(f"📝 3. UNIVERSAL SELECTION AUDIT | Strategy: {inputs.metric}")
@@ -670,35 +677,44 @@ class SystemAuditor:
                 )
                 return
 
+            # --- FIX: Define survivors from the Engine's own result list ---
             eng_rank_df = debug["full_universe_ranking"]
             survivors = eng_rank_df.index.tolist()
-            idx = pd.IndexSlice
 
-            # Re-fetch data for the entire survivor list
-            feat_period = engine.features_df.loc[
-                idx[survivors, res.start_date : res.decision_date], :
+            # 1. Identify the Trading Calendar for this window
+            # We get this from engine.df_close to ensure alignment with the Engine's reality
+            all_dates = engine.df_close.index
+            full_window = all_dates[
+                (all_dates >= res.start_date) & (all_dates <= res.decision_date)
             ]
-            atrp_lb_mean = feat_period["ATRP"].groupby(level="Ticker").mean()
-            trp_lb_mean = feat_period["TRP"].groupby(level="Ticker").mean()
 
-            # --- NEW DECOUPLED AUDIT LOGIC ---
+            # 2. Define the 'Active Window' (Skip the anchor/P0)
+            # This is exactly what the Engine does: active_dates = full_window_dates[1:]
+            active_dates = full_window[1:]
+
+            # 3. Slice features using ONLY the active dates for the mean
+            idx = pd.IndexSlice
+            feat_period_active = engine.features_df.loc[idx[survivors, active_dates], :]
+
+            # Calculation of means on the active window only
+            atrp_lb_mean = feat_period_active["ATRP"].groupby(level="Ticker").mean()
+            trp_lb_mean = feat_period_active["TRP"].groupby(level="Ticker").mean()
+
+            # Pull the current snapshots
             feat_now = engine.features_df.xs(res.decision_date, level="Date").reindex(
                 survivors
             )
-
-            # Pull the macro snapshot for the specific decision date
             macro_now = engine.macro_df.loc[res.decision_date]
 
-            lb_prices = engine.df_close.loc[
-                res.start_date : res.decision_date, survivors
-            ]
+            # 4. Pull price data including the anchor (so pct_change has a starting point)
+            lb_prices = engine.df_close.loc[full_window, survivors]
 
-            # REBUILD OBSERVATION - Call the class constructor instead of creating a dict
+            # Rebuild Observation exactly like the Engine's _build_observation
             audit_obs = MarketObservation(
                 lookback_close=lb_prices,
-                lookback_returns=lb_prices.ffill().pct_change(),
-                atrp=atrp_lb_mean,
-                trp=trp_lb_mean,
+                lookback_returns=lb_prices.pct_change(),  # P0 is NaN, P1 is first valid return
+                atrp=atrp_lb_mean,  # Mean of [P1...PN]
+                trp=trp_lb_mean,  # Mean of [P1...PN]
                 atr=feat_now.get("ATR"),
                 rsi=feat_now["RSI"],
                 consistency=feat_now["Consistency"],
@@ -713,7 +729,6 @@ class SystemAuditor:
                 macro_vix_z=macro_now["Macro_Vix_Z"],
                 macro_vix_ratio=macro_now["Macro_Vix_Ratio"],
             )
-
             # Run Manual Registry Math on Full Universe
             manual_scores = METRIC_REGISTRY[inputs.metric](audit_obs)
 

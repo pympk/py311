@@ -94,3 +94,12 @@ class SelectionResult:
     tickers: List[str]
     table: pd.DataFrame
     debug: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class DiscoveryResult:
+    action_weights: Dict[str, float]
+    selected_tickers: List[str]
+    veritable_reward: float
+    metric_values: pd.Series
+    raw_alpha_matrix: pd.DataFrame  # Added for your manual verification
