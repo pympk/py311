@@ -2,7 +2,13 @@
 geckodriver.log
 .env
 .venv
+*.parquet
+*.csv
+
 .vscode/
+debug/
+archive/
+
 
 # Ignore nodejs folders and subfolders
 /nodejs/node_modules/
@@ -37,5 +43,3 @@ stocks/notebooks_RLVR/archive/
 stocks/notebooks_RLVR/verification/
 stocks/notebooks_RLVR/_*
 
-*.parquet
-archive/
