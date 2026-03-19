@@ -8,6 +8,7 @@ geckodriver.log
 .vscode/
 debug/
 archive/
+cache/
 
 
 # Ignore nodejs folders and subfolders

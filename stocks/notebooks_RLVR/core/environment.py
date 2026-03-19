@@ -119,82 +119,153 @@ from core.engine import AlphaCache
 #         return self._get_observation(), reward, done, info
 
 
+# class DiscoveryEnv:
+#     def __init__(
+#         self,
+#         engine,
+#         cache: AlphaCache,
+#         holding_period: int = 5,
+#         rank_max_offset: int = 50,
+#     ):
+#         self.engine = engine
+#         self.cache = cache
+#         self.holding_period = holding_period
+#         self.rank_max_offset = rank_max_offset
+#         self.calendar = self.engine.trading_calendar
+
+#         # Precompute the reward matrix in the engine (as we did before)
+#         self.engine.precompute_reward_matrix(holding_period)
+
+#     def reset(self, start_date: pd.Timestamp = None) -> Dict[str, Any]:
+#         if start_date is None:
+#             # Ensure we start where cache has data (min lookback)
+#             safe_start = max(self.cache.lookbacks)
+#             self.current_date_idx = np.random.randint(
+#                 safe_start, len(self.calendar) - 20
+#             )
+#         else:
+#             self.current_date_idx = self.calendar.get_loc(start_date)
+
+#         self.equity_curve = [1.0]
+#         return self._get_observation()
+
+#     def _get_observation(self) -> Dict[str, Any]:
+#         date = self.calendar[self.current_date_idx]
+
+#         # LOOKUP vs CALCULATION
+#         ensemble = self.cache.get_vision(date)
+#         context = self.engine.compute_context_vector(date)
+
+#         return {
+#             "ensemble": ensemble,
+#             "context": context.values,
+#             "date": date,
+#         }
+
+#     def step(self, action: np.ndarray):
+#         obs_dict = self._get_observation()
+#         ensemble = obs_dict["ensemble"]
+#         date = obs_dict["date"]
+
+#         if ensemble.empty:  # Safety for data gaps
+#             self.current_date_idx += 1
+#             return self._get_observation(), 0.0, False, {}
+
+#         # Vectorized Action decoding
+#         n_features = ensemble.shape[1]
+#         weights = action[:n_features]
+
+#         # Rank Logic
+#         rank_offset = int(np.interp(action[-2], [-1, 1], [0, self.rank_max_offset]))
+#         rank_width = int(np.interp(action[-1], [-1, 1], [1, 20]))
+
+#         # High-Speed Scoring: Matrix Multiplication
+#         scores = ensemble.values @ weights
+
+#         # Fast Sorting using NumPy argsort (faster than pandas sort_values)
+#         idx_top = np.argsort(scores)[::-1][rank_offset : rank_offset + rank_width]
+#         selected_tickers = ensemble.index[idx_top].tolist()
+
+#         # Veritable Reward Lookup
+#         reward = self.engine.get_batch_reward(date, selected_tickers)
+
+#         self.equity_curve.append(self.equity_curve[-1] * np.exp(reward))
+#         self.current_date_idx += self.holding_period
+
+#         done = self.current_date_idx >= (len(self.calendar) - self.holding_period - 1)
+
+#         return self._get_observation(), reward, done, {"date": date}
+
+
 class DiscoveryEnv:
-    def __init__(
-        self,
-        engine,
-        cache: AlphaCache,
-        holding_period: int = 5,
-        rank_max_offset: int = 50,
-    ):
+    def __init__(self, engine, cache, holding_period=5):
         self.engine = engine
         self.cache = cache
         self.holding_period = holding_period
-        self.rank_max_offset = rank_max_offset
         self.calendar = self.engine.trading_calendar
-
-        # Precompute the reward matrix in the engine (as we did before)
         self.engine.precompute_reward_matrix(holding_period)
+        self.reset()
 
-    def reset(self, start_date: pd.Timestamp = None) -> Dict[str, Any]:
+    def reset(self, start_date=None):
         if start_date is None:
-            # Ensure we start where cache has data (min lookback)
-            safe_start = max(self.cache.lookbacks)
-            self.current_date_idx = np.random.randint(
-                safe_start, len(self.calendar) - 20
-            )
+            # Random start within valid cache range
+            self.current_date_idx = np.random.randint(252, len(self.calendar) - 20)
         else:
             self.current_date_idx = self.calendar.get_loc(start_date)
-
         self.equity_curve = [1.0]
         return self._get_observation()
 
-    def _get_observation(self) -> Dict[str, Any]:
+    def _get_observation(self):
         date = self.calendar[self.current_date_idx]
-
-        # LOOKUP vs CALCULATION
         ensemble = self.cache.get_vision(date)
         context = self.engine.compute_context_vector(date)
-
-        return {
-            "ensemble": ensemble,
-            "context": context.values,
-            "date": date,
-        }
+        return {"ensemble": ensemble, "context": context.values, "date": date}
 
     def step(self, action: np.ndarray):
         obs_dict = self._get_observation()
         ensemble = obs_dict["ensemble"]
         date = obs_dict["date"]
 
-        if ensemble.empty:  # Safety for data gaps
-            self.current_date_idx += 1
-            return self._get_observation(), 0.0, False, {}
-
-        # Vectorized Action decoding
+        # 1. Action Decoding (Weights + Rank Params)
         n_features = ensemble.shape[1]
         weights = action[:n_features]
 
-        # Rank Logic
-        rank_offset = int(np.interp(action[-2], [-1, 1], [0, self.rank_max_offset]))
-        rank_width = int(np.interp(action[-1], [-1, 1], [1, 20]))
+        # Rank Logic: Offset 0-50, Width 1-10 (YOUR CONSTRAINT)
+        rank_offset = int(np.interp(action[-2], [-1, 1], [0, 50]))
+        rank_width = int(np.interp(action[-1], [-1, 1], [1, 10]))
 
-        # High-Speed Scoring: Matrix Multiplication
-        scores = ensemble.values @ weights
+        # 2. Ticker Selection
+        if not ensemble.empty:
+            # Dot product: [Tickers x 33] @ [33] = [Tickers]
+            scores = ensemble.values @ weights
+            # Faster than pandas: use numpy to get indices of top scores
+            idx_top = np.argsort(scores)[::-1][rank_offset : rank_offset + rank_width]
+            selected_tickers = ensemble.index[idx_top].tolist()
+        else:
+            selected_tickers = []
 
-        # Fast Sorting using NumPy argsort (faster than pandas sort_values)
-        idx_top = np.argsort(scores)[::-1][rank_offset : rank_offset + rank_width]
-        selected_tickers = ensemble.index[idx_top].tolist()
+        # 3. Veritable Reward (Cash/Ghost Fix)
+        if not selected_tickers:
+            reward = 0.0  # Return is 0% if staying in cash (relative to cash)
+        else:
+            reward = self.engine.get_batch_reward(date, selected_tickers)
 
-        # Veritable Reward Lookup
-        reward = self.engine.get_batch_reward(date, selected_tickers)
-
+        # 4. State Update
         self.equity_curve.append(self.equity_curve[-1] * np.exp(reward))
         self.current_date_idx += self.holding_period
-
         done = self.current_date_idx >= (len(self.calendar) - self.holding_period - 1)
 
-        return self._get_observation(), reward, done, {"date": date}
+        # 5. THE AUDIT TRAIL (Fixes the KeyError)
+        info = {
+            "date": date,
+            "tickers": selected_tickers,
+            "ticker_count": len(selected_tickers),
+            "reward": reward,
+            "rank_offset": rank_offset,
+            "rank_width": rank_width,
+        }
+
+        return self._get_observation(), reward, done, info
 
 
 #
