@@ -765,52 +765,6 @@ class AlphaEngine:
         return ensemble_df
 
 
-# class AlphaCache:
-#     """
-#     THE FEATURE CUBE: Pre-calculates and flattens all resolutions into a
-#     high-speed lookup table. This is the 'VRAM' for our RL Agent.
-#     """
-
-#     def __init__(self, engine, lookbacks: List[int]):
-#         self.engine = engine
-#         self.lookbacks = lookbacks
-#         # This will store our flattened Feature Cube: MultiIndex (Date, Ticker)
-#         self.feature_cube = pd.DataFrame()
-#         self.reward_cube = pd.DataFrame()  # Pre-calculated forward returns
-
-#     def build(self):
-#         """Iterates through the calendar ONCE to bake all features."""
-#         all_dates = self.engine.trading_calendar
-#         cache_parts = []
-
-#         print(f"🏗️ Building AlphaCache for {len(all_dates)} days...")
-
-#         # Expert Note: We loop over dates once here, so we never have to do it
-#         # during the millions of steps in training.
-#         for date in all_dates:
-#             # 1. Get the multi-resolution ensemble for this date
-#             # This already uses the engine's vectorized logic
-#             ensemble = self.engine.compute_alpha_ensemble(date, self.lookbacks)
-
-#             if ensemble.empty:
-#                 continue
-
-#             # Add the date index for the multi-index join
-#             ensemble["Date"] = date
-#             ensemble = ensemble.set_index("Date", append=True).swaplevel(0, 1)
-#             cache_parts.append(ensemble)
-
-#         self.feature_cube = pd.concat(cache_parts).sort_index()
-#         print(f"✅ AlphaCache built. Shape: {self.feature_cube.shape}")
-
-#     def get_vision(self, date: pd.Timestamp) -> pd.DataFrame:
-#         """Instant lookup: O(1) relative to recalculating."""
-#         try:
-#             return self.feature_cube.loc[date]
-#         except KeyError:
-#             return pd.DataFrame()
-
-
 class AlphaCache:
     """
     THE FEATURE CUBE: Now with 'Time-Slicing' to prevent 60-year loops.
