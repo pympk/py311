@@ -1,9 +1,8 @@
 import pandas as pd
 import numpy as np
 
-from typing import List, Dict
+from typing import List
 from dataclasses import dataclass
-from core.quant import QuantUtils
 from core.result import TaskResult
 from core.contracts import (
     MarketObservation,
@@ -223,9 +222,8 @@ class AlphaEngine:
             debug_artifact = pd.DataFrame(
                 {
                     "Strategy_Score": raw_scores,
-                    # CHANGE: observation["lookback_returns"] -> observation.lookback_returns
-                    "Lookback_Return_Ann": observation.lookback_returns.mean() * 252,
-                    # CHANGE: observation["atrp"] -> observation.atrp
+                    # "Lookback_Return_Ann": observation.lookback_returns.mean() * 252,
+                    "Lookback_Return": observation.lookback_returns.mean(),
                     "Lookback_ATRP": observation.atrp,
                 }
             )
@@ -732,37 +730,56 @@ class AlphaEngine:
         self, decision_date: pd.Timestamp, lookback_periods: List[int]
     ) -> pd.DataFrame:
         """
-        ENSEMBLE SCORER: Generates a multi-resolution feature set
-        for all tickers at a specific decision date.
+        ENSEMBLE SCORER: Generates a multi-resolution feature set.
         """
+        # 1. THE GATEKEEPER: Filter the universe for this specific date
+        # We use the verified thresholds from our GLOBAL_SETTINGS
+        candidates = self._filter_universe(
+            date_ts=decision_date,
+            thresholds=GLOBAL_SETTINGS["thresholds"],
+            audit_container={},  # Headless run, no audit needed
+        )
+
+        if not candidates:
+            return pd.DataFrame()
+
         ensemble_parts = []
 
-        # We loop over the lookbacks (usually only 3-4 periods),
-        # but the ticker calculation inside is fully vectorized.
+        # 2. RESOLUTION LOOP (21d, 63d, 189d)
         for lb in lookback_periods:
-            # 1. Compute the Alpha Matrix for this specific resolution
-            # Reuses the verified headless scorer
-            raw_matrix = self.compute_alpha_matrix(decision_date, lb)
+            try:
+                # Calculate the P0 Anchor for this resolution
+                decision_idx = self.trading_calendar.get_loc(decision_date)
+                start_idx = decision_idx - lb
+                start_date = self.trading_calendar[start_idx]
 
-            if raw_matrix.empty:
+                # 3. BUILD THE OBS: Now 'candidates' is defined!
+                obs = self._build_observation(
+                    decision_date=decision_date,
+                    candidates=candidates,
+                    start_date=start_date,
+                )
+
+                # 4. EXECUTE REGISTRY: Vectorized scoring for the whole universe
+                for name, metric_func in METRIC_REGISTRY.items():
+                    score_series = metric_func(obs)
+
+                    # Tag with resolution for the AI (e.g., '21d_Sharpe_ATRP')
+                    score_series.name = f"{lb}d_{name}"
+                    ensemble_parts.append(score_series)
+
+            except Exception as e:
+                # Senior Dev Tip: Log errors but keep baking the rest of the dates
+                print(
+                    f"⚠️ Warning: Lookback {lb} failed for {decision_date.date()}: {e}"
+                )
                 continue
-
-            # 2. Normalize WITHIN the resolution
-            # This ensures that 'Relative Strength' is consistent across timeframes
-            norm_matrix = self.normalize_alpha_matrix(raw_matrix)
-
-            # 3. Rename columns to include the resolution prefix (e.g., '21d_Sharpe')
-            norm_matrix.columns = [f"{lb}d_{col}" for col in norm_matrix.columns]
-            ensemble_parts.append(norm_matrix)
 
         if not ensemble_parts:
             return pd.DataFrame()
 
-        # 4. Join all resolutions on Ticker index
-        # Shape: [Tickers x (Metrics * Lookbacks)]
-        ensemble_df = pd.concat(ensemble_parts, axis=1)
-
-        return ensemble_df
+        # Join all metrics into one matrix [Tickers x 33]
+        return pd.concat(ensemble_parts, axis=1)
 
 
 class AlphaCache:

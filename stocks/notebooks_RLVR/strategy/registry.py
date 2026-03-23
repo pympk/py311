@@ -1,10 +1,7 @@
-import numpy as np
-
 from core.quant import QuantUtils
 
 
 METRIC_REGISTRY = {
-    # Dot notation: obs.lookback_close instead of obs.get("lookback_close")
     "Price Gain": lambda obs: QuantUtils.calculate_gain(obs.lookback_close),
     "Sharpe": lambda obs: QuantUtils.calculate_sharpe(obs.lookback_returns),
     "Sharpe (ATRP)": lambda obs: QuantUtils.calculate_sharpe_vol(
