@@ -14,7 +14,7 @@ from enum import IntEnum
 from core.settings import GLOBAL_SETTINGS
 from core.contracts import EngineInput, EngineOutput, FilterPack
 from strategy.registry import METRIC_REGISTRY
-
+from core.result import HeadlessReporter
 
 # ============================================================================
 # 1. TRACE REGISTRY (Eliminates Magic Numbers)
@@ -842,6 +842,32 @@ def create_walk_forward_analyzer(engine, universe_subset=None, filter_pack=None)
         engine, universe_subset=universe_subset, filter_pack=pack
     )
     return analyzer, pack
+
+
+def run_headless_simulation(engine, inputs: EngineInput) -> pd.DataFrame:
+    """
+    Orchestrator: Prints the Audit Timeline and Returns the Metrics DataFrame.
+    """
+    result = engine.run(inputs)
+    if result.error_msg:
+        print(f"🚨 Engine Error: {result.error_msg}")
+        return pd.DataFrame()
+
+    # 1. Extract and Print Metadata (Matches the Screenshot Audit)
+    meta = HeadlessReporter.get_metadata(result)
+
+    print("-" * 70)
+    print(
+        f"Timeline: [{meta['start']}] -> Decision: {meta['decision']} -> "
+        f"Entry: {meta['entry']} -> End: {meta['end']}"
+    )
+
+    ticker_str = ", ".join(meta["tickers"])
+    print(f"Selected Tickers ({meta['ticker_count']}):\n{ticker_str}")
+    print("-" * 70)
+
+    # 2. Return Table
+    return HeadlessReporter.get_metrics_table(result)
 
 
 #

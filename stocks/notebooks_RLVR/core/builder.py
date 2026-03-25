@@ -48,18 +48,8 @@ class ParallelFeatureBuilder:
                 ddof=1
             )
 
-            ###########
-            ###########
-            # # 4. Slugify names
-            # new_cols = [
-            #     c.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "")
-            #     for c in normalized.columns
-            # ]
-
             # 4. Slugify names
             new_cols = AlphaLogic.slugify_columns(normalized.columns.tolist())
-            ###########
-            ###########
 
             # --- FORENSIC CHECK 2: COLUMN UNIQUENESS ---
             if len(new_cols) != len(set(new_cols)):
