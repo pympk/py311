@@ -19,11 +19,24 @@ class AlphaLogic:
         # Transform to Log for the Agent's additive math
         return float(np.log1p(arith_mean))
 
+    # @staticmethod
+    # def slugify_columns(columns: List[str]) -> List[str]:
+    #     """Ensures names are machine-safe: 21d_Sharpe_(ATRP) -> 21d_Sharpe_ATRP"""
+    #     return [
+    #         c.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "")
+    #         for c in columns
+    #     ]
+
     @staticmethod
     def slugify_columns(columns: List[str]) -> List[str]:
         """Ensures names are machine-safe: 21d_Sharpe_(ATRP) -> 21d_Sharpe_ATRP"""
         return [
-            c.replace(" ", "_").replace("(", "").replace(")", "").replace("-", "")
+            c.replace(" ", "_")
+            .replace("(", "")
+            .replace(")", "")
+            .replace("-", "")
+            .replace(",", "")  # Added to handle "Alpha, 63d"
+            .replace("__", "_")  # Clean up double underscores
             for c in columns
         ]
 
