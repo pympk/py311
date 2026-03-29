@@ -274,6 +274,13 @@ class ParallelFeatureBuilder:
                 print(f"💾 Z-scores appended to: {debug_file}")
 
             # 4. Slugify names
+            ####################
+            ####################
+            print(
+                f"DEBUG: Raw columns before slugify for {date}: {normalized.columns.tolist()}"
+            )
+            ####################
+            ####################
             new_cols = AlphaLogic.slugify_columns(normalized.columns.tolist())
 
             # --- FORENSIC CHECK 2: COLUMN UNIQUENESS ---

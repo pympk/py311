@@ -762,7 +762,8 @@ class AlphaEngine:
 
                 # 4. EXECUTE REGISTRY: Vectorized scoring for the whole universe
                 for name, metric_func in METRIC_REGISTRY.items():
-                    score_series = metric_func(obs)
+                    # .copy() ensures we don't mutate the shared observation object
+                    score_series = metric_func(obs).copy()
 
                     # Tag with resolution for the AI (e.g., '21d_Sharpe_ATRP')
                     score_series.name = f"{lb}d_{name}"
