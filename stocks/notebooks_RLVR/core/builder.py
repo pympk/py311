@@ -8,150 +8,6 @@ from tqdm.auto import tqdm  # For a beautiful, professional progress bar
 from core.logic import AlphaLogic
 
 
-# class ParallelFeatureBuilder:
-#     """
-#     ULTRA-PERFORMANCE BUILDER: Uses all CPU cores to bake the AlphaCache.
-#     Features: Parallelism, Atomic Checkpointing, and Smart Recovery.
-#     """
-
-#     @staticmethod
-#     def _worker_task(date, engine_params, lookbacks):
-#         """The atomic unit of work performed by each CPU core."""
-#         try:
-#             master_engine = engine_params["engine"]
-
-#             # 1. Generate Raw Metrics
-#             raw_ensemble = master_engine.compute_alpha_ensemble(date, lookbacks)
-#             if raw_ensemble.empty:
-#                 return None
-
-#             # --- FORENSIC CHECK 1: TICKER UNIQUENESS ---
-#             if raw_ensemble.index.duplicated().any():
-#                 dupes = (
-#                     raw_ensemble.index[raw_ensemble.index.duplicated()]
-#                     .unique()
-#                     .tolist()
-#                 )
-#                 print(f"⚠️  DUPLICATE TICKERS detected on {date.date()}: {dupes}")
-#                 # Force uniqueness
-#                 raw_ensemble = raw_ensemble.loc[
-#                     ~raw_ensemble.index.duplicated(keep="first")
-#                 ]
-
-#             # 2. Cleaning
-#             clean_ensemble = raw_ensemble.dropna()
-#             if clean_ensemble.empty:
-#                 return None
-
-#             # 3. Normalization (ddof=1 for Excel Parity)
-#             normalized = (clean_ensemble - clean_ensemble.mean()) / clean_ensemble.std(
-#                 ddof=1
-#             )
-
-#             # 4. Slugify names
-#             new_cols = AlphaLogic.slugify_columns(normalized.columns.tolist())
-
-#             # --- FORENSIC CHECK 2: COLUMN UNIQUENESS ---
-#             if len(new_cols) != len(set(new_cols)):
-#                 from collections import Counter
-
-#                 counts = Counter(new_cols)
-#                 dupe_cols = [item for item, count in counts.items() if count > 1]
-#                 print(f"⚠️  COLUMN NAME COLLISION on {date.date()}: {dupe_cols}")
-#                 # We fix the names to be unique by appending the index
-#                 new_cols = [
-#                     f"{c}_{i}" if counts[c] > 1 else c for i, c in enumerate(new_cols)
-#                 ]
-
-#             normalized.columns = new_cols
-
-#             # 5. Prepare MultiIndex
-#             normalized.index.name = "Ticker"
-#             normalized["Date"] = date
-
-#             # Use 'append=True' to keep Ticker in index, then swap so Date is first
-#             res = normalized.set_index("Date", append=True).swaplevel(0, 1)
-
-#             # --- FORENSIC CHECK 3: FINAL INDEX INTEGRITY ---
-#             if not res.index.is_unique:
-#                 print(
-#                     f"❌ FATAL: Index still not unique on {date.date()} after cleaning."
-#                 )
-#                 return None
-
-#             return res
-
-#         except Exception as e:
-#             print(f"❌ ERROR on {date.date()}: {str(e)}")
-#             return None
-
-#     @staticmethod
-#     def run_marathon(
-#         master_engine,
-#         lookbacks,
-#         start_date,
-#         checkpoint_dir="cache_checkpoints",
-#         batch_size=50,
-#         num_workers=None,  # <--- CRITICAL FIX: Add this to the signature
-#     ):
-#         if not os.path.exists(checkpoint_dir):
-#             os.makedirs(checkpoint_dir)
-
-#         # --- THE TAME LOGIC ---
-#         # If not specified, we use ALL cores minus 2 (The 'User-Friendly' offset)
-#         if num_workers is None:
-#             num_workers = max(1, multiprocessing.cpu_count() - 2)
-
-#         # 1. IDENTIFY GAPS (Smart Recovery)
-#         calendar = master_engine.trading_calendar
-#         all_dates = calendar[calendar >= pd.Timestamp(start_date)]
-#         processed_dates = ParallelFeatureBuilder._get_processed_dates(checkpoint_dir)
-#         missing_dates = [d for d in all_dates if d not in processed_dates]
-
-#         if not missing_dates:
-#             print("✅ All data baked and verified.")
-#             return
-
-#         # Simplified heartbeat print
-#         print(
-#             f"🚀 Parallel Bake: {len(missing_dates)} days | Using {num_workers} of {multiprocessing.cpu_count()} cores."
-#         )
-#         print(
-#             f"🖥️  {multiprocessing.cpu_count() - num_workers} cores reserved for your PC usage."
-#         )
-
-#         # 2. CHUNK THE WORK
-#         date_chunks = [
-#             missing_dates[i : i + batch_size]
-#             for i in range(0, len(missing_dates), batch_size)
-#         ]
-
-#         engine_params = {"engine": master_engine}
-
-#         with tqdm(total=len(missing_dates), desc="Baking AlphaCache") as pbar:
-#             for chunk in date_chunks:
-#                 # Use the 'Tame' worker count here
-#                 with multiprocessing.Pool(processes=num_workers) as pool:
-#                     results = pool.starmap(
-#                         ParallelFeatureBuilder._worker_task,
-#                         [(d, engine_params, lookbacks) for d in chunk],
-#                     )
-
-#                 # Filter out None/Errors and save batch
-#                 valid_results = [r for r in results if isinstance(r, pd.DataFrame)]
-#                 if valid_results:
-#                     # Logic Check: We use 'sort=False' for speed since we sort at the very end
-#                     batch_df = pd.concat(valid_results, sort=False)
-#                     batch_fn = (
-#                         f"{checkpoint_dir}/batch_{chunk[0].strftime('%Y%m%d')}.parquet"
-#                     )
-#                     batch_df.to_parquet(batch_fn, engine="pyarrow", compression="zstd")
-
-#                 pbar.update(len(chunk))
-
-#         print(f"✨ Marathon complete. All batches saved to {checkpoint_dir}")
-
-
 class ParallelFeatureBuilder:
     """
     ULTRA-PERFORMANCE BUILDER: Uses all CPU cores to bake the AlphaCache.
@@ -328,6 +184,51 @@ class ParallelFeatureBuilder:
         debug_mode=False,  # <--- NEW: Enable debug mode
         debug_sample_dates=None,  # <--- NEW: Only debug specific dates (list)
     ):
+        """
+                ## `ParallelFeatureBuilder.run_marathon`
+
+        Execute parallel alpha feature calculation with smart recovery and optional forensic debugging.
+
+        Processes historical trading dates in parallel to compute normalized alpha features (z-scores) using all available CPU cores (minus 2 reserved for system responsiveness). Implements atomic checkpointing to parquet files for fault tolerance and supports granular debugging via CSV exports.
+
+        ### Parameters
+
+        | Parameter | Type | Default | Description |
+        |-----------|------|---------|-------------|
+        | `master_engine` | object | **Required** | Alpha computation engine instance. Must expose `trading_calendar` (DatetimeIndex) and `compute_alpha_ensemble(date, lookbacks)` method. |
+        | `lookbacks` | `list[int]` | **Required** | List of lookback periods (e.g., `[10, 21]`) for alpha calculations. |
+        | `start_date` | `str` or `datetime` | **Required** | Starting date for processing. **Ignored if `debug_sample_dates` is provided.** Format: `'YYYY-MM-DD'`. |
+        | `checkpoint_dir` | `str` | `"cache_checkpoints"` | Directory for parquet checkpoint files. |
+        | `batch_size` | `int` | `50` | Number of dates to process per batch. Controls memory usage and checkpoint granularity. |
+        | `num_workers` | `int` | `None` | Number of CPU cores to use. If `None`, uses `max(1, cpu_count - 2)` to reserve 2 cores for PC responsiveness. |
+        | `debug_mode` | `bool` | `False` | If `True`, exports forensic CSVs containing raw values, normalization statistics (mean/std/count), and final z-scores to `debug_zscore_check/` for manual verification. |
+        | `debug_sample_dates` | `list[str]` | `None` | Specific dates to process (e.g., `['2025-02-01']`). When provided, **overrides `start_date`** and processes **only** these dates regardless of calendar range. Useful for targeted debugging. |
+
+        ### Returns
+
+        `None` — Results are persisted to disk as parquet files in `checkpoint_dir`.
+
+        ### Behavior Notes
+
+        - **Smart Recovery**: On startup, scans `checkpoint_dir` for existing parquet files and skips already processed dates (checks Date index).
+        - **Normalization**: Uses `ddof=1` (sample standard deviation) for Excel parity.
+        - **Debug Files**: When `debug_mode=True`, creates `debug_YYYYMMDD.csv` files containing RAW, STATS, and ZSCORE sections for manual verification.
+        - **Date Override**: `debug_sample_dates` acts as a whitelist, not an intersection with the trading calendar. Invalid dates silently return `None`.
+        - **Atomicity**: Each batch is written to a separate parquet file named `batch_YYYYMMDD.parquet` only after all dates in the batch complete.
+        - **Fault Tolerance**: Individual date failures are caught internally and logged to stdout, returning `None` for that date without stopping the marathon.
+
+        ### Examples
+
+        #### Standard Production Run
+        ```python
+        ParallelFeatureBuilder.run_marathon(
+            master_engine=engine,
+            lookbacks=[10, 21],
+            start_date="2025-01-01",
+            checkpoint_dir="alpha_cache",
+            num_workers=8
+        )
+        """
         if not os.path.exists(checkpoint_dir):
             os.makedirs(checkpoint_dir)
 

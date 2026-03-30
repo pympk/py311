@@ -88,7 +88,7 @@ class AlphaEngine:
             )
 
         min_decision_date = cal[inputs.lookback_period]
-        if inputs.start_date < min_decision_date:
+        if inputs.decision_date < min_decision_date:
             # NO 'return self.Result' needed here
             raise ValueError(
                 f"❌ Not enough history for a {inputs.lookback_period}-day lookback.\n"
@@ -103,11 +103,11 @@ class AlphaEngine:
                 f"❌ Holding period too long. {inputs.holding_period} days exceeds data."
             )
 
-        if inputs.start_date > cal[latest_valid_idx]:
+        if inputs.decision_date > cal[latest_valid_idx]:
             latest_date = cal[latest_valid_idx].date()
             raise ValueError(f"❌ Decision Date too late. Latest valid: {latest_date}")
 
-        decision_idx = cal.searchsorted(inputs.start_date)
+        decision_idx = cal.searchsorted(inputs.decision_date)
         if decision_idx > latest_valid_idx:
             decision_idx = latest_valid_idx
 
@@ -554,7 +554,7 @@ class AlphaEngine:
         # We simulate an EngineInput to reuse the validation logic
         mock_input = EngineInput(
             mode="Discovery",
-            start_date=decision_date,
+            decision_date=decision_date,
             lookback_period=lookback_period,
             holding_period=1,  # Irrelevant for scoring
             metric="All",

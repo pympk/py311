@@ -43,10 +43,30 @@ class FilterPack:
         return f"FilterPack(Date: {self.decision_date}, Eligible: {len(self.eligible_pool)}, Selected: {len(self.selected_tickers)})"
 
 
+# @dataclass
+# class EngineInput:
+#     mode: str
+#     start_date: pd.Timestamp
+#     lookback_period: int
+#     holding_period: int
+#     metric: str
+#     benchmark_ticker: str
+#     rank_start: int = 1
+#     rank_end: int = 10
+#     # Default factory pulls from Global thresholds
+#     quality_thresholds: Dict[str, float] = field(
+#         default_factory=lambda: GLOBAL_SETTINGS["thresholds"].copy()
+#     )
+#     manual_tickers: List[str] = field(default_factory=list)
+#     debug: bool = False
+#     universe_subset: Optional[List[str]] = None
+
+
 @dataclass
 class EngineInput:
     mode: str
-    start_date: pd.Timestamp
+    # start_date: pd.Timestamp
+    decision_date: pd.Timestamp
     lookback_period: int
     holding_period: int
     metric: str

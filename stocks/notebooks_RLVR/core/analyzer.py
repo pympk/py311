@@ -800,7 +800,7 @@ class WalkForwardAnalyzer:
         vals = self.ui.get_input_values()
         return EngineInput(
             mode=vals["mode"],
-            start_date=vals["decision_date"],
+            decision_date=vals["decision_date"],
             lookback_period=vals["lookback"],
             holding_period=vals["holding"],
             metric=vals["strategy"],
