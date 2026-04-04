@@ -470,7 +470,7 @@ class WalkForwardUI:
         )
         self.w_strategy = widgets.Dropdown(
             options=list(METRIC_REGISTRY.keys()),
-            value="Sharpe (ATRP)",
+            value="Sharpe (TRP)",
             description="Strategy:",
             style={"description_width": "initial"},
             layout=widgets.Layout(width="220px"),

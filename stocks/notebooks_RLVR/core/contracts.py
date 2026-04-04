@@ -5,6 +5,32 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 
 
+# @dataclass(frozen=True)
+# class MarketObservation:
+
+#     # Dataframes
+#     lookback_close: pd.DataFrame
+#     lookback_returns: pd.DataFrame
+
+#     # Series (per ticker)
+#     atrp: pd.Series
+#     trp: pd.Series
+
+#     atr: pd.Series
+#     rsi: pd.Series
+#     consistency: pd.Series
+#     mom_21: pd.Series
+#     ir_63: pd.Series
+#     beta_63: pd.Series
+#     dd_21: pd.Series
+
+#     # Macro Scalars (or Series)
+#     macro_trend: float
+#     macro_trend_vel: float
+#     macro_vix_z: float
+#     macro_vix_ratio: float
+
+
 @dataclass(frozen=True)
 class MarketObservation:
 
@@ -24,6 +50,15 @@ class MarketObservation:
     beta_63: pd.Series
     dd_21: pd.Series
 
+    ############
+    # --- 4 NEW MICROSTRUCTURE SLOTS ---
+    autocorr_15: pd.Series
+    range_pos_20: pd.Series
+    slope_p_5: pd.Series
+    slope_v_5: pd.Series
+    convexity: pd.Series  # Adding this now to prevent the next error!
+    ############
+
     # Macro Scalars (or Series)
     macro_trend: float
     macro_trend_vel: float
@@ -41,25 +76,6 @@ class FilterPack:
 
     def __repr__(self):
         return f"FilterPack(Date: {self.decision_date}, Eligible: {len(self.eligible_pool)}, Selected: {len(self.selected_tickers)})"
-
-
-# @dataclass
-# class EngineInput:
-#     mode: str
-#     start_date: pd.Timestamp
-#     lookback_period: int
-#     holding_period: int
-#     metric: str
-#     benchmark_ticker: str
-#     rank_start: int = 1
-#     rank_end: int = 10
-#     # Default factory pulls from Global thresholds
-#     quality_thresholds: Dict[str, float] = field(
-#         default_factory=lambda: GLOBAL_SETTINGS["thresholds"].copy()
-#     )
-#     manual_tickers: List[str] = field(default_factory=list)
-#     debug: bool = False
-#     universe_subset: Optional[List[str]] = None
 
 
 @dataclass
