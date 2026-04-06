@@ -13,7 +13,7 @@ from enum import IntEnum
 # Internal Imports
 from core.settings import GLOBAL_SETTINGS
 from core.contracts import EngineInput, EngineOutput, FilterPack
-from strategy.registry import METRIC_REGISTRY
+from strategy.registry import STRATEGY_REGISTRY
 from core.result import HeadlessReporter
 
 # ============================================================================
@@ -34,8 +34,9 @@ class TraceId(IntEnum):
     TREND = 52
     TREND_VELOCITY = 53
     VIX_ZSCORE = 54
-
-    TOTAL_TRACES = 55
+    HY_SPREAD_Z = 55  # New
+    YIELD_CURVE_Z = 56  # New
+    TOTAL_TRACES = 57  # Updated
 
 
 # ============================================================================
@@ -157,50 +158,74 @@ class MacroVisualizer:
     ) -> Optional[list[dict]]:
         macro_slice = self.extract_macro_slice(res)
 
-        # Hide all macro traces if no data
         if macro_slice is None:
-            for tid in [TraceId.TREND, TraceId.TREND_VELOCITY, TraceId.VIX_ZSCORE]:
+            for tid in [
+                TraceId.TREND,
+                TraceId.TREND_VELOCITY,
+                TraceId.VIX_ZSCORE,
+                TraceId.HY_SPREAD_Z,
+                TraceId.YIELD_CURVE_Z,
+            ]:
                 fig.data[tid].visible = False
             return None
 
-        # Update traces using semantic IDs, not magic numbers
+        # 1. Update Existing Traces
         fig.data[TraceId.TREND].update(
             x=macro_slice.index, y=macro_slice["Macro_Trend"], visible=True
         )
+        fig.data[TraceId.TREND_VELOCITY].update(
+            x=macro_slice.index, y=macro_slice["Macro_Trend_Vel_Z"], visible=True
+        )
+        fig.data[TraceId.VIX_ZSCORE].update(
+            x=macro_slice.index, y=macro_slice["Macro_Vix_Z"], visible=True
+        )
+        fig.data[TraceId.HY_SPREAD_Z].update(
+            x=macro_slice.index, y=macro_slice["High_Yield_Spread_Z"], visible=True
+        )
+        fig.data[TraceId.YIELD_CURVE_Z].update(
+            x=macro_slice.index, y=macro_slice["Yield_Curve_10Y2Y_Z"], visible=True
+        )
 
-        if "Macro_Trend_Vel_Z" in macro_slice.columns:
-            fig.data[TraceId.TREND_VELOCITY].update(
-                x=macro_slice.index,
-                y=macro_slice["Macro_Trend_Vel_Z"],
-                visible=True,
-            )
+        # 2. Extract Ratios for the Title
+        # Get ratio at decision date (using .asof for safety)
+        decision_ratio = res.macro_df["Macro_Vix_Ratio"].asof(res.decision_date)
+        # Get ratio at the end of the holding period (last point in slice)
+        end_ratio = macro_slice["Macro_Vix_Ratio"].iloc[-1]
 
-        if "Macro_Vix_Z" in macro_slice.columns:
-            fig.data[TraceId.VIX_ZSCORE].update(
-                x=macro_slice.index,
-                y=macro_slice["Macro_Vix_Z"],
-                visible=True,
-            )
+        # 3. Detect current regime based on end ratio
+        regime = self.detect_regime(end_ratio)
 
-        # Dynamic title based on current regime
-        current_ratio = macro_slice["Macro_Vix_Ratio"].iloc[-1]
-        regime = self.detect_regime(current_ratio)
-        self._update_volatility_title(fig, regime, current_ratio)
+        # 4. Update the Title with the new formatting
+        self._update_volatility_title(fig, regime, decision_ratio, end_ratio)
 
-        # Return shapes for layout update
         return self.create_shading_shapes(macro_slice)
 
     def _update_volatility_title(
-        self, fig: go.FigureWidget, regime: VolatilityRegime, ratio: float
+        self,
+        fig: go.FigureWidget,
+        regime: VolatilityRegime,
+        dec_ratio: float,
+        end_ratio: float,
     ) -> None:
+        """
+        Updated title formatting to match standard Plotly subplot titles.
+        Uses <sup> to mimic the styling of 'Market Momentum' and 'Market Regime' panes.
+        """
+        # Primary Title line (Matches font weight/size of other panes)
         title = (
-            f"Volatility Regime: {regime.label} (VIX Ratio at Hldg Pd End: {ratio:.2f})"
+            f"Volatility Regime: {regime.label} | "
+            f"VIX Ratio: {dec_ratio:.2f} (Dec) ➔ {end_ratio:.2f} (End)"
         )
+
+        # Subtitle line (Matches the styling of row 2 and 3 titles)
         subtitle = "Line: Intensity (Z-Score) | Background: Structure (Ratio < 1.0 = Healthy, > 1.0 = Crisis)"
 
         for ann in fig.layout.annotations:
-            if "Volatility Regime" in ann.text:
-                ann.text = f"{title}<br><span style='font-size:10px'>{subtitle}</span>"
+            # Find the specific annotation for this subplot
+            if "Volatility Regime" in ann.text or "VIX Ratio" in ann.text:
+                # <sup> is the standard way Plotly handles the smaller subtitle text
+                # removing <b> and custom <span> ensures it inherits global font settings
+                ann.text = f"{title}<br><sup>{subtitle}</sup>"
 
 
 # ============================================================================
@@ -231,6 +256,24 @@ class ChartController:
                     "Volatility Regime (VIX Z-Score)<br><sup>Standardized VIX index relative to its recent 63-day behavior</sup>",
                 ),
                 specs=[[{"secondary_y": False}]] * 4,
+            )
+        )
+
+        fig = go.FigureWidget(
+            make_subplots(
+                rows=5,  # Updated
+                cols=1,
+                row_heights=[0.55, 0.12, 0.11, 0.11, 0.11],  # Rebalanced
+                shared_xaxes=True,
+                vertical_spacing=0.05,  # Tightened slightly
+                subplot_titles=(
+                    "Event-Driven Walk-Forward Analysis",
+                    "Market Regime (200d MA Deviation)",
+                    "Market Momentum (21d Z-Score)",
+                    "Volatility Regime (VIX Z-Score)",
+                    "Credit & Rates (Z-Score)",  # New Title
+                ),
+                specs=[[{"secondary_y": False}]] * 5,
             )
         )
 
@@ -314,15 +357,37 @@ class ChartController:
             col=1,
         )
 
+        # Row 5: Credit & Rates
+        fig.add_trace(
+            go.Scatter(
+                name="HY Spread Z", line=dict(color="#FF4500", width=1.5), visible=False
+            ),
+            row=5,
+            col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                name="Yield Curve Z",
+                line=dict(color="#1E90FF", width=1.5),
+                visible=False,
+            ),
+            row=5,
+            col=1,
+        )
+
         # Axis labels
         fig.update_yaxes(title_text="Cumulative Return", row=1, col=1)
         fig.update_yaxes(title_text="Trend", tickformat=".0%", row=2, col=1)
         fig.update_yaxes(title_text="Trend Vel (Z)", tickformat=".1f", row=3, col=1)
         fig.update_yaxes(title_text="VIX (Z)", row=4, col=1)
 
-        # Hide x-axis for top rows
-        for r in [1, 2, 3]:
+        # Axis labels update
+        fig.update_yaxes(title_text="Credit/Rates (Z)", row=5, col=1)
+
+        # Hide x-axis for rows 1-4, show for row 5
+        for r in [1, 2, 3, 4]:
             fig.update_xaxes(showticklabels=False, row=r, col=1)
+        fig.update_xaxes(showticklabels=True, row=5, col=1)
 
     def _init_reference_lines(self, fig: go.FigureWidget) -> None:
         # Static horizontal lines defined declaratively
@@ -333,6 +398,7 @@ class ChartController:
             (-2, "dash", "green", 3),  # y3
             (2, "dash", "red", 4),  # y4
             (-1.5, "dash", "green", 4),  # y4
+            (0, "dot", "gray", 5),  # Add zero-line to new row 5
         ]
 
         for y, dash, color, yaxis in lines:
@@ -469,7 +535,7 @@ class WalkForwardUI:
             style={"description_width": "initial"},
         )
         self.w_strategy = widgets.Dropdown(
-            options=list(METRIC_REGISTRY.keys()),
+            options=list(STRATEGY_REGISTRY.keys()),
             value="Sharpe (TRP)",
             description="Strategy:",
             style={"description_width": "initial"},

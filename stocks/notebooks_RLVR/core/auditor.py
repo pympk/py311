@@ -421,7 +421,7 @@ class SystemAuditor:
         3. Universal Selection (Strategy Math reconciliation for ALL candidates)
         """
         # --- LATE IMPORTS to avoid circular dependency ---
-        from strategy.registry import METRIC_REGISTRY
+        from strategy.registry import STRATEGY_REGISTRY
 
         try:
             from IPython.display import display
@@ -730,7 +730,7 @@ class SystemAuditor:
                 macro_vix_ratio=macro_now["Macro_Vix_Ratio"],
             )
             # Run Manual Registry Math on Full Universe
-            manual_scores = METRIC_REGISTRY[inputs.metric](audit_obs)
+            manual_scores = STRATEGY_REGISTRY[inputs.metric](audit_obs)
 
             # Compare
             audit_data = []

@@ -2,33 +2,7 @@ import pandas as pd
 
 from core.settings import GLOBAL_SETTINGS
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
-
-
-# @dataclass(frozen=True)
-# class MarketObservation:
-
-#     # Dataframes
-#     lookback_close: pd.DataFrame
-#     lookback_returns: pd.DataFrame
-
-#     # Series (per ticker)
-#     atrp: pd.Series
-#     trp: pd.Series
-
-#     atr: pd.Series
-#     rsi: pd.Series
-#     consistency: pd.Series
-#     mom_21: pd.Series
-#     ir_63: pd.Series
-#     beta_63: pd.Series
-#     dd_21: pd.Series
-
-#     # Macro Scalars (or Series)
-#     macro_trend: float
-#     macro_trend_vel: float
-#     macro_vix_z: float
-#     macro_vix_ratio: float
+from typing import List, Dict, Any, Optional, Callable
 
 
 @dataclass(frozen=True)
@@ -139,3 +113,19 @@ class DiscoveryResult:
     veritable_reward: float
     metric_values: pd.Series
     raw_alpha_matrix: pd.DataFrame  # Added for your manual verification
+
+
+@dataclass(frozen=True)
+class MetricBlueprint:
+    """The 'Identity Card' for a Trading Strategy / RL Feature."""
+
+    name: str
+    category: str  # e.g., "Physics", "Fuel", "Macro"
+    regime: str  # e.g., "Trend", "Mean Reversion"
+    description: str  # Human-readable intuition
+    agent_hint: str  # Technical hint for the RL Policy Network
+    formula: Callable[[Any], pd.Series]
+
+    def __call__(self, obs) -> pd.Series:
+        """MAGIC: Allows calling the object like a function: registry['Name'](obs)"""
+        return self.formula(obs)
