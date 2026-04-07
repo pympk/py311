@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import gc
 
 from typing import List
 from dataclasses import dataclass
@@ -790,6 +791,14 @@ class AlphaEngine:
 
         # Join all metrics into one matrix [Tickers x 33]
         return pd.concat(ensemble_parts, axis=1)
+
+    def shutdown(self):
+        """Explicitly release heavy memory objects."""
+        print(f"Shutting down Engine {id(self)}...")
+        self.features_df = pd.DataFrame()
+        self.df_ohlcv = pd.DataFrame()
+        self.macro_df = pd.DataFrame()
+        gc.collect()  # Trigger immediate cleanup
 
 
 class AlphaCache:
