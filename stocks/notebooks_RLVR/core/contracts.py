@@ -115,32 +115,72 @@ class DiscoveryResult:
     raw_alpha_matrix: pd.DataFrame  # Added for your manual verification
 
 
+# @dataclass(frozen=True)
+# class MetricBlueprint:
+#     """
+#     Identity Card for a Trading Signal.
+
+#     Why this matters for RL:
+#     - category → Feature groups for diversity constraints (don't pick 5 'Momentum' signals)
+#     - regime → Market state filter (disable 'Mean Reversion' in strong trends)
+#     - agent_hint → Curriculum learning seed (initialize policy network with semantic priors)
+#     """
+
+#     name: str
+#     category: str  # Feature family for portfolio construction
+#     regime: str  # Market microstructure state
+#     description: str  # Human-readable math intuition
+#     agent_hint: str  # RL policy guidance (when to weight this high)
+#     intervention_trigger: str  # NEW: Specific threshold/action for the agent
+#     formula: Callable[[Any], pd.Series]
+
+#     def __call__(self, obs) -> pd.Series:
+#         try:
+#             return self.formula(obs)
+#         except (AttributeError, ZeroDivisionError, TypeError) as e:
+#             # Senior Dev: Use rsi or atrp index to ensure we return TICKERS, not Dates
+#             # This prevents the 'Dates as Tickers' index bug
+#             target_index = (
+#                 obs.rsi.index if hasattr(obs, "rsi") else obs.lookback_close.columns
+#             )
+#             return pd.Series([float("nan")] * len(target_index), index=target_index)
+
+
 @dataclass(frozen=True)
 class MetricBlueprint:
-    """
-    Identity Card for a Trading Signal.
-
-    Why this matters for RL:
-    - category → Feature groups for diversity constraints (don't pick 5 'Momentum' signals)
-    - regime → Market state filter (disable 'Mean Reversion' in strong trends)
-    - agent_hint → Curriculum learning seed (initialize policy network with semantic priors)
-    """
-
     name: str
-    category: str  # Feature family for portfolio construction
-    regime: str  # Market microstructure state
-    description: str  # Human-readable math intuition
-    agent_hint: str  # RL policy guidance (when to weight this high)
-    intervention_trigger: str  # NEW: Specific threshold/action for the agent
+    category: str
+    regime: str
+    description: str
+    agent_hint: str
+    intervention_trigger: str
     formula: Callable[[Any], pd.Series]
+    # NEW: Control how the Agent "sees" the data
+    scaling_type: str = "None"  # Options: "None", "Z-Score", "Center", "RSI"
 
     def __call__(self, obs) -> pd.Series:
+        """Returns RAW data (For Plots/Debug)."""
         try:
             return self.formula(obs)
-        except (AttributeError, ZeroDivisionError, TypeError) as e:
-            # Senior Dev: Use rsi or atrp index to ensure we return TICKERS, not Dates
-            # This prevents the 'Dates as Tickers' index bug
+        except Exception:
             target_index = (
                 obs.rsi.index if hasattr(obs, "rsi") else obs.lookback_close.columns
             )
             return pd.Series([float("nan")] * len(target_index), index=target_index)
+
+    def get_agent_view(self, obs) -> pd.Series:
+        """Returns SCALED data (For RL Agent)."""
+        raw = self.__call__(obs)
+        if self.scaling_type == "Z-Score":
+            # Cross-sectional standardization
+            std = raw.std()
+            return (raw - raw.mean()) / (std if std != 0 else 1.0)
+        elif self.scaling_type == "Center":
+            # Map [0, 1] to [-1, 1] (e.g. Range Position)
+            return (raw - 0.5) * 2
+        elif self.scaling_type == "RSI":
+            # Map [-100, 0] to [1, -1]
+            # RSI 30 (Oversold) -> -RSI -70 -> Scaled +1.0
+            # RSI 70 (Overbought) -> -RSI -30 -> Scaled -1.0
+            return (raw + 50) / 20
+        return raw  # "None" returns raw

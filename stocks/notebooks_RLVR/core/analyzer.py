@@ -508,7 +508,7 @@ class WalkForwardUI:
     def _build_widgets(self, initial_date: pd.Timestamp) -> None:
         # Timeline
         self.w_lookback = widgets.IntText(
-            value=10,
+            value=189,
             description="Lookback (Days):",
             layout=widgets.Layout(width="200px"),
             style={"description_width": "initial"},
@@ -557,7 +557,7 @@ class WalkForwardUI:
             style={"description_width": "initial"},
         )
         self.w_rank_end = widgets.IntText(
-            value=10,
+            value=100,
             description="Rank End:",
             layout=widgets.Layout(width="150px"),
             style={"description_width": "initial"},
@@ -823,7 +823,7 @@ class WalkForwardAnalyzer:
         self.settings = default_settings or GLOBAL_SETTINGS
 
         # Initialize components
-        initial_date = self.filter_pack.decision_date or pd.to_datetime("2025-12-10")
+        initial_date = self.filter_pack.decision_date or pd.to_datetime("2026-12-10")
 
         self.ui = WalkForwardUI(initial_date, self.settings)
         self.chart = ChartController()
@@ -928,8 +928,10 @@ def run_headless_simulation(engine, inputs: EngineInput) -> pd.DataFrame:
         f"Entry: {meta['entry']} -> End: {meta['end']}"
     )
 
-    ticker_str = ", ".join(meta["tickers"])
-    print(f"Selected Tickers ({meta['ticker_count']}):\n{ticker_str}")
+    # Chunk tickers into groups of 10
+    tickers = meta["tickers"]
+    rows = [", ".join(tickers[i : i + 10]) for i in range(0, len(tickers), 10)]
+    print(f"Selected Tickers ({meta['ticker_count']}):\n" + "\n".join(rows))
     print("-" * 70)
 
     # 2. Return Table

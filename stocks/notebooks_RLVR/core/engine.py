@@ -545,6 +545,14 @@ class AlphaEngine:
         except Exception as e:
             return self._error_result(str(e))
 
+    def shutdown(self):
+        """Explicitly release heavy memory objects."""
+        print(f"Shutting down Engine {id(self)}...")
+        self.features_df = pd.DataFrame()
+        self.df_ohlcv = pd.DataFrame()
+        self.macro_df = pd.DataFrame()
+        gc.collect()  # Trigger immediate cleanup
+
     # Helper for initial weights, will move to a utility file
     def _prepare_initial_weights(self, tickers: List[str]) -> pd.Series:
         if not tickers:
@@ -598,7 +606,9 @@ class AlphaEngine:
             try:
                 # Most of your registry functions are already vectorized (QuantUtils)
                 # and will return a pd.Series where index = Tickers.
-                scores = metric_func(obs)
+                # scores = blueprint(obs)           <-- OLD (Human/Raw)
+                scores = blueprint.get_agent_view(obs)  # <-- NEW (Agent/Scaled)
+                alpha_results[name] = scores
 
                 # Ensure the output is a Series for consistency
                 if isinstance(scores, (pd.Series, pd.DataFrame)):
@@ -791,14 +801,6 @@ class AlphaEngine:
 
         # Join all metrics into one matrix [Tickers x 33]
         return pd.concat(ensemble_parts, axis=1)
-
-    def shutdown(self):
-        """Explicitly release heavy memory objects."""
-        print(f"Shutting down Engine {id(self)}...")
-        self.features_df = pd.DataFrame()
-        self.df_ohlcv = pd.DataFrame()
-        self.macro_df = pd.DataFrame()
-        gc.collect()  # Trigger immediate cleanup
 
 
 class AlphaCache:
