@@ -3,7 +3,6 @@ import numpy as np
 import gc
 
 from typing import List
-from dataclasses import dataclass
 from core.result import TaskResult
 from core.contracts import (
     MarketObservation,
@@ -507,6 +506,11 @@ class AlphaEngine:
             normalized_plot_data = pd.DataFrame()
 
             if inputs.debug:
+                # --- THE FIX: Bridge Perception to Execution ---
+                # We calculate what the engine "saw" at the moment of decision
+                alpha_perception = self.compute_alpha_matrix(
+                    decision_date=safe_decision, lookback_period=inputs.lookback_period
+                )
                 portfolio_debug_comps = self._get_debug_components(
                     tickers_to_trade, safe_start, safe_end
                 )
@@ -520,6 +524,7 @@ class AlphaEngine:
                 debug_dict.update(
                     {
                         "inputs_snapshot": inputs,
+                        "alpha_perception": alpha_perception,  # <--- NEW: The Standardized Matrix
                         "verification": verification_slices,
                         "portfolio_raw_components": portfolio_debug_comps,
                         "benchmark_raw_components": benchmark_debug_comps,
@@ -602,7 +607,7 @@ class AlphaEngine:
         # We avoid a for loop over tickers. We only loop over the Strategy names (usually < 20).
         alpha_results = {}
 
-        for name, metric_func in STRATEGY_REGISTRY.items():
+        for name, blueprint in STRATEGY_REGISTRY.items():
             try:
                 # Most of your registry functions are already vectorized (QuantUtils)
                 # and will return a pd.Series where index = Tickers.

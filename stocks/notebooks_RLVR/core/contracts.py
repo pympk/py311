@@ -98,6 +98,9 @@ class EngineOutput:
     debug_data: Optional[Dict[str, Any]] = None
     macro_df: Optional[pd.DataFrame] = None  # <-- ADD THIS
 
+    # 4. The Standardized Alpha Matrix
+    alpha_perception: pd.DataFrame = None
+
 
 @dataclass(frozen=True)
 class SelectionResult:
@@ -113,37 +116,6 @@ class DiscoveryResult:
     veritable_reward: float
     metric_values: pd.Series
     raw_alpha_matrix: pd.DataFrame  # Added for your manual verification
-
-
-# @dataclass(frozen=True)
-# class MetricBlueprint:
-#     """
-#     Identity Card for a Trading Signal.
-
-#     Why this matters for RL:
-#     - category → Feature groups for diversity constraints (don't pick 5 'Momentum' signals)
-#     - regime → Market state filter (disable 'Mean Reversion' in strong trends)
-#     - agent_hint → Curriculum learning seed (initialize policy network with semantic priors)
-#     """
-
-#     name: str
-#     category: str  # Feature family for portfolio construction
-#     regime: str  # Market microstructure state
-#     description: str  # Human-readable math intuition
-#     agent_hint: str  # RL policy guidance (when to weight this high)
-#     intervention_trigger: str  # NEW: Specific threshold/action for the agent
-#     formula: Callable[[Any], pd.Series]
-
-#     def __call__(self, obs) -> pd.Series:
-#         try:
-#             return self.formula(obs)
-#         except (AttributeError, ZeroDivisionError, TypeError) as e:
-#             # Senior Dev: Use rsi or atrp index to ensure we return TICKERS, not Dates
-#             # This prevents the 'Dates as Tickers' index bug
-#             target_index = (
-#                 obs.rsi.index if hasattr(obs, "rsi") else obs.lookback_close.columns
-#             )
-#             return pd.Series([float("nan")] * len(target_index), index=target_index)
 
 
 @dataclass(frozen=True)
