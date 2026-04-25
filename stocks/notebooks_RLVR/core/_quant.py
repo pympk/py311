@@ -181,26 +181,6 @@ class QuantUtils:
         return (cov / var).fillna(1.0)
 
     @staticmethod
-    def calculate_rolling_ir(
-        rets: pd.Series, benchmark_rets: pd.Series, window: int
-    ) -> pd.Series:
-        """
-        Information Ratio: Mean(Active Ret) / Std(Active Ret).
-        Note: Daily scale, not annualized.
-        """
-        active_ret = rets - benchmark_rets
-        mu = active_ret.rolling(window).mean()
-        sigma = active_ret.rolling(window).std()
-        return mu / np.maximum(sigma, 1e-8)
-
-    @staticmethod
-    def calculate_rolling_sharpe(rets: pd.Series, window: int) -> pd.Series:
-        """Rolling daily Sharpe ratio."""
-        mu = rets.rolling(window).mean()
-        sigma = rets.rolling(window).std()
-        return mu / np.maximum(sigma, 1e-8)
-
-    @staticmethod
     def calculate_autocorr(
         rets: pd.Series, lag: int = 1, window: int = 15
     ) -> pd.Series:
@@ -258,25 +238,6 @@ class QuantUtils:
     def calculate_convexity_5d_fast(slope_series: pd.Series) -> pd.Series:
         """Measures change in slope (Acceleration)."""
         return slope_series.diff(2).fillna(0)
-
-    @staticmethod
-    def zscore(data: Union[pd.Series, pd.DataFrame]) -> Union[pd.Series, pd.DataFrame]:
-        """
-        Robust Cross-Sectional Z-Score.
-        Handles zero-std and NaN cases gracefully using vectorized operations.
-        """
-        if data.empty:
-            return data
-
-        m = data.mean()
-        s = data.std()
-
-        # Vectorized denominator handling:
-        # If std is 0 or NaN, we use 1.0 to ensure (x - m) / 1.0 = 0.0 (Neutral)
-        # We use np.where to stay "purely mathematical" and branchless
-        denom = np.where((s != 0) & (~pd.isna(s)), s, 1.0)
-
-        return (data - m) / denom
 
 
 class TickerEngine:

@@ -697,16 +697,23 @@ class AlphaEngine:
         if alpha_matrix.empty:
             return alpha_matrix
 
-        # 1. Cross-Sectional Z-Score (Vectorized)
-        # We use apply to normalize each column (strategy) across all tickers.
-        normalized = alpha_matrix.apply(QuantUtils.zscore)
-
-        # 2. Handle Outliers (The "Clipping" Logic)
+        # 1. Handle Outliers (The "Clipping" Logic)
+        # We don't want a 1,000% gain stock to break the neural network's gradients.
         # We use the clip value from your core.settings.py
         clip_val = GLOBAL_SETTINGS.get("feature_zscore_clip", 4.0)
 
-        # 3. Final neutral fill
-        return normalized.clip(-clip_val, clip_val).fillna(0.0)
+        # 2. Cross-Sectional Z-Score (Vectorized)
+        # Calculation: (Value - Mean) / Std
+        # We use axis=0 to normalize each column (strategy) across all tickers.
+        normalized = (alpha_matrix - alpha_matrix.mean()) / alpha_matrix.std().replace(
+            0, 1
+        )
+
+        # 3. Apply the Clip and Fill NaNs
+        # NaNs happen if a ticker has no data; we fill with 0.0 (the neutral average)
+        normalized = normalized.clip(-clip_val, clip_val).fillna(0.0)
+
+        return normalized
 
     def compute_context_vector(self, decision_date: pd.Timestamp) -> pd.Series:
         """

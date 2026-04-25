@@ -108,17 +108,17 @@ def generate_features(
     mkt_ret_series = macro_df["Mkt_Ret"]  # The "Master" market vector
 
     # A. Hybrid Metrics (Beta & IR)
-    mkt_ret_series = macro_df["Mkt_Ret"]  # The "Master" market vector
-
-    # 1. IR_63 - Refactored for DRY and Robustness
-    ir_63 = TickerEngine.map_kernels(
-        rets,
-        QuantUtils.calculate_rolling_ir,
-        benchmark_rets=mkt_ret_series,
-        window=win_63d,
+    # 1. IR_63 (Remains same for now as it uses internal rolling logic)
+    active_ret = rets.sub(mkt_ret_series, axis=0, level="Date")
+    roll_active = active_ret.groupby(level="Ticker").rolling(win_63d)
+    ir_63 = (
+        (roll_active.mean() / roll_active.std())
+        .reset_index(level=0, drop=True)
+        .fillna(0)
     )
 
-    # 2. Beta_63 - Unified pattern
+    # 2. Beta_63 - Refactored using TickerEngine Orchestrator
+    # We pass the market series as a keyword argument (benchmark_rets)
     beta_63 = TickerEngine.map_kernels(
         rets,
         QuantUtils.calculate_rolling_beta,

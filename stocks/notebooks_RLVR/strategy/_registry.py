@@ -2,9 +2,7 @@ from typing import Dict
 
 from core.quant import QuantUtils
 from core.contracts import MetricBlueprint
-from core.settings import GLOBAL_SETTINGS
 
-S_PARAMS = GLOBAL_SETTINGS["strategy_params"]
 
 # METRIC_REGISTRY_OLD = {
 #     "Price Gain": lambda obs: QuantUtils.calculate_gain(obs.lookback_close),
@@ -42,7 +40,7 @@ STRATEGY_REGISTRY: Dict[str, MetricBlueprint] = {
         regime="Trend",
         description="Natural log return of lookback window.",
         agent_hint="Primary momentum filter. Use Z-scores to identify 'Normal' vs 'Extreme' growth.",
-        intervention_trigger=f"LONG if Value > {S_PARAMS['standard_confidence']}std & Autocorr > 0.15; FLAT if Value < -{S_PARAMS['standard_confidence']}std or Convexity < 0",
+        intervention_trigger="LONG if Value > 1.0std & Autocorr > 0.15; FLAT if Value < -1.0std or Convexity < 0",
         scaling_type="Z-Score",
         formula=lambda obs: QuantUtils.calculate_gain(obs.lookback_close),
     ),
@@ -62,8 +60,8 @@ STRATEGY_REGISTRY: Dict[str, MetricBlueprint] = {
         category="Momentum",
         regime="Trend",
         description="Standard 1-month momentum factor.",
-        agent_hint=f"Use to rank assets. Avoid buying when Momentum is over-extended (>{S_PARAMS['extreme_confidence']}std).",
-        intervention_trigger=f"CONFIRM LONG if 21d > 63d Mean; AVOID if Value > {S_PARAMS['extreme_confidence']}std (Parabolic Risk).",
+        agent_hint="Use to rank assets. Avoid buying when Momentum is over-extended (>2.5std).",
+        intervention_trigger="CONFIRM LONG if 21d > 63d Mean; AVOID if Value > 2.5std (Parabolic Risk).",
         formula=lambda obs: obs.mom_21,
     ),
     "Info Ratio (63d)": MetricBlueprint(
@@ -82,7 +80,7 @@ STRATEGY_REGISTRY: Dict[str, MetricBlueprint] = {
         regime="Contrarian",
         description="Inverse RSI(14). Transforms 0-100 into a 'Pressure' gauge.",
         agent_hint="Higher is more oversold. Look for the 'Hook' (Convexity > 0) to time entry.",
-        intervention_trigger=f"BUY if Value > {100-S_PARAMS['rsi_oversold']} AND Convexity > 0.2; SELL/FLAT if Value < {100-S_PARAMS['rsi_overbought']}.",
+        intervention_trigger="BUY if Value > 70 AND Convexity > 0.2; SELL/FLAT if Value < 30.",
         scaling_type="RSI",
         formula=lambda obs: -obs.rsi,
     ),
@@ -92,7 +90,7 @@ STRATEGY_REGISTRY: Dict[str, MetricBlueprint] = {
         regime="Contrarian",
         description="Inverse 21-day drawdown. High = Deep pullback.",
         agent_hint="Best used when the structural trend is still positive (Autocorr > 0.15).",
-        intervention_trigger=f"BUY DIP if Value > {S_PARAMS['strong_confidence']}std AND Autocorr_15 > 0.2 (Structural Trend).",
+        intervention_trigger="BUY DIP if Value > 1.5std AND Autocorr_15 > 0.2 (Structural Trend).",
         formula=lambda obs: -obs.dd_21,
     ),
     "Range Position (20d)": MetricBlueprint(
@@ -101,7 +99,7 @@ STRATEGY_REGISTRY: Dict[str, MetricBlueprint] = {
         regime="Boundary",
         description="Where price sits in 20-day High/Low range (0.0 to 1.0).",
         agent_hint="The 'Decision Fork'. Breakout at 0.8+, Support at 0.2-.",
-        intervention_trigger=f"Value > {S_PARAMS['range_high']}: LONG only if OBV > {S_PARAMS['standard_confidence']}std; Value < {S_PARAMS['range_low']}: LONG only if OBV < -{S_PARAMS['standard_confidence']}std.",
+        intervention_trigger="Value > 0.8: LONG only if OBV > 1.0std; Value < 0.2: LONG only if OBV < -1.0std.",
         formula=lambda obs: obs.range_pos_20,
     ),
     # --- PILLAR 3: REGIME DETECTION (THE MASTER SWITCH) ---
@@ -122,7 +120,7 @@ STRATEGY_REGISTRY: Dict[str, MetricBlueprint] = {
         regime="Risk Filter",
         description="Inverse ATR Percentage. High = Quiet market.",
         agent_hint="Standardized volatility. 0 = Market Average.",
-        intervention_trigger=f"RISK OFF if Value < -2.0std; BREAKOUT WATCH if Value > {S_PARAMS['strong_confidence']}std.",
+        intervention_trigger="RISK OFF if Value < -2.0std; BREAKOUT WATCH if Value > 1.5std.",
         scaling_type="Z-Score",  # <--- CHANGE THIS FROM NONE TO Z-SCORE
         formula=lambda obs: -obs.atrp,
     ),
@@ -131,12 +129,18 @@ STRATEGY_REGISTRY: Dict[str, MetricBlueprint] = {
         name="OBV Divergence (5d)",
         category="Volume/Fuel",
         regime="Confirmation",
-        description="Z-scored gap between relative volume flow and price trend.",
-        agent_hint="Detects smart money accumulation/distribution. Volume is normalized relative to its 63d mean.",
-        intervention_trigger=f"INVALIDATE Longs if Price Trend (+) but Divergence < -{S_PARAMS['standard_confidence']}std.",
+        description="Z-scored gap between volume flow and price trend.",
+        agent_hint="Detects smart money accumulation/distribution.",
+        intervention_trigger="INVALIDATE Longs if Price Trend (+) but OBV < -1.0std.",
         scaling_type="Z-Score",
         formula=lambda obs: (
-            QuantUtils.zscore(obs.slope_v_5) - QuantUtils.zscore(obs.slope_p_5)
+            # Corrected: Calculate std first, then handle the zero case
+            (obs.slope_v_5 - obs.slope_v_5.mean())
+            / (obs.slope_v_5.std() if obs.slope_v_5.std() != 0 else 1.0)
+        )
+        - (
+            (obs.slope_p_5 - obs.slope_p_5.mean())
+            / (obs.slope_p_5.std() if obs.slope_p_5.std() != 0 else 1.0)
         ),
     ),
     # --- PILLAR 6: PHYSICS (EXHAUSTION DETECTOR) ---
@@ -146,7 +150,7 @@ STRATEGY_REGISTRY: Dict[str, MetricBlueprint] = {
         regime="Acceleration",
         description="Second derivative of price. Curvature of the trend.",
         agent_hint="The 'Golden Exit'. Trend is healthy when > 0, exhausting when < 0.",
-        intervention_trigger=f"EXIT LONG if Value < {S_PARAMS['convexity_exit']} (Deceleration). FRONT-RUN THE REVERSAL.",
+        intervention_trigger="EXIT LONG if Value < -0.7 (Deceleration). FRONT-RUN THE REVERSAL.",
         scaling_type="Z-Score",
         formula=lambda obs: obs.convexity,
     ),

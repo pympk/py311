@@ -27,17 +27,6 @@ GLOBAL_SETTINGS = {
     # QUALITY/LIQUIDITY
     "quality_window": 252,  # 1 year lookback for liquidity/quality stats
     "quality_min_periods": 126,  # min period that ticker has to meet quality thresholds
-    # STRATEGY PARAMETERS (The "Levers")
-    "strategy_params": {
-        "standard_confidence": 1.0,      # Default Z-Score trigger (1.0std)
-        "strong_confidence": 1.5,        # Strong Z-Score trigger (1.5std)
-        "extreme_confidence": 2.5,       # Parabolic/Extreme risk trigger (2.5std)
-        "rsi_overbought": 70,            # Standard RSI Upper Bound
-        "rsi_oversold": 30,              # Standard RSI Lower Bound
-        "range_high": 0.8,               # Range Position Upper Bound
-        "range_low": 0.2,                # Range Position Lower Bound
-        "convexity_exit": -0.7,          # Deceleration/Exhaustion threshold
-    },
     # QUALITY THRESHOLDS (The "Rules")
     "thresholds": {
         # HARD LIQUIDITY FLOOR

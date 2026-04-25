@@ -181,26 +181,6 @@ class QuantUtils:
         return (cov / var).fillna(1.0)
 
     @staticmethod
-    def calculate_rolling_ir(
-        rets: pd.Series, benchmark_rets: pd.Series, window: int
-    ) -> pd.Series:
-        """
-        Information Ratio: Mean(Active Ret) / Std(Active Ret).
-        Note: Daily scale, not annualized.
-        """
-        active_ret = rets - benchmark_rets
-        mu = active_ret.rolling(window).mean()
-        sigma = active_ret.rolling(window).std()
-        return mu / np.maximum(sigma, 1e-8)
-
-    @staticmethod
-    def calculate_rolling_sharpe(rets: pd.Series, window: int) -> pd.Series:
-        """Rolling daily Sharpe ratio."""
-        mu = rets.rolling(window).mean()
-        sigma = rets.rolling(window).std()
-        return mu / np.maximum(sigma, 1e-8)
-
-    @staticmethod
     def calculate_autocorr(
         rets: pd.Series, lag: int = 1, window: int = 15
     ) -> pd.Series:

@@ -142,9 +142,6 @@ class MetricBlueprint:
 
     def get_agent_view(self, obs) -> pd.Series:
         """Returns SCALED, CLEANED, and CLIPPED data for the RL Agent."""
-        # LATE IMPORT to break circular dependency with QuantUtils
-        from core.quant import QuantUtils
-
         raw = self.__call__(obs)
 
         # 1. PRE-CLEAN: Remove Inf before they poison the batch statistics
@@ -153,8 +150,12 @@ class MetricBlueprint:
 
         # 2. Scaling Logic (Using CLEAN data)
         if self.scaling_type == "Z-Score":
-            # Cross-sectional standardization using robust helper
-            scaled = QuantUtils.zscore(clean_raw)
+            # Cross-sectional standardization
+            m = clean_raw.mean()
+            s = clean_raw.std()
+            # If std is 0 or NaN, we avoid division by zero
+            denom = s if (s != 0 and not np.isnan(s)) else 1.0
+            scaled = (clean_raw - m) / denom
         elif self.scaling_type == "Center":
             # Map [0, 1] to [-1, 1] (e.g. Range Position)
             scaled = (clean_raw - 0.5) * 2
@@ -168,9 +169,8 @@ class MetricBlueprint:
 
         # 3. Final Neutralization and Clipping
         # - Missing/Inf data becomes 0 (Neutral)
-        # - Outliers capped at +/- feature_zscore_clip
-        clip_val = GLOBAL_SETTINGS.get("feature_zscore_clip", 4.0)
-        return scaled.fillna(0).clip(-clip_val, clip_val)
+        # - Outliers capped at +/- 5 standard deviations
+        return scaled.fillna(0).clip(-5, 5)
 
 
 #

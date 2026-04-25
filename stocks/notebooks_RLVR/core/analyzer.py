@@ -500,27 +500,33 @@ class PricePanelUpdater:
 class WalkForwardUI:
     """Knows nothing about data. Just widgets and layout."""
 
-    def __init__(self, initial_date: pd.Timestamp, settings: dict):
+    def __init__(self, initial_date: pd.Timestamp, settings: dict, initial_inputs=None):
         self.settings = settings
-        self._build_widgets(initial_date)
+        self._build_widgets(initial_date, initial_inputs)  # Pass it here
         self._wire_events()
 
-    def _build_widgets(self, initial_date: pd.Timestamp) -> None:
+    def _build_widgets(self, initial_date: pd.Timestamp, inputs=None) -> None:
+        # Helper to get value from inputs or fallback to default
+        def get_val(attr, default):
+            return (
+                getattr(inputs, attr) if (inputs and hasattr(inputs, attr)) else default
+            )
+
         # Timeline
         self.w_lookback = widgets.IntText(
-            value=189,
+            value=get_val("lookback_period", 189),
             description="Lookback (Days):",
             layout=widgets.Layout(width="200px"),
             style={"description_width": "initial"},
         )
         self.w_decision_date = widgets.DatePicker(
-            value=initial_date,
+            value=get_val("decision_date", initial_date),
             description="Decision Date:",
             layout=widgets.Layout(width="auto"),
             style={"description_width": "initial"},
         )
         self.w_holding = widgets.IntText(
-            value=5,
+            value=get_val("holding_period", 5),
             description="Holding (Days):",
             layout=widgets.Layout(width="200px"),
             style={"description_width": "initial"},
@@ -529,20 +535,20 @@ class WalkForwardUI:
         # Strategy
         self.w_mode = widgets.RadioButtons(
             options=["Ranking", "Manual List"],
-            value="Ranking",
+            value=get_val("mode", "Ranking"),
             description="Mode:",
             layout=widgets.Layout(width="max-content", margin="0px 20px 0px 0px"),
             style={"description_width": "initial"},
         )
         self.w_strategy = widgets.Dropdown(
             options=list(STRATEGY_REGISTRY.keys()),
-            value="Sharpe (TRP)",
+            value=get_val("metric", "Sharpe (TRP)"),
             description="Strategy:",
             style={"description_width": "initial"},
             layout=widgets.Layout(width="220px"),
         )
         self.w_benchmark = widgets.Text(
-            value=self.settings["benchmark_ticker"],
+            value=get_val("benchmark_ticker", self.settings["benchmark_ticker"]),
             description="Benchmark:",
             placeholder="Enter Ticker",
             style={"description_width": "initial"},
@@ -551,26 +557,36 @@ class WalkForwardUI:
 
         # Ranking controls
         self.w_rank_start = widgets.IntText(
-            value=1,
+            value=get_val("rank_start", 1),
             description="Rank Start:",
             layout=widgets.Layout(width="150px"),
             style={"description_width": "initial"},
         )
         self.w_rank_end = widgets.IntText(
-            value=100,
+            value=get_val("rank_end", 100),
             description="Rank End:",
             layout=widgets.Layout(width="150px"),
             style={"description_width": "initial"},
         )
         self.w_rank_range = widgets.HBox([self.w_rank_start, self.w_rank_end])
 
+        # Manual Tickers (joining list to string for the textarea)
+        manual_str = ""
+        if inputs and hasattr(inputs, "manual_tickers") and inputs.manual_tickers:
+            manual_str = ", ".join(inputs.manual_tickers)
+
         self.w_manual_list = widgets.Textarea(
+            value=manual_str,
             placeholder="AAPL, TSLA...",
             description="Manual Tickers:",
             layout=widgets.Layout(width="400px", height="80px"),
             style={"description_width": "initial"},
         )
-        self.w_manual_list.layout.display = "none"
+
+        # Display logic: show textarea only if in manual mode
+        self.w_manual_list.layout.display = (
+            "block" if self.w_mode.value == "Manual List" else "none"
+        )
 
         # Actions
         self.w_run_btn = widgets.Button(
@@ -814,23 +830,53 @@ class WalkForwardAnalyzer:
     or format tables. Just wires components together and handles the run loop.
     """
 
+    # def __init__(
+    #     self, engine, universe_subset=None, filter_pack=None, default_settings=None
+    # ):
+    #     self.engine = engine
+    #     self.universe_subset = universe_subset
+    #     self.filter_pack = filter_pack or FilterPack()
+    #     self.settings = default_settings or GLOBAL_SETTINGS
+
+    #     # Initialize components
+    #     initial_date = self.filter_pack.decision_date or pd.to_datetime("2026-12-10")
+
+    #     self.ui = WalkForwardUI(initial_date, self.settings)
+    #     self.chart = ChartController()
+    #     self.reporter = ReportGenerator()
+    #     self.last_run: Optional["EngineOutput"] = None
+
+    #     # Wire up the run button
+    #     self.ui.w_run_btn.on_click(self._on_run)
+
     def __init__(
-        self, engine, universe_subset=None, filter_pack=None, default_settings=None
+        self,
+        engine,
+        inputs: EngineInput = None,  # Added
+        universe_subset=None,
+        filter_pack=None,
+        default_settings=None,
     ):
         self.engine = engine
         self.universe_subset = universe_subset
         self.filter_pack = filter_pack or FilterPack()
         self.settings = default_settings or GLOBAL_SETTINGS
 
-        # Initialize components
-        initial_date = self.filter_pack.decision_date or pd.to_datetime("2026-12-10")
+        # Prioritize date: inputs > filter_pack > default
+        initial_date = (
+            (inputs.decision_date if inputs else None)
+            or self.filter_pack.decision_date
+            or pd.to_datetime("2026-12-10")
+        )
 
-        self.ui = WalkForwardUI(initial_date, self.settings)
+        # 1. Initialize UI (Assuming WalkForwardUI can accept an 'inputs' object)
+        # If WalkForwardUI doesn't take 'inputs', you'll need to add a 'set_inputs' method to it.
+        self.ui = WalkForwardUI(initial_date, self.settings, initial_inputs=inputs)
+
         self.chart = ChartController()
         self.reporter = ReportGenerator()
         self.last_run: Optional["EngineOutput"] = None
 
-        # Wire up the run button
         self.ui.w_run_btn.on_click(self._on_run)
 
     def _on_run(self, _):
@@ -839,6 +885,7 @@ class WalkForwardAnalyzer:
 
         try:
             inputs = self._create_engine_input()
+
             result = self.engine.run(inputs)
             self.last_run = result
 
@@ -901,11 +948,31 @@ class WalkForwardAnalyzer:
 
 
 # Factory function (kept for API compatibility)
-def create_walk_forward_analyzer(engine, universe_subset=None, filter_pack=None):
-    """Factory function to match the requested (analyzer, pack) return signature."""
+# def create_walk_forward_analyzer(engine, universe_subset=None, filter_pack=None):
+#     """Factory function to match the requested (analyzer, pack) return signature."""
+#     pack = filter_pack or FilterPack()
+#     analyzer = WalkForwardAnalyzer(
+#         engine, universe_subset=universe_subset, filter_pack=pack
+#     )
+#     return analyzer, pack
+
+
+# Factory function (kept for API compatibility)
+def create_walk_forward_analyzer(
+    engine, inputs: EngineInput = None, universe_subset=None, filter_pack=None
+):
+    """Factory function that initializes the analyzer with specific EngineInput settings."""
     pack = filter_pack or FilterPack()
+
+    # If inputs were provided, ensure the filter_pack reflects the starting date
+    if inputs and inputs.decision_date:
+        pack.decision_date = inputs.decision_date
+
     analyzer = WalkForwardAnalyzer(
-        engine, universe_subset=universe_subset, filter_pack=pack
+        engine,
+        inputs=inputs,  # New argument
+        universe_subset=universe_subset,
+        filter_pack=pack,
     )
     return analyzer, pack
 

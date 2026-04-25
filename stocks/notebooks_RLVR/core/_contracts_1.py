@@ -142,9 +142,6 @@ class MetricBlueprint:
 
     def get_agent_view(self, obs) -> pd.Series:
         """Returns SCALED, CLEANED, and CLIPPED data for the RL Agent."""
-        # LATE IMPORT to break circular dependency with QuantUtils
-        from core.quant import QuantUtils
-
         raw = self.__call__(obs)
 
         # 1. PRE-CLEAN: Remove Inf before they poison the batch statistics
