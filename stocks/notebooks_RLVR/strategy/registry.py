@@ -28,13 +28,7 @@ S_PARAMS = GLOBAL_SETTINGS["strategy_params"]
 # }
 
 
-STRATEGY_REGISTRY: Dict[str, MetricBlueprint] = {
-    # """
-    # AI Studio
-    # **Verdict:**
-    # The `intervention_trigger` **helps discovery** by defining the "Standard Path." Novelty is then defined as **"Optimized Deviation from the Standard Path."** Without the trigger, the agent has no "standard" to improve upon.
-    # **Recommendation:** Keep the triggers. Use them as **Features (State)** and **Priors (Early Reward)**, but **never as Hard Action Masks.**
-    # """
+: Dict[str, MetricBlueprint] = {
     # --- PILLAR 1: THE TREND ENGINE (DIRECTION) ---
     "Log Price Gain": MetricBlueprint(
         name="Log Price Gain",
