@@ -28,7 +28,7 @@ S_PARAMS = GLOBAL_SETTINGS["strategy_params"]
 # }
 
 
-: Dict[str, MetricBlueprint] = {
+STRATEGY_REGISTRY: Dict[str, MetricBlueprint] = {
     # --- PILLAR 1: THE TREND ENGINE (DIRECTION) ---
     "Log Price Gain": MetricBlueprint(
         name="Log Price Gain",
