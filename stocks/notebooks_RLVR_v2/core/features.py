@@ -2,14 +2,14 @@ import pandas as pd
 import numpy as np
 
 from typing import Tuple
-from core.kernel import QuantUtils, TickerEngine
-from core.config import GLOBAL_SETTINGS
+from core.quant import QuantUtils, TickerEngine
+from core.settings import GLOBAL_SETTINGS
 
 
 def generate_features(
     df_ohlcv: pd.DataFrame,
     df_indices: pd.DataFrame = None,
-    df_fed: pd.DataFrame = None,  # Explicit Injection
+    df_fed: pd.DataFrame = None,
     benchmark_ticker: str = GLOBAL_SETTINGS["benchmark_ticker"],
     atr_period: int = GLOBAL_SETTINGS["atr_period"],
     rsi_period: int = GLOBAL_SETTINGS["rsi_period"],
@@ -43,16 +43,10 @@ def generate_features(
 
     # --- 1.2 FED Data Integration ---
     if df_fed is not None:
-        # Reindex to all_dates and apply forward-fill using modern API
         fed_data = df_fed.reindex(all_dates).ffill().bfill()
-
-        # Inject Raw
-        # "BAMLH0A0HYM2" => "High_Yield_Spread"
-        # "T10Y2Y" => "Yield_Curve_10Y2Y"
         macro_df["High_Yield_Spread"] = fed_data["High_Yield_Spread"]
         macro_df["Yield_Curve_10Y2Y"] = fed_data["Yield_Curve_10Y2Y"]
 
-        # Inject Z-Scores
         for col in ["High_Yield_Spread", "Yield_Curve_10Y2Y"]:
             roll_mean = macro_df[col].rolling(252, min_periods=60).mean()
             roll_std = macro_df[col].rolling(252, min_periods=60).std()
@@ -62,7 +56,6 @@ def generate_features(
                 .fillna(0.0)
             )
     else:
-        # Default empty columns for consistency in observation space
         macro_df["High_Yield_Spread"] = 0.0
         macro_df["Yield_Curve_10Y2Y"] = 0.0
         macro_df["High_Yield_Spread_Z"] = 0.0
@@ -79,7 +72,7 @@ def generate_features(
         * np.abs(macro_df["Macro_Trend_Vel"])
     ).fillna(0)
 
-    # VIX Extraction (Same as before)
+    # VIX Extraction
     macro_df["Macro_Vix_Z"] = 0.0
     macro_df["Macro_Vix_Ratio"] = 1.0
     if df_indices is not None:
@@ -97,20 +90,15 @@ def generate_features(
     macro_df.fillna(0.0, inplace=True)
 
     # --- 2. TICKER ENGINE ---
-    grouped = df_ohlcv.groupby(level="Ticker")
-
-    # STEP 1: Refactor Returns via TickerEngine Orchestrator
-    # No more manual groupby or reset_index needed.
+    # STEP 1: Returns via TickerEngine Orchestrator
     rets = TickerEngine.map_kernels(df_ohlcv["Adj Close"], QuantUtils.compute_returns)
     autocorr_15 = TickerEngine.map_kernels(
         rets, QuantUtils.calculate_autocorr, lag=1, window=15
     )
-    mkt_ret_series = macro_df["Mkt_Ret"]  # The "Master" market vector
+
+    mkt_ret_series = macro_df["Mkt_Ret"]
 
     # A. Hybrid Metrics (Beta & IR)
-    mkt_ret_series = macro_df["Mkt_Ret"]  # The "Master" market vector
-
-    # 1. IR_63 - Refactored for DRY and Robustness
     ir_63 = TickerEngine.map_kernels(
         rets,
         QuantUtils.calculate_rolling_ir,
@@ -118,7 +106,6 @@ def generate_features(
         window=win_63d,
     )
 
-    # 2. Beta_63 - Unified pattern
     beta_63 = TickerEngine.map_kernels(
         rets,
         QuantUtils.calculate_rolling_beta,
@@ -126,9 +113,8 @@ def generate_features(
         window=win_63d,
     )
 
-    # B. Volatility (ATR / TRP) - Using TickerEngine to bridge multiple kernels
+    # B. Volatility (ATR / TRP)
     def get_ticker_vol(df_slice):
-        """Internal bridge to call multiple TR/ATR kernels for a single ticker."""
         h, l, c = df_slice["Adj High"], df_slice["Adj Low"], df_slice["Adj Close"]
         return pd.DataFrame(
             {
@@ -138,79 +124,64 @@ def generate_features(
             index=df_slice.index,
         )
 
-    # The Orchestrator handles the ticker-by-ticker application
     vol_bundle = TickerEngine.map_kernels(df_ohlcv, get_ticker_vol)
-
-    # Alignment is guaranteed by the Orchestrator
     atr = vol_bundle["ATR_Smooth"]
-    natr = (atr / df_ohlcv["Adj Close"]).fillna(0)  # ATRP (normalized)
-    trp = (vol_bundle["TR_Raw"] / df_ohlcv["Adj Close"]).fillna(0)  # TRP (raw)
+    natr = (atr / df_ohlcv["Adj Close"]).fillna(0)
+    trp = (vol_bundle["TR_Raw"] / df_ohlcv["Adj Close"]).fillna(0)
 
-    # C. Momentum & Consistency (Refactored to use TickerEngine)
+    # C. Momentum & Consistency (Fixed to use TickerEngine to guarantee MultiIndex)
     mom_21 = TickerEngine.map_kernels(
         df_ohlcv["Adj Close"], lambda x: x.pct_change(win_21d)
     )
 
-    def get_consistency_kernel(rets_slice):
-        return (rets_slice > 0).astype(float).rolling(window=win_5d).mean()
+    consistency = TickerEngine.map_kernels(
+        rets, lambda x: (x > 0).astype(float).rolling(win_5d).mean()
+    )
 
-    consistency = TickerEngine.map_kernels(rets, get_consistency_kernel)
+    dd_21 = TickerEngine.map_kernels(
+        df_ohlcv["Adj Close"], lambda x: (x / x.rolling(win_21d).max()) - 1.0
+    )
 
-    def get_dd_kernel(price_slice):
-        roll_max = price_slice.rolling(window=win_21d).max()
-        return (price_slice / roll_max) - 1.0
-
-    dd_21 = TickerEngine.map_kernels(df_ohlcv["Adj Close"], get_dd_kernel)
-
-    # STEP 2: Refactor RSI via TickerEngine Orchestrator
-    # Clean, declarative call to the Wilder's RSI math kernel
+    # STEP 2: RSI
     rsi = TickerEngine.map_kernels(
         df_ohlcv["Adj Close"], QuantUtils.calculate_rsi, period=rsi_period
     )
 
-    # Define the bridge for Range Position
     def get_range_pos_kernel(df_slice):
-        return QuantUtils.calculate_range_pos(
+        rp = QuantUtils.calculate_range_pos(
             df_slice["Adj High"],
             df_slice["Adj Low"],
             df_slice["Adj Close"],
             window=GLOBAL_SETTINGS.get("range_pos_period", 20),
         )
+        # Wrap in DataFrame to prevent Pandas from pivoting the output
+        return pd.DataFrame({"RP": rp})
 
-    # Use the Orchestrator
-    range_pos_20 = TickerEngine.map_kernels(df_ohlcv, get_range_pos_kernel)
+    range_pos_20 = TickerEngine.map_kernels(df_ohlcv, get_range_pos_kernel)["RP"]
 
     def get_obv_kernel(df_slice):
-        """
-        Calculates OBV using Relative Volume.
-        We normalize volume by its own 63-day rolling mean to make the
-        resulting OBV slope comparable across stocks of different sizes.
-        """
         v = df_slice["Volume"]
-        # Use a 63-day baseline (1 quarter) to define "Normal" volume for this stock
         v_baseline = v.rolling(window=win_63d, min_periods=1).mean().replace(0, 1e-8)
         v_rel = v / v_baseline
-        return QuantUtils.calculate_obv_fast(df_slice["Adj Close"], v_rel)
+        obv_val = QuantUtils.calculate_obv_fast(df_slice["Adj Close"], v_rel)
+        # Wrap in DataFrame to prevent Pandas from pivoting the output
+        return pd.DataFrame({"OBV": obv_val})
 
-    # 1. Calculate OBV for every ticker using normalized volume
-    obv = TickerEngine.map_kernels(df_ohlcv, get_obv_kernel)
+    obv = TickerEngine.map_kernels(df_ohlcv, get_obv_kernel)["OBV"]
 
-    # 2. Calculate Slopes (Normalize price to % scale so slope is growth rate)
-    # We use log price so the slope represents the continuous growth rate
     log_price = np.log(df_ohlcv["Adj Close"].replace(0, 1e-8))
-
     slope_p = TickerEngine.map_kernels(
         log_price, QuantUtils.calculate_rolling_slope_5d_fast
     )
     slope_v = TickerEngine.map_kernels(obv, QuantUtils.calculate_rolling_slope_5d_fast)
 
-    # Calculate Convexity based on the Price Slope we just made
     convexity = TickerEngine.map_kernels(
         slope_p, QuantUtils.calculate_convexity_5d_fast
     )
 
-    # E. Assemble Features (Remains the same)
-    data_dict = {
+    # E. Assemble Features
+    features_df = pd.DataFrame(
+        {
             "ATR": atr,
             "ATRP": natr,
             "TRP": trp,
@@ -227,16 +198,9 @@ def generate_features(
             "Slope_V_5": slope_v,
             "Convexity": convexity,
         }
-    
-    for k, v in data_dict.items():
-        if hasattr(v, "ndim") and v.ndim > 1:
-            print(f"DEBUG: {k} has ndim {v.ndim}, shape {v.shape}, type {type(v)}")
-            if hasattr(v, "head"):
-                print(f"DEBUG: {k} head:\n{v.head()}")
+    )
 
-    features_df = pd.DataFrame(data_dict)
-
-    # F. Quality (Universe Filtering) - Optimized
+    # F. Quality (Universe Filtering) - Fixed to use safe alignment
     quality_temp = pd.DataFrame(
         {
             "IsStale": np.where(
@@ -246,29 +210,31 @@ def generate_features(
                 0,
             ),
             "DollarVolume": df_ohlcv["Adj Close"] * df_ohlcv["Volume"],
-            "HasSameVolume": (grouped["Volume"].diff() == 0).astype(int),
         },
         index=df_ohlcv.index,
     )
 
-    # Calculate rolling stats separately (avoid slow dict agg) and use .values to bypass index alignment overhead
-    grp = quality_temp.groupby(level="Ticker")
-    rolling_quality = pd.DataFrame(
-        {
-            "RollingStalePct": grp["IsStale"]
-            .rolling(window=quality_window, min_periods=quality_min_periods)
-            .mean()
-            .values,
-            "RollMedDollarVol": grp["DollarVolume"]
-            .rolling(window=quality_window, min_periods=quality_min_periods)
-            .median()
-            .values,
-            "RollingSameVolCount": grp["HasSameVolume"]
-            .rolling(window=quality_window, min_periods=quality_min_periods)
-            .sum()
-            .values,
-        },
-        index=quality_temp.index,
+    # Calculate HasSameVolume safely using TickerEngine
+    quality_temp["HasSameVolume"] = TickerEngine.map_kernels(
+        df_ohlcv["Volume"], lambda x: (x.diff() == 0).astype(int)
     )
+
+    def get_quality(slice_df):
+        return pd.DataFrame(
+            {
+                "RollingStalePct": slice_df["IsStale"]
+                .rolling(window=quality_window, min_periods=quality_min_periods)
+                .mean(),
+                "RollMedDollarVol": slice_df["DollarVolume"]
+                .rolling(window=quality_window, min_periods=quality_min_periods)
+                .median(),
+                "RollingSameVolCount": slice_df["HasSameVolume"]
+                .rolling(window=quality_window, min_periods=quality_min_periods)
+                .sum(),
+            },
+            index=slice_df.index,
+        )
+
+    rolling_quality = TickerEngine.map_kernels(quality_temp, get_quality)
 
     return pd.concat([features_df, rolling_quality], axis=1).sort_index(), macro_df

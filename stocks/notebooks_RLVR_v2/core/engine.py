@@ -4,18 +4,16 @@ import gc
 import logging
 
 from typing import List
-from core.kernel import (
-    TaskResult,
+from core.result import TaskResult
+from core.contracts import (
     MarketObservation,
     SelectionResult,
     EngineInput,
     EngineOutput,
     DiscoveryResult,
-    calculate_buy_and_hold_performance,
-    PerformanceCalculator
 )
-from core.config import GLOBAL_SETTINGS
-from core.environment import AlphaLogic
+from core.settings import GLOBAL_SETTINGS
+from core.performance import calculate_buy_and_hold_performance, PerformanceCalculator
 from strategy.registry import STRATEGY_REGISTRY
 
 
@@ -78,6 +76,8 @@ class AlphaEngine:
         self.trading_calendar = (
             self.df_close[master_ticker].dropna().index.unique().sort_values()
         )
+
+    # --- Methods to be moved/refactored ---
 
     def _validate_timeline(self, inputs: EngineInput):
         cal = self.trading_calendar
@@ -147,8 +147,8 @@ class AlphaEngine:
 
             # 2. Current Snapshot Check (Decision Date)
             if decision_date not in self.features_df.index.get_level_values("Date"):
-                raise ValueError(
-                    f"❌ Decision date {decision_date.date()} missing from features database."
+                return self.Result(
+                    err=f"❌ Decision date {decision_date.date()} missing from features database."
                 )
 
             feat_now = self.features_df.xs(decision_date, level="Date").reindex(
@@ -344,6 +344,9 @@ class AlphaEngine:
         # (Make sure _rank_and_slice returns the dict directly)
         rank_results = self._rank_and_slice(scores, inputs, obs)
 
+        # 3. Final Assembly
+        rank_results = self._rank_and_slice(scores, inputs, obs)
+
         # NEW: Return the Dataclass instead of a dict
         return SelectionResult(
             tickers=rank_results["tickers"],
@@ -435,6 +438,8 @@ class AlphaEngine:
             debug_data=None,
             macro_df=None,
         )
+
+    # --- End Methods to be moved/refactored ---
 
     def _build_engine_output(
         self,
@@ -581,6 +586,7 @@ class AlphaEngine:
         self.macro_df = pd.DataFrame()
         gc.collect()  # Trigger immediate cleanup
 
+    # Helper for initial weights, will move to a utility file
     def _prepare_initial_weights(self, tickers: List[str]) -> pd.Series:
         if not tickers:
             return pd.Series()
@@ -667,10 +673,11 @@ class AlphaEngine:
             return alpha_matrix
 
         # 1. Cross-Sectional Z-Score (Vectorized)
-        from core.kernel import QuantUtils
+        # We use apply to normalize each column (strategy) across all tickers.
         normalized = alpha_matrix.apply(QuantUtils.zscore)
 
         # 2. Handle Outliers (The "Clipping" Logic)
+        # We use the clip value from your core.settings.py
         clip_val = GLOBAL_SETTINGS.get("feature_zscore_clip", 4.0)
 
         # 3. Final neutral fill
@@ -726,7 +733,17 @@ class AlphaEngine:
         Step 1: Calculate the Arithmetic Mean of the group (The Real World).
         Step 2: Log-transform the result (The Agent's Math).
         """
-        return AlphaLogic.calculate_veritable_reward(self.reward_matrix, decision_date, tickers)
+        if decision_date not in self.reward_matrix.index:
+            return 0.0
+
+        # Calculate arithmetic mean of the group
+        arithmetic_group_return = self.reward_matrix.loc[decision_date, tickers].mean()
+
+        # Transform to Log Gain: ln(1 + R)
+        # This makes the rewards additive for the RL agent's episode total.
+        veritable_log_reward = np.log1p(arithmetic_group_return)
+
+        return float(veritable_log_reward)
 
     def run_discovery_action(
         self,
@@ -869,3 +886,6 @@ class AlphaCache:
             return self.feature_cube.xs(date, level="Date")
         except KeyError:
             return pd.DataFrame()
+
+
+#

@@ -1,9 +1,11 @@
 from typing import Dict
 
-from core.kernel import QuantUtils, MetricBlueprint
-from core.config import GLOBAL_SETTINGS
+from core.quant import QuantUtils
+from core.contracts import MetricBlueprint
+from core.settings import GLOBAL_SETTINGS
 
 S_PARAMS = GLOBAL_SETTINGS["strategy_params"]
+
 
 STRATEGY_REGISTRY: Dict[str, MetricBlueprint] = {
     # --- PILLAR 1: THE TREND ENGINE (DIRECTION) ---
@@ -94,7 +96,7 @@ STRATEGY_REGISTRY: Dict[str, MetricBlueprint] = {
         description="Inverse ATR Percentage. High = Quiet market.",
         agent_hint="Standardized volatility. 0 = Market Average.",
         intervention_trigger=f"RISK OFF if Value < -2.0std; BREAKOUT WATCH if Value > {S_PARAMS['strong_confidence']}std.",
-        scaling_type="Z-Score",
+        scaling_type="Z-Score",  # <--- CHANGE THIS FROM NONE TO Z-SCORE
         formula=lambda obs: -obs.atrp,
     ),
     # --- PILLAR 5: VOLUME FLOW (THE LIE DETECTOR) ---
@@ -122,3 +124,5 @@ STRATEGY_REGISTRY: Dict[str, MetricBlueprint] = {
         formula=lambda obs: obs.convexity,
     ),
 }
+
+#

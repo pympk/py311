@@ -11,9 +11,10 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 # Internal Imports
-from core.config import GLOBAL_SETTINGS
-from core.kernel import EngineInput, EngineOutput, FilterPack, HeadlessReporter
+from core.settings import GLOBAL_SETTINGS
+from core.contracts import EngineInput, EngineOutput, FilterPack
 from strategy.registry import STRATEGY_REGISTRY
+from core.result import HeadlessReporter
 
 # ============================================================================
 # 1. TRACE REGISTRY (Eliminates Magic Numbers)
@@ -241,6 +242,23 @@ class ChartController:
         self._price_updater = PricePanelUpdater()
 
     def _create_figure(self) -> go.FigureWidget:
+        fig = go.FigureWidget(
+            make_subplots(
+                rows=4,
+                cols=1,
+                row_heights=[0.6, 0.15, 0.12, 0.13],
+                shared_xaxes=True,
+                vertical_spacing=0.08,
+                subplot_titles=(
+                    "Event-Driven Walk-Forward Analysis",
+                    "Market Regime (200d MA Deviation)<br><sup>Percentage deviation of benchmark price from its 200-day moving average</sup>",
+                    "Market Momentum (21d Z-Score)<br><sup>Standardized 21-day change in Market Regime, using 63-day rolling volatility</sup>",
+                    "Volatility Regime (VIX Z-Score)<br><sup>Standardized VIX index relative to its recent 63-day behavior</sup>",
+                ),
+                specs=[[{"secondary_y": False}]] * 4,
+            )
+        )
+
         fig = go.FigureWidget(
             make_subplots(
                 rows=5,  # Updated
@@ -956,3 +974,6 @@ def run_headless_simulation(engine, inputs: EngineInput) -> pd.DataFrame:
 
     # 2. Return Table
     return HeadlessReporter.get_metrics_table(result)
+
+
+#

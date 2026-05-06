@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from dataclasses import asdict, is_dataclass, fields
 from typing import Any, List, Dict, Union
 from core.paths import OUTPUT_DIR
-from core.kernel import QuantUtils
+from core.quant import QuantUtils
 
 
 class SystemUtils:
@@ -152,6 +152,7 @@ class SystemUtils:
 
         dec_date = audit_pack.decision_date
         bench_ticker = inputs.benchmark_ticker if inputs else "Benchmark"
+        # CHANGED: Export all tickers, not just top 3
         all_tickers = audit_pack.tickers if audit_pack.tickers else []
 
         print(f"📂 [EXCEL AUDIT] Building full transparency report: {output_path}")
@@ -203,12 +204,14 @@ class SystemUtils:
             # Get ALL Tickers OHLCV (not just top 3)
             if (p_ohlcv := p_raw.get("ohlcv_raw")) is not None:
                 if isinstance(p_ohlcv.index, pd.MultiIndex):
+                    # CHANGED: Use all_tickers instead of top_3_tickers
                     sample_p = p_ohlcv.query("Ticker in @all_tickers")
                     ohlcv_list.append(sample_p.reset_index())
                 else:
                     # Fallback: Filter by 'ticker' column if it exists
                     col_name = "ticker" if "ticker" in p_ohlcv.columns else "Ticker"
                     if col_name in p_ohlcv.columns:
+                        # CHANGED: Use all_tickers instead of top_3_tickers
                         ohlcv_list.append(p_ohlcv[p_ohlcv[col_name].isin(all_tickers)])
 
             if ohlcv_list:
@@ -257,6 +260,21 @@ class SystemUtils:
     ):
         """
         Export the last run ticker data from a WalkForwardAnalyzer to a stacked CSV file.
+
+        Parameters:
+        -----------
+        analyzer : WalkForwardAnalyzer
+            The analyzer containing last_run data
+        df_ohlcv : pd.DataFrame
+            OHLCV data for create_combined_dict
+        features_df : pd.DataFrame
+            Features data for create_combined_dict
+        filename : str
+            Output filename (saved to OUTPUT_DIR)
+
+        Returns:
+        --------
+        Path : Path to saved CSV file
         """
 
         # 1. Access the result object from the analyzer
@@ -267,11 +285,13 @@ class SystemUtils:
                 "❌ No results found in analyzer. Please click 'Run Simulation' first."
             )
 
-        # 2. Extract attributes directly
+        # 2. Extract attributes directly (No [0] needed)
         benchmark = res.debug_data["inputs_snapshot"].benchmark_ticker
         tickers = res.tickers + [benchmark]
         start_date = res.start_date
-        end_date = res.holding_end_date
+        end_date = (
+            res.holding_end_date
+        )  # Note: I use end_date, not decision_date/buy_date
 
         # 3. Generate the combined dict
         combined = SystemUtils.create_combined_dict(
@@ -283,7 +303,12 @@ class SystemUtils:
             verbose=True,
         )
 
-        # 4. Save ticker data to CSV
+        # 4. Print ticker data (optional — remove if not needed)
+        for ticker in tickers:
+            with pd.option_context("display.float_format", "{:.8f}".format):
+                print(f"{ticker}:\n{combined[ticker][start_date:end_date]}\n")
+
+        # 5. Save ticker data to CSV
         file_path = filename
 
         # Save first ticker with header
@@ -319,6 +344,48 @@ class SystemUtils:
     ) -> Union[pd.DataFrame, dict]:
         """
         Get OHLCV data for specified tickers within a date range.
+
+        Parameters
+        ----------
+        df_ohlcv : pd.DataFrame
+            DataFrame with MultiIndex of (ticker, date) and OHLCV columns
+        tickers : str or list of str
+            Ticker symbol(s) to retrieve
+        date_start : str
+            Start date in 'YYYY-MM-DD' format
+        date_end : str
+            End date in 'YYYY-MM-DD' format
+        return_format : str, optional
+            Format to return data in. Options:
+            - 'dataframe': Single DataFrame with MultiIndex (default)
+            - 'dict': Dictionary with tickers as keys and DataFrames as values
+            - 'separate': List of separate DataFrames for each ticker
+        verbose : bool, optional
+            Whether to print summary information (default: True)
+
+        Returns
+        -------
+        Union[pd.DataFrame, dict, list]
+            Filtered OHLCV data in specified format
+
+        Raises
+        ------
+        ValueError
+            If input parameters are invalid
+        KeyError
+            If tickers not found in DataFrame
+
+        Examples
+        --------
+        >>> # Get data for single ticker
+        >>> vlo_data = get_ticker_OHLCV(df_ohlcv, 'VLO', '2025-08-13', '2025-09-04')
+
+        >>> # Get data for multiple tickers
+        >>> multi_data = get_ticker_OHLCV(df_ohlcv, ['VLO', 'JPST'], '2025-08-13', '2025-09-04')
+
+        >>> # Get data as dictionary
+        >>> data_dict = get_ticker_OHLCV(df_ohlcv, ['VLO', 'JPST'], '2025-08-13',
+        ...                              '2025-09-04', return_format='dict')
         """
 
         # Input validation
@@ -327,6 +394,9 @@ class SystemUtils:
 
         if not isinstance(df_ohlcv.index, pd.MultiIndex):
             raise ValueError("DataFrame must have MultiIndex of (ticker, date)")
+
+        if len(df_ohlcv.index.levels) != 2:
+            raise ValueError("MultiIndex must have exactly 2 levels: (ticker, date)")
 
         # Convert single ticker to list for consistent processing
         if isinstance(tickers, str):
@@ -341,14 +411,49 @@ class SystemUtils:
         except ValueError as e:
             raise ValueError(f"Invalid date format. Use 'YYYY-MM-DD': {e}")
 
+        if start_date > end_date:
+            raise ValueError("date_start must be before or equal to date_end")
+
+        # Check if tickers exist in the DataFrame
+        available_tickers = df_ohlcv.index.get_level_values(0).unique()
+        missing_tickers = [t for t in tickers if t not in available_tickers]
+
+        if missing_tickers:
+            raise KeyError(f"Ticker(s) not found in DataFrame: {missing_tickers}")
+
         # Filter the data using MultiIndex slicing
         try:
             filtered_data = df_ohlcv.loc[(tickers, slice(date_start, date_end)), :]
         except Exception as e:
             raise ValueError(f"Error filtering data: {e}")
 
+        # Handle empty results
         if filtered_data.empty:
+            if verbose:
+                print(
+                    f"No data found for tickers {tickers} in date range {date_start} to {date_end}"
+                )
             return filtered_data
+
+        # Print summary if verbose
+        if verbose:
+            print(
+                f"Data retrieved for {len(tickers)} ticker(s) from {date_start} to {date_end}"
+            )
+            print(f"Total rows: {len(filtered_data)}")
+            print(
+                f"Date range in data: {filtered_data.index.get_level_values(1).min()} to "
+                f"{filtered_data.index.get_level_values(1).max()}"
+            )
+
+            # Print ticker-specific counts
+            ticker_counts = filtered_data.index.get_level_values(0).value_counts()
+            for ticker in tickers:
+                count = ticker_counts.get(ticker, 0)
+                if count > 0:
+                    print(f"  {ticker}: {count} rows")
+                else:
+                    print(f"  {ticker}: No data in range")
 
         # Return in requested format
         if return_format == "dict":
@@ -376,7 +481,11 @@ class SystemUtils:
         elif return_format == "dataframe":
             return filtered_data
 
-        return filtered_data
+        else:
+            raise ValueError(
+                f"Invalid return_format: {return_format}. "
+                f"Must be 'dataframe', 'dict', or 'separate'"
+            )
 
     @staticmethod
     def get_ticker_features(
@@ -389,18 +498,72 @@ class SystemUtils:
     ) -> Union[pd.DataFrame, dict]:
         """
         Get features data for specified tickers within a date range.
+
+        Parameters
+        ----------
+        features_df : pd.DataFrame
+            DataFrame with MultiIndex of (ticker, date) and feature columns
+        tickers : str or list of str
+            Ticker symbol(s) to retrieve
+        date_start : str
+            Start date in 'YYYY-MM-DD' format
+        date_end : str
+            End date in 'YYYY-MM-DD' format
+        return_format : str, optional
+            Format to return data in. Options:
+            - 'dataframe': Single DataFrame with MultiIndex (default)
+            - 'dict': Dictionary with tickers as keys and DataFrames as values
+            - 'separate': List of separate DataFrames for each ticker
+        verbose : bool, optional
+            Whether to print summary information (default: True)
+
+        Returns
+        -------
+        Union[pd.DataFrame, dict, list]
+            Filtered features data in specified format
         """
+        # Convert single ticker to list for consistent processing
         if isinstance(tickers, str):
             tickers = [tickers]
 
+        # Filter the data using MultiIndex slicing
         try:
             filtered_data = features_df.loc[(tickers, slice(date_start, date_end)), :]
-        except Exception:
+        except Exception as e:
+            if verbose:
+                print(f"Error filtering data: {e}")
             return pd.DataFrame() if return_format == "dataframe" else {}
 
+        # Handle empty results
         if filtered_data.empty:
+            if verbose:
+                print(
+                    f"No data found for tickers {tickers} in date range {date_start} to {date_end}"
+                )
             return filtered_data
 
+        # Print summary if verbose
+        if verbose:
+            print(
+                f"Features data retrieved for {len(tickers)} ticker(s) from {date_start} to {date_end}"
+            )
+            print(f"Total rows: {len(filtered_data)}")
+            print(
+                f"Date range in data: {filtered_data.index.get_level_values(1).min()} to "
+                f"{filtered_data.index.get_level_values(1).max()}"
+            )
+            print(f"Available features: {', '.join(filtered_data.columns.tolist())}")
+
+            # Print ticker-specific counts
+            ticker_counts = filtered_data.index.get_level_values(0).value_counts()
+            for ticker in tickers:
+                count = ticker_counts.get(ticker, 0)
+                if count > 0:
+                    print(f"  {ticker}: {count} rows")
+                else:
+                    print(f"  {ticker}: No data in range")
+
+        # Return in requested format
         if return_format == "dict":
             result = {}
             for ticker in tickers:
@@ -412,7 +575,25 @@ class SystemUtils:
                     result[ticker] = pd.DataFrame()
             return result
 
-        return filtered_data
+        elif return_format == "separate":
+            result = []
+            for ticker in tickers:
+                try:
+                    result.append(
+                        filtered_data.xs(ticker, level=0).loc[date_start:date_end]
+                    )
+                except KeyError:
+                    result.append(pd.DataFrame())
+            return result
+
+        elif return_format == "dataframe":
+            return filtered_data
+
+        else:
+            raise ValueError(
+                f"Invalid return_format: {return_format}. "
+                f"Must be 'dataframe', 'dict', or 'separate'"
+            )
 
     @staticmethod
     def create_combined_dict(
@@ -425,33 +606,127 @@ class SystemUtils:
     ) -> dict:
         """
         Create a combined dictionary with both OHLCV and features data for each ticker.
+
+        Parameters:
+        -----------
+        df_ohlcv : pd.DataFrame
+            DataFrame with OHLCV data (MultiIndex: ticker, date)
+        features_df : pd.DataFrame
+            DataFrame with features data (MultiIndex: ticker, date)
+        tickers : str or list of str
+            Ticker symbol(s) to retrieve
+        date_start : str
+            Start date in 'YYYY-MM-DD' format
+        date_end : str
+            End date in 'YYYY-MM-DD' format
+        verbose : bool, optional
+            Whether to print progress information (default: True)
+
+        Returns:
+        --------
+        dict
+            Dictionary with tickers as keys and combined DataFrames (OHLCV + features) as values
         """
+        # Convert single ticker to list
         if isinstance(tickers, str):
             tickers = [tickers]
 
+        if verbose:
+            print(f"Creating combined dictionary for {len(tickers)} ticker(s)")
+            print(f"Date range: {date_start} to {date_end}")
+            print("=" * 60)
+
+        # Get OHLCV data as dictionary
         ohlcv_dict = SystemUtils.get_ticker_OHLCV(
-            df_ohlcv, tickers, date_start, date_end, return_format="dict", verbose=verbose
+            df_ohlcv,
+            tickers,
+            date_start,
+            date_end,
+            return_format="dict",
+            verbose=verbose,
         )
 
+        # Get features data as dictionary
         features_dict = SystemUtils.get_ticker_features(
-            features_df, tickers, date_start, date_end, return_format="dict", verbose=verbose
+            features_df,
+            tickers,
+            date_start,
+            date_end,
+            return_format="dict",
+            verbose=verbose,
         )
 
+        # Create combined_dict
         combined_dict = {}
 
         for ticker in tickers:
+            if verbose:
+                print(f"\nProcessing {ticker}...")
+
+            # Check if ticker exists in both dictionaries
             if ticker in ohlcv_dict and ticker in features_dict:
                 ohlcv_data = ohlcv_dict[ticker]
                 features_data = features_dict[ticker]
 
+                # Check if both dataframes have data
                 if not ohlcv_data.empty and not features_data.empty:
+                    # Combine OHLCV and features data
+                    # Note: Both dataframes have the same index (dates), so we can concatenate
                     combined_df = pd.concat([ohlcv_data, features_data], axis=1)
+
+                    # Ensure proper index naming
                     combined_df.index.name = "Date"
+
+                    # Store in combined_dict
                     combined_dict[ticker] = combined_df
+
+                    if verbose:
+                        print(f"  ✓ Successfully combined data")
+                        print(f"  OHLCV shape: {ohlcv_data.shape}")
+                        print(f"  Features shape: {features_data.shape}")
+                        print(f"  Combined shape: {combined_df.shape}")
+                        print(
+                            f"  Date range: {combined_df.index.min()} to {combined_df.index.max()}"
+                        )
                 else:
+                    if verbose:
+                        print(f"  ✗ Cannot combine: One or both dataframes are empty")
+                        print(f"    OHLCV empty: {ohlcv_data.empty}")
+                        print(f"    Features empty: {features_data.empty}")
                     combined_dict[ticker] = pd.DataFrame()
             else:
+                if verbose:
+                    print(f"  ✗ Ticker not found in both dictionaries")
+                    if ticker not in ohlcv_dict:
+                        print(f"    Not in OHLCV data")
+                    if ticker not in features_dict:
+                        print(f"    Not in features data")
                 combined_dict[ticker] = pd.DataFrame()
+
+        # Print summary
+        if verbose:
+            print("\n" + "=" * 60)
+            print("SUMMARY")
+            print("=" * 60)
+            print(f"Total tickers processed: {len(tickers)}")
+
+            tickers_with_data = [
+                ticker for ticker, df in combined_dict.items() if not df.empty
+            ]
+            print(f"Tickers with combined data: {len(tickers_with_data)}")
+
+            if tickers_with_data:
+                print("\nTicker details:")
+                for ticker in tickers_with_data:
+                    df = combined_dict[ticker]
+                    print(
+                        f"  {ticker}: {df.shape} - {df.index.min()} to {df.index.max()}"
+                    )
+                    print(f"    Columns: {len(df.columns)}")
+
+            empty_tickers = [ticker for ticker, df in combined_dict.items() if df.empty]
+            if empty_tickers:
+                print(f"\nTickers with no data: {', '.join(empty_tickers)}")
 
         return combined_dict
 
@@ -459,12 +734,29 @@ class SystemUtils:
     def load_env_from_root(env_var_name):
         """
         Load specified environment variable from .env file in root directory
+
+        Parameters:
+        -----------
+        env_var_name : str
+            Name of the environment variable to retrieve (e.g., 'DATA_PATH_OHLCV', 'API_KEY')
+
+        Returns:
+        --------
+        str : Value of the requested environment variable
+
+        Example:
+        --------
+        DATA_PATH_OHLCV = load_env_from_root('DATA_PATH_OHLCV')
+        API_KEY = load_env_from_root('API_KEY')
         """
+        # Start from current file or current working directory
         try:
             start_path = Path(__file__).resolve().parent
         except NameError:
+            # If __file__ not defined (e.g., Jupyter), use current working directory
             start_path = Path.cwd()
 
+        # Search upwards for the .env directory
         current = start_path
         for _ in range(10):  # Limit search depth
             env_path = current / ".env" / "my_api_key.env"
@@ -475,11 +767,15 @@ class SystemUtils:
                     raise KeyError(f"Variable '{env_var_name}' not found in {env_path}")
                 return value
 
+            # Go up one level
             parent = current.parent
-            if parent == current:
+            if parent == current:  # Reached root
                 break
             current = parent
 
         raise FileNotFoundError(
             f"Could not find .env/my_api_key.env when searching for '{env_var_name}'"
         )
+
+
+#
