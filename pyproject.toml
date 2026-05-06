@@ -54,6 +54,8 @@ curl-cffi = "^0.14.0"
 lxml = "^6.0.2"
 bottleneck = "^1.6.0"
 numexpr = "^2.14.1"
+pillow = "^12.2.0"
+code2prompt = "^0.8.1"
 
 [build-system]
 requires = ["poetry-core"]

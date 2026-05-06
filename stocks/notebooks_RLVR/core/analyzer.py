@@ -830,25 +830,6 @@ class WalkForwardAnalyzer:
     or format tables. Just wires components together and handles the run loop.
     """
 
-    # def __init__(
-    #     self, engine, universe_subset=None, filter_pack=None, default_settings=None
-    # ):
-    #     self.engine = engine
-    #     self.universe_subset = universe_subset
-    #     self.filter_pack = filter_pack or FilterPack()
-    #     self.settings = default_settings or GLOBAL_SETTINGS
-
-    #     # Initialize components
-    #     initial_date = self.filter_pack.decision_date or pd.to_datetime("2026-12-10")
-
-    #     self.ui = WalkForwardUI(initial_date, self.settings)
-    #     self.chart = ChartController()
-    #     self.reporter = ReportGenerator()
-    #     self.last_run: Optional["EngineOutput"] = None
-
-    #     # Wire up the run button
-    #     self.ui.w_run_btn.on_click(self._on_run)
-
     def __init__(
         self,
         engine,
@@ -945,16 +926,6 @@ class WalkForwardAnalyzer:
         container = self.ui.layout(self.chart.fig)
         self._on_run(None)  # Auto-run
         return container
-
-
-# Factory function (kept for API compatibility)
-# def create_walk_forward_analyzer(engine, universe_subset=None, filter_pack=None):
-#     """Factory function to match the requested (analyzer, pack) return signature."""
-#     pack = filter_pack or FilterPack()
-#     analyzer = WalkForwardAnalyzer(
-#         engine, universe_subset=universe_subset, filter_pack=pack
-#     )
-#     return analyzer, pack
 
 
 # Factory function (kept for API compatibility)

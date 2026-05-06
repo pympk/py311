@@ -11,33 +11,10 @@ from core.contracts import (
     EngineInput,
     EngineOutput,
     DiscoveryResult,
-    FilterPack,
 )
 from core.settings import GLOBAL_SETTINGS
 from core.performance import calculate_buy_and_hold_performance, PerformanceCalculator
 from strategy.registry import STRATEGY_REGISTRY
-
-
-# class AlphaEngine:
-#     def __init__(
-#         self,
-#         df_ohlcv: pd.DataFrame,
-#         features_df: pd.DataFrame,
-#         macro_df: pd.DataFrame,
-#         df_close_wide: pd.DataFrame = None,
-#         df_atrp_wide: pd.DataFrame = None,
-#         df_trp_wide: pd.DataFrame = None,
-#         master_ticker: str = GLOBAL_SETTINGS["calendar_ticker"],
-#     ):
-
-#         self.df_ohlcv_raw = df_ohlcv
-#         self.features_df = features_df
-#         self.macro_df = macro_df
-
-#         # We call a helper to do the "dirty work"
-#         self._prepare_data(df_close_wide, df_atrp_wide, df_trp_wide, master_ticker)
-
-#         self.Result = TaskResult
 
 
 class AlphaEngine:
@@ -90,10 +67,8 @@ class AlphaEngine:
         # Don't forget this one:
         self.df_close = self.df_close.fillna(GLOBAL_SETTINGS["nan_price_replacement"])
 
-        ############################
         # MANDATORY FIX: Ensure the index is actually Datetime objects
         self.df_close.index = pd.to_datetime(self.df_close.index)
-        ############################
 
         if master_ticker not in self.df_close.columns:
             master_ticker = self.df_close.columns[0]

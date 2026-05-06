@@ -167,11 +167,13 @@ def generate_features(
         df_ohlcv["Adj Close"], QuantUtils.calculate_rsi, period=rsi_period
     )
 
-    ##############
     # Define the bridge for Range Position
     def get_range_pos_kernel(df_slice):
         return QuantUtils.calculate_range_pos(
-            df_slice["Adj High"], df_slice["Adj Low"], df_slice["Adj Close"], window=20
+            df_slice["Adj High"],
+            df_slice["Adj Low"],
+            df_slice["Adj Close"],
+            window=GLOBAL_SETTINGS.get("range_pos_period", 20),
         )
 
     # Use the Orchestrator
@@ -180,12 +182,12 @@ def generate_features(
     def get_obv_kernel(df_slice):
         """
         Calculates OBV using Relative Volume.
-        We normalize volume by its own 63-day rolling mean to make the 
+        We normalize volume by its own 63-day rolling mean to make the
         resulting OBV slope comparable across stocks of different sizes.
         """
         v = df_slice["Volume"]
         # Use a 63-day baseline (1 quarter) to define "Normal" volume for this stock
-        v_baseline = v.rolling(window=63, min_periods=1).mean().replace(0, 1e-8)
+        v_baseline = v.rolling(window=win_63d, min_periods=1).mean().replace(0, 1e-8)
         v_rel = v / v_baseline
         return QuantUtils.calculate_obv_fast(df_slice["Adj Close"], v_rel)
 
@@ -205,7 +207,6 @@ def generate_features(
     convexity = TickerEngine.map_kernels(
         slope_p, QuantUtils.calculate_convexity_5d_fast
     )
-    ##############
 
     # E. Assemble Features (Remains the same)
     features_df = pd.DataFrame(
@@ -219,14 +220,12 @@ def generate_features(
             "IR_63": ir_63,
             "Beta_63": beta_63,
             "DD_21": dd_21.fillna(0),
-            ##########
             "AutoCorr_15": autocorr_15,
             "Ret_1d": rets,
             "Range_Pos_20": range_pos_20,
             "Slope_P_5": slope_p,
             "Slope_V_5": slope_v,
             "Convexity": convexity,
-            ##########
         }
     )
 

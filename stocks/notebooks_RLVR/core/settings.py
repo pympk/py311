@@ -17,6 +17,7 @@ GLOBAL_SETTINGS = {
     "annual_period": 252,  # Replaces hardcoded 252 in Sharpe calculations
     "atr_period": 14,  # Used for volatility normalization
     "rsi_period": 14,  # <--- NEW: Control for RSI logic
+    "range_pos_period": 20,  # Range position
     # FEATURE ENGINE WINDOWS
     "5d_window": 5,  # Replaces hardcoded 5 ("Weekly" anchor)
     "21d_window": 21,  # Replaces hardcoded 21 ("Monthly" anchor)
