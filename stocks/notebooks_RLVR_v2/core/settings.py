@@ -1,68 +1,56 @@
-GLOBAL_SETTINGS = {
-    # ENVIRONMENT (The "Where")
-    "benchmark_ticker": "SPY",
-    "calendar_ticker": "SPY",  # Used as the "Master Clock" for trading days
-    # DATA SANITIZER (The "Glitches & Gaps" Protector)
-    "handle_zeros_as_nan": True,  # Convert 0.0 prices to NaN to prevent math errors
-    "max_data_gap_ffill": 1,  # Max consecutive days to "Forward Fill" missing data
-    # IMPLICATION OF nan_price_replacement:
-    # - This defines what happens if the "Forward Fill" limit is exceeded.
-    # - If set to 0.0: A permanent data gap will look like a "total loss" (-100%).
-    #   The equity curve will plummet. Good for "disaster detection."
-    #   Sharpe and Sharpe(ATR) drop because: return (gets smaller) / std (gets larger)
-    # - If set to np.nan: A permanent gap will cause portfolio calculations to return NaN.
-    #   The chart may break or show gaps. Good for "math integrity."
-    "nan_price_replacement": 0.0,
+from dataclasses import dataclass, field
+
+
+@dataclass
+class StrategyParams:
+    standard_confidence: float = 1.0
+    strong_confidence: float = 1.5
+    extreme_confidence: float = 2.5
+    rsi_overbought: int = 70
+    rsi_oversold: int = 30
+    range_high: float = 0.8
+    range_low: float = 0.2
+    convexity_exit: float = -0.7
+
+
+@dataclass
+class QualityThresholds:
+    min_median_dollar_volume: int = 1_000_000
+    min_liquidity_percentile: float = 0.40
+    max_stale_pct: float = 0.05
+    max_same_vol_count: int = 10
+
+
+@dataclass
+class TradingConfig:
+    # ENVIRONMENT
+    benchmark_ticker: str = "SPY"
+    calendar_ticker: str = "SPY"
+
+    # DATA SANITIZER
+    handle_zeros_as_nan: bool = True
+    max_data_gap_ffill: int = 1
+    nan_price_replacement: float = 0.0
+
     # STRATEGY & MATH
-    "annual_period": 252,  # Replaces hardcoded 252 in Sharpe calculations
-    "atr_period": 14,  # Used for volatility normalization
-    "rsi_period": 14,  # <--- NEW: Control for RSI logic
-    "range_pos_period": 20,  # Range position
+    annual_period: int = 252
+    atr_period: int = 14
+    rsi_period: int = 14
+    range_pos_period: int = 20
+
     # FEATURE ENGINE WINDOWS
-    "5d_window": 5,  # Replaces hardcoded 5 ("Weekly" anchor)
-    "21d_window": 21,  # Replaces hardcoded 21 ("Monthly" anchor)
-    "63d_window": 63,  # Replaces hardcoded 63 ("3 Monthly" anchor)
+    win_5d: int = 5
+    win_21d: int = 21
+    win_63d: int = 63
+
     # FEATURE GUARDRAILS (CLIPS)
-    "feature_zscore_clip": 4.0,  # Replaces hardcoded 4.0 in OBV Z-Scores
-    "feature_ratio_clip": 10.0,  # Replaces hardcoded 10.0 in RVol ratios
+    feature_zscore_clip: float = 4.0
+    feature_ratio_clip: float = 10.0
+
     # QUALITY/LIQUIDITY
-    "quality_window": 252,  # 1 year lookback for liquidity/quality stats
-    "quality_min_periods": 126,  # min period that ticker has to meet quality thresholds
-    # STRATEGY PARAMETERS (The "Levers")
-    "strategy_params": {
-        "standard_confidence": 1.0,  # Default Z-Score trigger (1.0std)
-        "strong_confidence": 1.5,  # Strong Z-Score trigger (1.5std)
-        "extreme_confidence": 2.5,  # Parabolic/Extreme risk trigger (2.5std)
-        "rsi_overbought": 70,  # Standard RSI Upper Bound
-        "rsi_oversold": 30,  # Standard RSI Lower Bound
-        "range_high": 0.8,  # Range Position Upper Bound
-        "range_low": 0.2,  # Range Position Lower Bound
-        "convexity_exit": -0.7,  # Deceleration/Exhaustion threshold
-    },
-    # QUALITY THRESHOLDS (The "Rules")
-    "thresholds": {
-        # HARD LIQUIDITY FLOOR
-        # Logic: Calculates (Adj Close * Volume) daily, then takes the ROLLING MEDIAN
-        # over the quality_window (252 days). Filters out stocks where the
-        # typical daily dollar turnover is below this absolute value.
-        "min_median_dollar_volume": 1_000_000,
-        # DYNAMIC LIQUIDITY CUTOFF (Relative to Universe)
-        # Logic: On the decision date, the engine calculates the X-quantile
-        # of 'RollMedDollarVol' across ALL available stocks.
-        # Setting this to 0.40 calculates the 60th percentile and requires
-        # stocks to be above it—effectively keeping only the TOP 60% of the market.
-        "min_liquidity_percentile": 0.40,
-        # PRICE/VOLUME STALENESS
-        # Logic: Creates a binary flag (1 if Volume is 0 OR High equals Low).
-        # It then calculates the ROLLING MEAN of this flag.
-        # A value of 0.05 means the stock is rejected if it was "stale"
-        # for more than 5% of the trading days in the rolling window.
-        "max_stale_pct": 0.05,
-        # DATA INTEGRITY (FROZEN VOLUME)
-        # Logic: Checks if Volume is identical to the previous day (Volume.diff() == 0).
-        # It calculates the ROLLING SUM of these occurrences over the window.
-        # If the exact same volume is reported more than 10 times, the stock
-        # is rejected as having "frozen" or low-quality data.
-        "max_same_vol_count": 10,
-    },
-}
+    quality_window: int = 252
+    quality_min_periods: int = 126
+
+    # STRATEGY PARAMETERS & THRESHOLDS
+    strategy_params: StrategyParams = field(default_factory=StrategyParams)
+    thresholds: QualityThresholds = field(default_factory=QualityThresholds)

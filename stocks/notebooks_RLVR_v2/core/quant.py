@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
+import warnings
 
-from typing import Union, Tuple
-from core.settings import GLOBAL_SETTINGS
+from typing import Union, Tuple, overload, Optional, cast
 
 
 class QuantUtils:
@@ -11,11 +11,30 @@ class QuantUtils:
     Handles both pd.Series (Report) and pd.DataFrame (Ranking) robustly.
     """
 
+    @overload
+    @staticmethod
+    def compute_returns(data: pd.Series) -> pd.Series: ...
+
+    @overload
+    @staticmethod
+    def compute_returns(data: pd.DataFrame) -> pd.DataFrame: ...
+
     @staticmethod
     def compute_returns(
         data: Union[pd.Series, pd.DataFrame],
     ) -> Union[pd.Series, pd.DataFrame]:
-        return data.pct_change().replace([np.inf, -np.inf], np.nan)
+        # We use cast here internally because Pandas methods like .replace()
+        # often confuse the type checker's ability to track Series vs DataFrame
+        res = data.pct_change().replace([np.inf, -np.inf], np.nan)
+        return cast(Union[pd.Series, pd.DataFrame], res)
+
+    @overload
+    @staticmethod
+    def calculate_gain(data: pd.Series, min_points: int = 2) -> float: ...
+
+    @overload
+    @staticmethod
+    def calculate_gain(data: pd.DataFrame, min_points: int = 2) -> pd.Series: ...
 
     @staticmethod
     def calculate_gain(
@@ -25,7 +44,11 @@ class QuantUtils:
             return 0.0
 
         if isinstance(data, pd.DataFrame):
-            return data.apply(lambda col: QuantUtils.calculate_gain(col, min_points))
+            # The result of apply on a DataFrame is a Series
+            return cast(
+                pd.Series,
+                data.apply(lambda col: QuantUtils.calculate_gain(col, min_points)),
+            )
 
         clean = data.dropna()
         if len(clean) < min_points:
@@ -42,35 +65,149 @@ class QuantUtils:
     @staticmethod
     def calculate_sharpe(
         data: Union[pd.Series, pd.DataFrame],
-        periods: int = None,
+        periods: Optional[int] = None,
     ) -> Union[float, pd.Series]:
+        """
+        Calculates Sharpe Ratio.
+        If data is a DataFrame, returns a Series of Sharpe Ratios.
+        If data is a Series, returns a single float Sharpe Ratio.
+        """
         if periods is None:
-            periods = GLOBAL_SETTINGS["annual_period"]
-        mu, std = data.mean(), data.std()
-        res = (mu / np.maximum(std, 1e-8)) * np.sqrt(periods)
+            periods = 252
 
-        if isinstance(res, (pd.Series, pd.DataFrame)):
-            return res.replace([np.inf, -np.inf], np.nan).fillna(0.0)
-        return float(res) if np.isfinite(res) else 0.0
+        # CASE 1: Data is a DataFrame (Result is a Series)
+        if isinstance(data, pd.DataFrame):
+            mu = data.mean()  # Result: pd.Series
+            std = data.std()  # Result: pd.Series
+            res = (mu / np.maximum(std, 1e-8)) * np.sqrt(periods)
+
+            # Clean and cast to Series for Pylance
+            cleaned = res.replace([np.inf, -np.inf], np.nan).fillna(0.0)
+            return cast(pd.Series, cleaned)
+
+        # CASE 2: Data is a Series (Result is a float)
+        elif isinstance(data, pd.Series):
+            mu = float(data.mean())  # Result: float
+            std = float(data.std())  # Result: float
+            res = (mu / max(std, 1e-8)) * np.sqrt(periods)
+
+            return res if np.isfinite(res) else 0.0
+
+        else:
+            raise TypeError("Input 'data' must be a pandas Series or DataFrame.")
 
     @staticmethod
-    def calculate_sharpe_vol(
-        returns: Union[pd.Series, pd.DataFrame],
-        vol_data: Union[pd.Series, pd.DataFrame],
-    ) -> Union[float, pd.Series]:
-        mask = returns.notna()
-        avg_ret = returns.mean()
+    def calc_sharpe_cross_section(
+        returns: pd.DataFrame, vol_vector: pd.Series
+    ) -> pd.Series:
+        """
+        [RANKING KERNEL] Calculates Sharpe ratio using a static volatility vector.
 
-        if isinstance(returns, pd.DataFrame) and isinstance(vol_data, pd.Series):
-            avg_vol = vol_data
-        else:
-            avg_vol = vol_data.where(mask).mean()
+        Use Case: Ranking many tickers (DataFrame) against their current TRP/ATRP (Series).
+        Logic: Mean(Returns) / Vol_Vector.
+        Performance: High-speed NumPy vectorization.
+        """
 
-        res = avg_ret / np.maximum(avg_vol, 1e-8)
+        # DEBUG TRAP: Ensure Tickers are in the same order
+        if not (returns.columns.equals(vol_vector.index)):
+            raise ValueError(
+                f"Cross-section Alignment Mismatch!\n"
+                f"Returns Tickers (first 3): {list(returns.columns[:3])}\n"
+                f"Vol Index Tickers (first 3): {list(vol_vector.index[:3])}"
+            )
+        # 1. Extract strictly-typed float arrays to satisfy Pylance
+        ret_arr = returns.to_numpy(dtype=float)  # Shape: (Time, Tickers)
+        vol_arr = vol_vector.to_numpy(dtype=float)  # Shape: (Tickers,)
 
-        if isinstance(res, (pd.Series, pd.DataFrame)):
-            return res.replace([np.inf, -np.inf], np.nan).fillna(0.0)
-        return float(res) if np.isfinite(res) else 0.0
+        # 2. Fast C-level math
+        avg_ret = np.nanmean(ret_arr, axis=0)
+        avg_vol = np.maximum(vol_arr, 1e-8)
+
+        # 3. Calculate and clean infinites/NaNs natively in NumPy
+        with np.errstate(divide="ignore", invalid="ignore"):
+            res_arr = avg_ret / avg_vol
+
+        cleaned_arr = np.nan_to_num(res_arr, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # 4. Wrap back in Series for engine compatibility
+        return pd.Series(cleaned_arr, index=returns.columns)
+
+    @staticmethod
+    def calc_sharpe_multivariate_aligned(
+        returns: pd.DataFrame, vol_grid: pd.DataFrame
+    ) -> pd.Series:
+        """
+        [RESEARCH KERNEL] Calculates Sharpe ratio using dynamic time-series volatility.
+
+        Use Case: Full-grid vectorized backtesting.
+        Logic: Ensures 'Temporal Coupling'—only counts volatility on days where returns
+               are non-NaN (prevents the 'Day 1 Trap').
+        Performance: O(n) NumPy matrix math.
+        """
+        # DEBUG TRAP: Ensure columns and index are identical
+        # Check if indices/columns match
+        if not all(returns.columns == vol_grid.columns):
+            print(
+                f"Mismatch! Returns: {returns.columns[:3]}... Vol: {vol_grid.columns[:3]}..."
+            )
+            raise ValueError("Alignment Mismatch")
+
+        ret_arr = returns.to_numpy(dtype=float)
+        vol_arr = vol_grid.to_numpy(dtype=float)
+
+        # Create a mask of valid return days
+        valid_mask = ~np.isnan(ret_arr)
+
+        # Apply the mask to volatility (ignoring vol on days with NaN returns)
+        masked_vol = np.where(valid_mask, vol_arr, np.nan)
+
+        # Calculate means ignoring NaNs
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            avg_ret = np.nanmean(ret_arr, axis=0)
+            avg_vol = np.nanmean(masked_vol, axis=0)
+
+        avg_vol = np.maximum(avg_vol, 1e-8)
+
+        # Math and cleanup
+        with np.errstate(divide="ignore", invalid="ignore"):
+            res_arr = avg_ret / avg_vol
+
+        cleaned_arr = np.nan_to_num(res_arr, nan=0.0, posinf=0.0, neginf=0.0)
+
+        return pd.Series(cleaned_arr, index=returns.columns)
+
+    @staticmethod
+    def calc_sharpe_univariate(returns: pd.Series, vol_series: pd.Series) -> float:
+        """
+        [REPORT KERNEL] Calculates a single scalar Sharpe ratio for one asset or portfolio.
+
+        Use Case: Reporting, creating individual ticker stats, or portfolio performance.
+        Logic: Standard Univariate Sharpe with NaN-masking.
+        Performance: Minimal overhead float calculation.
+        """
+        # DEBUG TRAP: Ensure Dates are identical
+        if not (returns.index.equals(vol_series.index)):
+            # Optional: Try to fix it automatically if you prefer
+            # returns, vol_series = returns.align(vol_series, join='inner')
+            raise ValueError(
+                "Univariate Temporal Alignment Mismatch: Indices do not match."
+            )
+        ret_arr = returns.to_numpy(dtype=float)
+        vol_arr = vol_series.to_numpy(dtype=float)
+
+        # Find valid indices (where returns are not NaN)
+        valid_mask = ~np.isnan(ret_arr)
+
+        if not np.any(valid_mask):
+            return 0.0
+
+        avg_ret = np.mean(ret_arr[valid_mask])
+        avg_vol = np.mean(vol_arr[valid_mask])
+
+        res = float(avg_ret / max(avg_vol, 1e-8))
+
+        return res if np.isfinite(res) else 0.0
 
     @staticmethod
     def compute_portfolio_stats(
@@ -103,11 +240,31 @@ class QuantUtils:
 
     @staticmethod
     def calculate_tr(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Series:
-        prev_close = close.shift(1)
-        tr = np.maximum(
-            high - low, np.maximum((high - prev_close).abs(), (low - prev_close).abs())
-        )
-        return tr
+        # 1. Extract underlying NumPy arrays and strictly enforce float dtype
+        # This prevents the "cannot convert float NaN to integer" error
+        h_arr = high.to_numpy(dtype=float)
+        l_arr = low.to_numpy(dtype=float)
+        c_arr = close.to_numpy(dtype=float)
+
+        # Handle edge case: empty series
+        if len(c_arr) == 0:
+            return pd.Series(dtype=float, index=high.index)
+
+        # 2. Shift close by 1 manually (much faster than pd.Series.shift)
+        prev_c = np.empty_like(c_arr)
+        prev_c[0] = np.nan
+        prev_c[1:] = c_arr[:-1]
+
+        # 3. Calculate components
+        tr1 = h_arr - l_arr
+        tr2 = np.abs(h_arr - prev_c)
+        tr3 = np.abs(l_arr - prev_c)
+
+        # 4. np.maximum evaluates element-wise and naturally propagates NaNs.
+        tr_arr = np.maximum(tr1, np.maximum(tr2, tr3))
+
+        # 5. Re-wrap as pandas Series to maintain pipeline compatibility
+        return pd.Series(tr_arr, index=high.index)
 
     @staticmethod
     def calculate_atr(
@@ -191,22 +348,73 @@ class QuantUtils:
 
     @staticmethod
     def calculate_obv_fast(close: pd.Series, volume: pd.Series) -> pd.Series:
+        # Pylance sees np.sign as returning an ndarray
         direction = np.sign(close.diff().fillna(0))
-        return (direction * volume).cumsum()
+
+        # Multiplying ndarray * Series returns a Series at runtime,
+        # but we cast it here so Pylance knows for sure.
+        obv = (direction * volume).cumsum()
+
+        return cast(pd.Series, obv)
 
     @staticmethod
     def calculate_convexity_5d_fast(slope_series: pd.Series) -> pd.Series:
         return slope_series.diff(2).fillna(0)
+
+    # --- OVERLOAD 1: If input is a Series, output is a Series ---
+    @overload
+    @staticmethod
+    def zscore(data: pd.Series) -> pd.Series: ...  # <--- Literally three dots
+
+    # --- OVERLOAD 2: If input is a DataFrame, output is a DataFrame ---
+    @overload
+    @staticmethod
+    def zscore(data: pd.DataFrame) -> pd.DataFrame: ...  # <--- Literally three dots
+
+    # --- THE ACTUAL IMPLEMENTATION ---
+    # This is the only one with real code.
+    # Note: No @overload decorator here.
+
+    # @staticmethod
+    # def zscore(data: Union[pd.Series, pd.DataFrame]) -> Union[pd.Series, pd.DataFrame]:
+    #     if data.empty:
+    #         return data
+
+    #     m = data.mean()
+    #     s = data.std()
+    #     denom = np.where((s != 0) & (~pd.isna(s)), s, 1.0)
+    #     return (data - m) / denom
 
     @staticmethod
     def zscore(data: Union[pd.Series, pd.DataFrame]) -> Union[pd.Series, pd.DataFrame]:
         if data.empty:
             return data
 
-        m = data.mean()
-        s = data.std()
-        denom = np.where((s != 0) & (~pd.isna(s)), s, 1.0)
-        return (data - m) / denom
+        # CASE 1: Data is a DataFrame
+        if isinstance(data, pd.DataFrame):
+            m = data.mean()  # Result: pd.Series
+            s = data.std()  # Result: pd.Series
+
+            # FIX 1: Use Pandas .where() instead of np.where() to keep it a Series.
+            # FIX 2: Use s.notna() to fix the strikethrough.
+            denom = s.where((s != 0) & s.notna(), 1.0)
+
+            res = (data - m) / denom
+            return cast(pd.DataFrame, res)
+
+        # CASE 2: Data is a Series
+        elif isinstance(data, pd.Series):
+            m = float(data.mean())  # Result: float
+            s = float(data.std())  # Result: float
+
+            # Simple scalar logic (no NumPy arrays needed)
+            denom = s if (s != 0 and not np.isnan(s)) else 1.0
+
+            res = (data - m) / denom
+            return cast(pd.Series, res)
+
+        else:
+            raise TypeError("Input must be a pandas Series or DataFrame.")
 
 
 class TickerEngine:

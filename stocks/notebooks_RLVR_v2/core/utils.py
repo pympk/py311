@@ -4,106 +4,74 @@ import numpy as np
 
 from pathlib import Path
 from dotenv import load_dotenv
-from dataclasses import asdict, is_dataclass, fields
-from typing import Any, List, Dict, Union
+from typing import Any, List, Dict, Union, cast
+
 from core.paths import OUTPUT_DIR
 from core.quant import QuantUtils
+from dataclasses import asdict, is_dataclass, fields
 
 
 class SystemUtils:
     @staticmethod
-    def peek(idx: int, reg: List[Dict[str, Any]]) -> Any:
+    def map_analyzer(analyzer) -> List[Dict]:
         """
-        Displays metadata and RETURNS the object for further use.
-        SAFEGUARD: Checks if reg is actually a list from the visualizer.
+        STRICT ANALYZER MAPPER:
+        Extracts only the 'last_run' data from an analyzer and generates
+        the visual audit map. Does not allow "zooming" into sub-objects.
+        Usage:
+            result = map_analyzer(analyzer2)  # get the map
+            result[4]['obj']  # get the value of item 4
         """
-        if not isinstance(reg, list):
-            print(f"❌ Error: Pass the result map (list), not the analyzer object.")
-            return None
 
-        if idx < 0 or idx >= len(reg):
-            print(f"❌ Index {idx} out of range (0 to {len(reg)-1}).")
-            return None
+        # 1. Strict extraction of simulation data
+        data = getattr(analyzer, "last_run", None)
 
-        entry = reg[idx]
-
-        print(f" {'='*60}")
-        print(f" 📍 INDEX: [{idx}]")
-        print(f" 🏷️  NAME:  {entry.get('name', 'N/A')}")
-        print(f" 📂 PATH:  {entry.get('path', 'N/A')}")
-        print(f" {'='*60}\n")
-
-        try:
-            from IPython.display import display
-
-            display(entry["obj"])
-        except ImportError:
-            print(entry["obj"])
-
-        return entry["obj"]
-
-    @staticmethod
-    def visualize_analyzer_structure(analyzer) -> List[Dict]:
-        """
-        High-level entry point for the Analyzer.
-        Maps the internal data structure of the last simulation run.
-        """
-        # Check if last_run exists (WalkForwardAnalyzer specific logic)
-        last_run = getattr(analyzer, "last_run", None)
-
-        if not last_run:
-            print("❌ Audit Aborted: No simulation data found in analyzer.last_run.")
+        if data is None:
+            print(
+                "[ERROR] No simulation data found. Please ensure the analyzer has been 'run'."
+            )
             return []
 
-        return SystemUtils.visualize_audit_structure(last_run)
-
-    @staticmethod
-    def visualize_audit_structure(obj) -> List[Dict]:
-        """
-        CORE ENGINE: Generates the Map and returns a Registry.
-        """
         id_memory = {}
         registry = []
         output = [
             "====================================================================",
-            "🔍 HIGH-TRANSPARENCY AUDIT MAP",
+            "[SEARCH] ANALYZER SIMULATION MAP",
             "====================================================================",
         ]
 
         def get_icon(val):
             if isinstance(val, pd.DataFrame):
-                return "🧮"
+                return "[CALC]"
             if isinstance(val, pd.Series):
-                return "📈"
+                return "[PLOT]"
             if isinstance(val, (list, tuple, dict)):
-                return "📂"
+                return "[FILE]"
             if isinstance(val, pd.Timestamp):
-                return "📅"
+                return "[DATE]"
             if is_dataclass(val):
-                return "📦"
-            return "🔢" if isinstance(val, (int, float)) else "📄"
+                return "[DATA]"
+            return "[NUM]" if isinstance(val, (int, float)) else "[DOC]"
 
         def process(item, name, level=0, path=""):
             indent = "  " * level
             item_id = id(item)
             current_path = f"{path} -> {name}" if path else name
-
             is_primitive = isinstance(item, (int, float, str, bool, type(None)))
 
-            # Avoid infinite recursion and handle shared references
             if not is_primitive and item_id in id_memory:
                 output.append(
-                    f"{indent}          ╰── {name} --> [See ID {id_memory[item_id]}]"
+                    f"{indent}          +-- {name} --> [See ID {id_memory[item_id]}]"
                 )
                 return
 
             curr_idx = len(registry)
-            registry.append({"name": name, "path": current_path, "obj": item})
-
+            registry.append(
+                {"id": curr_idx, "name": name, "path": current_path, "obj": item}
+            )
             if not is_primitive:
                 id_memory[item_id] = curr_idx
 
-            # Generate Metadata String
             meta = f"{type(item).__name__}"
             if hasattr(item, "shape"):
                 meta = f"shape={item.shape}"
@@ -112,7 +80,6 @@ class SystemUtils:
 
             output.append(f"[{curr_idx:>3}] {indent}{get_icon(item)} {name} ({meta})")
 
-            # Recursion Logic
             if isinstance(item, dict):
                 for k, v in item.items():
                     process(v, k, level + 1, current_path)
@@ -123,20 +90,95 @@ class SystemUtils:
                 for f in fields(item):
                     process(getattr(item, f.name), f.name, level + 1, current_path)
 
-        process(obj, "audit_pack")
-        print("\n".join(output))
+        # Always starts at the root of the simulation data
+        process(data, "audit_pack")
 
+        print("\n".join(output))
         return registry
+
+    @staticmethod
+    def list_analyzer_paths(data):
+        """
+        List Name | Path of analyzer result
+        Usage:
+            result = SU.map_analyzer(analyzer=analyzer1)
+            list_analyzer_paths(result)
+        """
+
+        print(f"{'NAME':<25} | {'PATH'}")
+        print("-" * 80)
+        for item in data:
+            # We use .get() to avoid errors if a specific dict is missing a key
+            name = item.get("name", "N/A")
+            path = item.get("path", "N/A")
+            print(f"{name:<25} | {path}")
+
+    @staticmethod
+    def fetch(key: Union[int, str], reg: List[Dict[str, Any]]) -> Any:
+        """
+        Retrieves and displays an object from the audit map using either
+        its numeric INDEX or its string LABEL (name).
+        Usage:
+            _tickers = fetch(4, result)  # fetch by ID
+            _tickers = fetch("tickers", result)  # fetch by name
+        """
+
+        if not isinstance(reg, list):
+            print(f"[ERROR] Pass the result map (list), not the analyzer object.")
+            return None
+
+        entry = None
+
+        # Logic for numeric index
+        if isinstance(key, int):
+            if 0 <= key < len(reg):
+                entry = reg[key]
+            else:
+                print(f"[ERROR] Index {key} out of range (0 to {len(reg)-1}).")
+                return None
+
+        # Logic for string label
+        elif isinstance(key, str):
+            entry = next((item for item in reg if item.get("name") == key), None)
+            if entry is None:
+                print(f"[ERROR] Label '{key}' not found in the audit map.")
+                return None
+
+        else:
+            print(f"[ERROR] Key must be an integer (index) or string (label).")
+            return None
+
+        # --- Display Formatting ---
+        idx = entry.get("id") if isinstance(key, str) else key
+        name = entry.get("name", "N/A")
+        path = entry.get("path", "N/A")
+        obj = entry.get("obj")
+
+        print(f" {'='*60}")
+        print(f" [INFO] INDEX: [{idx}]")
+        print(f" [LABEL] NAME:  {name}")
+        print(f" [FILE] PATH:  {path}")
+        print(f" {'='*60}\n")
+
+        try:
+            from IPython.display import display
+
+            display(obj)
+        except ImportError:
+            print(obj)
+
+        return obj
 
     @staticmethod
     def export_audit_to_excel(audit_pack, filename="Audit_Verification_Report.xlsx"):
         """
         Final Zero-Base Audit Export.
         Provides everything needed to reconstruct the Strategy results from raw candles.
-        Usage: SystemUtils.export_audit_to_excel(audit_pack=analyzer.last_run, filename=f_name_excel)
+        Usage:
+            export_audit_to_excel(audit_pack=analyzer.last_run, filename=f_name_excel)
         """
         if audit_pack is None:
-            return print("❌ Error: Audit Pack is empty.")
+            return print("[ERROR] Error: Audit Pack is empty.")
 
         # Resolve full output path
         output_path = Path(OUTPUT_DIR) / filename
@@ -155,7 +197,7 @@ class SystemUtils:
         # CHANGED: Export all tickers, not just top 3
         all_tickers = audit_pack.tickers if audit_pack.tickers else []
 
-        print(f"📂 [EXCEL AUDIT] Building full transparency report: {output_path}")
+        print(f"[FILE] [EXCEL AUDIT] Building full transparency report: {output_path}")
 
         with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
 
@@ -251,7 +293,7 @@ class SystemUtils:
             if (df_rank := debug.get("full_universe_ranking")) is not None:
                 df_rank.to_excel(writer, sheet_name="FULL_RANKING")
 
-        print(f"✨ Audit Report Complete: {output_path}")
+        print(f"[DONE] Audit Report Complete: {output_path}")
         return output_path
 
     @staticmethod
@@ -260,21 +302,14 @@ class SystemUtils:
     ):
         """
         Export the last run ticker data from a WalkForwardAnalyzer to a stacked CSV file.
-
-        Parameters:
-        -----------
-        analyzer : WalkForwardAnalyzer
-            The analyzer containing last_run data
-        df_ohlcv : pd.DataFrame
-            OHLCV data for create_combined_dict
-        features_df : pd.DataFrame
-            Features data for create_combined_dict
-        filename : str
-            Output filename (saved to OUTPUT_DIR)
-
-        Returns:
-        --------
-        Path : Path to saved CSV file
+        Saves to the standardized OUTPUT_DIR.
+        Usage:
+            export_last_run_tickers_data_to_csv(
+                analyzer=analyzer2,
+                df_ohlcv=df_ohlcv,
+                features_df=features_df,
+                filename="last_run_tickers_stacked.csv",
+            )
         """
 
         # 1. Access the result object from the analyzer
@@ -282,18 +317,20 @@ class SystemUtils:
 
         if res is None:
             raise ValueError(
-                "❌ No results found in analyzer. Please click 'Run Simulation' first."
+                "[ERROR] No results found in analyzer. Please click 'Run Simulation' first."
             )
 
-        # 2. Extract attributes directly (No [0] needed)
+        # 2. Resolve full output path (Matching export_audit_to_excel logic)
+        output_path = Path(OUTPUT_DIR) / filename
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # 3. Extract attributes
         benchmark = res.debug_data["inputs_snapshot"].benchmark_ticker
         tickers = res.tickers + [benchmark]
         start_date = res.start_date
-        end_date = (
-            res.holding_end_date
-        )  # Note: I use end_date, not decision_date/buy_date
+        end_date = res.holding_end_date
 
-        # 3. Generate the combined dict
+        # 4. Generate the combined dict
         combined = SystemUtils.create_combined_dict(
             df_ohlcv=df_ohlcv.copy(),
             features_df=features_df,
@@ -303,21 +340,17 @@ class SystemUtils:
             verbose=True,
         )
 
-        # 4. Print ticker data (optional — remove if not needed)
-        for ticker in tickers:
-            with pd.option_context("display.float_format", "{:.8f}".format):
-                print(f"{ticker}:\n{combined[ticker][start_date:end_date]}\n")
+        print(f"[FILE] [CSV EXPORT] Building stacked ticker report: {output_path}")
 
         # 5. Save ticker data to CSV
-        file_path = filename
-
-        # Save first ticker with header
+        # Handle the first ticker to create the file and header
         first_ticker = tickers[0]
         df_first = combined[first_ticker][start_date:end_date].reset_index()
         df_first["Ticker"] = first_ticker
 
-        df_first.to_csv(file_path, header=True, index=False, lineterminator="\n")
-        print(f"✓ Saved {first_ticker} with header")
+        # Use output_path here
+        df_first.to_csv(output_path, header=True, index=False, lineterminator="\n")
+        print(f" [OK] Started file with {first_ticker}")
 
         # Append remaining tickers without header
         for ticker in tickers[1:]:
@@ -325,13 +358,12 @@ class SystemUtils:
             df["Ticker"] = ticker
 
             df.to_csv(
-                file_path, header=False, index=False, lineterminator="\n", mode="a"
+                output_path, header=False, index=False, lineterminator="\n", mode="a"
             )
-            print(f"✓ Appended {ticker}")
+            print(f" [OK] Appended {ticker}")
 
-        print(f"\n✓ Saved all tickers to: {file_path}")
-
-        return file_path
+        print(f"[DONE] Stacked CSV Complete: {output_path}")
+        return output_path
 
     @staticmethod
     def get_ticker_OHLCV(
@@ -340,8 +372,8 @@ class SystemUtils:
         date_start: str,
         date_end: str,
         return_format: str = "dataframe",
-        verbose: bool = True,
-    ) -> Union[pd.DataFrame, dict]:
+        verbose: bool = False,
+    ) -> Union[pd.DataFrame, dict, list]:
         """
         Get OHLCV data for specified tickers within a date range.
 
@@ -494,8 +526,8 @@ class SystemUtils:
         date_start: str,
         date_end: str,
         return_format: str = "dataframe",
-        verbose: bool = True,
-    ) -> Union[pd.DataFrame, dict]:
+        verbose: bool = False,
+    ) -> Union[pd.DataFrame, dict, list]:
         """
         Get features data for specified tickers within a date range.
 
@@ -514,6 +546,7 @@ class SystemUtils:
             - 'dataframe': Single DataFrame with MultiIndex (default)
             - 'dict': Dictionary with tickers as keys and DataFrames as values
             - 'separate': List of separate DataFrames for each ticker
+            - 'dataframe': Single DataFrame with MultiIndex (default)
         verbose : bool, optional
             Whether to print summary information (default: True)
 
@@ -602,7 +635,7 @@ class SystemUtils:
         tickers: Union[str, List[str]],
         date_start: str,
         date_end: str,
-        verbose: bool = True,
+        verbose: bool = False,
     ) -> dict:
         """
         Create a combined dictionary with both OHLCV and features data for each ticker.
@@ -637,23 +670,29 @@ class SystemUtils:
             print("=" * 60)
 
         # Get OHLCV data as dictionary
-        ohlcv_dict = SystemUtils.get_ticker_OHLCV(
-            df_ohlcv,
-            tickers,
-            date_start,
-            date_end,
-            return_format="dict",
-            verbose=verbose,
+        ohlcv_dict = cast(
+            Dict[str, pd.DataFrame],
+            SystemUtils.get_ticker_OHLCV(
+                df_ohlcv,
+                tickers,
+                date_start,
+                date_end,
+                return_format="dict",
+                verbose=verbose,
+            ),
         )
 
         # Get features data as dictionary
-        features_dict = SystemUtils.get_ticker_features(
-            features_df,
-            tickers,
-            date_start,
-            date_end,
-            return_format="dict",
-            verbose=verbose,
+        features_dict = cast(
+            Dict[str, pd.DataFrame],
+            SystemUtils.get_ticker_features(
+                features_df,
+                tickers,
+                date_start,
+                date_end,
+                return_format="dict",
+                verbose=verbose,
+            ),
         )
 
         # Create combined_dict
@@ -681,7 +720,7 @@ class SystemUtils:
                     combined_dict[ticker] = combined_df
 
                     if verbose:
-                        print(f"  ✓ Successfully combined data")
+                        print(f"  [OK] Successfully combined data")
                         print(f"  OHLCV shape: {ohlcv_data.shape}")
                         print(f"  Features shape: {features_data.shape}")
                         print(f"  Combined shape: {combined_df.shape}")
@@ -690,13 +729,15 @@ class SystemUtils:
                         )
                 else:
                     if verbose:
-                        print(f"  ✗ Cannot combine: One or both dataframes are empty")
+                        print(
+                            f"  [FAIL] Cannot combine: One or both dataframes are empty"
+                        )
                         print(f"    OHLCV empty: {ohlcv_data.empty}")
                         print(f"    Features empty: {features_data.empty}")
                     combined_dict[ticker] = pd.DataFrame()
             else:
                 if verbose:
-                    print(f"  ✗ Ticker not found in both dictionaries")
+                    print(f"  [FAIL] Ticker not found in both dictionaries")
                     if ticker not in ohlcv_dict:
                         print(f"    Not in OHLCV data")
                     if ticker not in features_dict:

@@ -1,9 +1,10 @@
 import pandas as pd
 import numpy as np
 
-from core.settings import GLOBAL_SETTINGS
-from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Callable
+
+from core.settings import TradingConfig, QualityThresholds
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -25,14 +26,12 @@ class MarketObservation:
     beta_63: pd.Series
     dd_21: pd.Series
 
-    ############
     # --- 4 NEW MICROSTRUCTURE SLOTS ---
     autocorr_15: pd.Series
     range_pos_20: pd.Series
     slope_p_5: pd.Series
     slope_v_5: pd.Series
     convexity: pd.Series  # Adding this now to prevent the next error!
-    ############
 
     # Macro Scalars (or Series)
     macro_trend: float
@@ -63,10 +62,8 @@ class EngineInput:
     benchmark_ticker: str
     rank_start: int = 1
     rank_end: int = 10
-    # Default factory pulls from Global thresholds
-    quality_thresholds: Dict[str, float] = field(
-        default_factory=lambda: GLOBAL_SETTINGS["thresholds"].copy()
-    )
+    # UPDATE 2: Use the QualityThresholds dataclass directly
+    quality_thresholds: QualityThresholds = field(default_factory=QualityThresholds)
     manual_tickers: List[str] = field(default_factory=list)
     debug: bool = False
     universe_subset: Optional[List[str]] = None
@@ -99,7 +96,7 @@ class EngineOutput:
     macro_df: Optional[pd.DataFrame] = None  # <-- ADD THIS
 
     # 4. The Standardized Alpha Matrix
-    alpha_perception: pd.DataFrame = None
+    alpha_perception: Optional[pd.DataFrame] = None
 
 
 @dataclass(frozen=True)
@@ -127,8 +124,7 @@ class MetricBlueprint:
     agent_hint: str
     intervention_trigger: str
     formula: Callable[[Any], pd.Series]
-    # NEW: Control how the Agent "sees" the data
-    scaling_type: str = "None"  # Options: "None", "Z-Score", "Center", "RSI"
+    scaling_type: str = "None"
 
     def __call__(self, obs) -> pd.Series:
         """Returns RAW data (For Plots/Debug)."""
@@ -140,21 +136,22 @@ class MetricBlueprint:
             )
             return pd.Series([float("nan")] * len(target_index), index=target_index)
 
-    def get_agent_view(self, obs) -> pd.Series:
+    def get_agent_view(self, obs, config: "TradingConfig") -> pd.Series:
         """Returns SCALED, CLEANED, and CLIPPED data for the RL Agent."""
-        # LATE IMPORT to break circular dependency with QuantUtils
         from core.quant import QuantUtils
 
         raw = self.__call__(obs)
 
         # 1. PRE-CLEAN: Remove Inf before they poison the batch statistics
         # We replace inf with NaN so .mean() and .std() ignore them
-        clean_raw = raw.replace([np.inf, -np.inf], np.nan)
+        # Explicitly hint clean_raw as a Series here
+        clean_raw: pd.Series = raw.replace([np.inf, -np.inf], np.nan)
 
         # 2. Scaling Logic (Using CLEAN data)
         if self.scaling_type == "Z-Score":
             # Cross-sectional standardization using robust helper
             scaled = QuantUtils.zscore(clean_raw)
+
         elif self.scaling_type == "Center":
             # Map [0, 1] to [-1, 1] (e.g. Range Position)
             scaled = (clean_raw - 0.5) * 2
@@ -166,10 +163,15 @@ class MetricBlueprint:
         else:
             scaled = clean_raw
 
+        # Tell Pylance exactly what 'scaled' is
+        scaled: pd.Series = scaled
+
         # 3. Final Neutralization and Clipping
         # - Missing/Inf data becomes 0 (Neutral)
         # - Outliers capped at +/- feature_zscore_clip
-        clip_val = GLOBAL_SETTINGS.get("feature_zscore_clip", 4.0)
+        # USE THE SINGLE SOURCE OF TRUTH
+        clip_val = config.feature_zscore_clip
+
         return scaled.fillna(0).clip(-clip_val, clip_val)
 
 

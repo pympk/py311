@@ -1,25 +1,25 @@
 import pandas as pd
 import numpy as np
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, cast
 
 from core.quant import QuantUtils
 from core.result import TaskResult
 from core.contracts import MarketObservation
-from core.features import generate_features
-from core.settings import GLOBAL_SETTINGS
+from core.settings import TradingConfig
+from data_pipeline.builder import generate_features
 
 
 class SystemAuditor:
     @staticmethod
     def verify_math_integrity() -> TaskResult:
         """
-        🛡️ TRIPWIRE: Validates math kernels before execution.
+        [GUARD] TRIPWIRE: Validates math kernels before execution.
         """
         try:
             # Test 1: Series Boundary
             mock_s = pd.Series([100.0, 102.0, 101.0])
-            rets_s = QuantUtils.compute_returns(mock_s)
+            rets_s = cast(pd.Series, QuantUtils.compute_returns(mock_s))
             if not pd.isna(rets_s.iloc[0]):
                 return TaskResult(
                     ok=False, msg="Math Integrity: Series Leading NaN missing"
@@ -27,7 +27,7 @@ class SystemAuditor:
 
             # Test 2: DataFrame Boundary
             mock_df = pd.DataFrame({"A": [100, 101], "B": [200, 202]})
-            rets_df = QuantUtils.compute_returns(mock_df)
+            rets_df = cast(pd.DataFrame, QuantUtils.compute_returns(mock_df))
             if not rets_df.iloc[0].isna().all():
                 return TaskResult(
                     ok=False, msg="Math Integrity: DF Leading NaN missing"
@@ -41,7 +41,7 @@ class SystemAuditor:
     @staticmethod
     def verify_ranking_integrity() -> TaskResult:
         """
-        🛡️ TRIPWIRE: Prevents 'Momentum Collapse' in Volatility-Adjusted Ranking.
+        [GUARD] TRIPWIRE: Prevents 'Momentum Collapse' in Volatility-Adjusted Ranking.
         Ensures Sharpe(Vol) distinguishes between High-Vol and Low-Vol stocks.
         """
         try:
@@ -53,7 +53,7 @@ class SystemAuditor:
             vol_series = pd.Series({"VOLATILE": 0.10, "STABLE": 0.01})
 
             # 2. Run Kernel
-            results = QuantUtils.calculate_sharpe_vol(df_returns, vol_series)
+            results = QuantUtils.calc_sharpe_cross_section(df_returns, vol_series)
 
             # 3. Validation Logic
             if np.isclose(results["VOLATILE"], results["STABLE"]):
@@ -77,11 +77,10 @@ class SystemAuditor:
     @staticmethod
     def verify_vol_alignment_integrity() -> TaskResult:
         """
-        🛡️ TRIPWIRE: Verifies Temporal Coupling between Returns and Volatility.
+        [GUARD] TRIPWIRE: Verifies Temporal Coupling between Returns and Volatility.
         Ensures denominator only counts days where a valid return exists.
         """
         try:
-
             # 1. SETUP SYNTHETIC DATA (Day 1 is a Trap)
             # Day 1: NaN  Return, 0.90 Vol
             # Day 2: 0.10 Return, 0.10 Vol
@@ -90,11 +89,13 @@ class SystemAuditor:
 
             # 2. RUN KERNELS
 
-            res_series = QuantUtils.calculate_sharpe_vol(rets_s, vol_s)
+            res_series = QuantUtils.calc_sharpe_univariate(rets_s, vol_s)
 
             rets_df = pd.DataFrame({"A": [np.nan, 0.10], "B": [np.nan, 0.20]})
             vol_df = pd.DataFrame({"A": [0.90, 0.10], "B": [0.05, 0.20]})
-            res_df = QuantUtils.calculate_sharpe_vol(rets_df, vol_df)
+            res_df = cast(
+                pd.Series, QuantUtils.calc_sharpe_multivariate_aligned(rets_df, vol_df)
+            )
 
             # 3. VALIDATION
             # If aligned: 0.10 / 0.10 = 1.0
@@ -118,13 +119,13 @@ class SystemAuditor:
     @staticmethod
     def verify_feature_engineering_integrity() -> TaskResult:
         """
-        🛡️ TRIPWIRE: Validates Feature Engineering Logic.
+        [GUARD] TRIPWIRE: Validates Feature Engineering Logic.
         Enforces:
         1. Day 1 ATR must be NaN (No PrevClose).
         2. Wilder's Smoothing must use Alpha = 1/Period.
         3. Recursion must match manual calculation.
         """
-        print("\n--- 🛡️ Starting Feature Engineering Audit ---")
+        print("\n--- [GUARD] Starting Feature Engineering Audit ---")
 
         # 1. Create Synthetic Data (3 Days)
         # Day 1: High-Low = 10. No PrevClose.
@@ -146,9 +147,9 @@ class SystemAuditor:
 
         # 2. Run the Generator
         # We use Period=2 to make manual math easy (Alpha = 1/2 = 0.5)
-        feats_df, macro_df = generate_features(
-            df_mock, atr_period=2, rsi_period=2, quality_min_periods=1
-        )
+        test_config = TradingConfig(atr_period=2, rsi_period=2, quality_min_periods=1)
+        # We use Period=2 to make manual math easy (Alpha = 1/2 = 0.5)
+        feats_df, macro_df = generate_features(df_mock, config=test_config)
 
         atr_series = feats_df["ATR"]
 
@@ -192,7 +193,7 @@ class SystemAuditor:
             return TaskResult(ok=False, msg=msg)
 
         success_msg = "Wilder's ATR logic is strictly enforced."
-        print(f"✅ FEATURE INTEGRITY PASSED: {success_msg}")
+        print(f"[OK] FEATURE INTEGRITY PASSED: {success_msg}")
         return TaskResult(ok=True, msg=success_msg)
 
     @staticmethod
@@ -238,7 +239,7 @@ class SystemAuditor:
                 v_df["Macro_Trend_Vel"] / v_df["Macro_Trend"].rolling(win_63).std()
             ).clip(-z_clip, z_clip)
 
-            v_df["Macro_Trend_Mom"] = (
+            v_df["Macro_Trend_Mom"] = pd.Series(
                 np.sign(v_df["Macro_Trend"])
                 * np.sign(v_df["Macro_Trend_Vel"])
                 * np.abs(v_df["Macro_Trend_Vel"])
@@ -282,9 +283,9 @@ class SystemAuditor:
                 max_err = diff.max()
 
                 if max_err < 1e-9:
-                    print(f"✅ {col:<20} | PASS (Max Diff: {max_err:.2e})")
+                    print(f"[OK] {col:<20} | PASS (Max Diff: {max_err:.2e})")
                 else:
-                    print(f"⚠️ {col:<20} | FAIL (Max Diff: {max_err:.2e})")
+                    print(f"[WARNING] {col:<20} | FAIL (Max Diff: {max_err:.2e})")
                     match_all = False
 
             if match_all:
@@ -319,22 +320,22 @@ class SystemAuditor:
         # --- 1. TRANSPARENCY BLOCK (Restored Exact Match) ---
         print("\n" + "=" * 95)
         print("*" * 95)
-        print(f"🕵️  STARTING SHORT-FORM AUDIT: {label} @ {d_date}")
+        print(f"[AUDIT]  STARTING SHORT-FORM AUDIT: {label} @ {d_date}")
         print(
-            "⚠️  ASSUMPTION: Verification logic is independent, but trusts Engine source DataFrames"
+            "[WARNING]  ASSUMPTION: Verification logic is independent, but trusts Engine source DataFrames"
         )
         print(
             "    (engine.features_df, engine.df_close, and debug['portfolio_raw_components'])"
         )
         print("*" * 95 + "\n" + "=" * 95)
 
-        print(f"🕵️  AUDIT: {label} @ {d_date}")
+        print(f"[AUDIT]  AUDIT: {label} @ {d_date}")
         print("=" * 95)
 
         # --- 2. LAYER 1: SURVIVAL AUDIT ---
         l_audit = debug.get("audit_liquidity")
         if inputs.universe_subset is not None:
-            print(f"LAYER 1: SURVIVAL  | Mode: CASCADE/SUBSET | ✅ BYPASS")
+            print(f"LAYER 1: SURVIVAL  | Mode: CASCADE/SUBSET | [OK] BYPASS")
         elif l_audit and "universe_snapshot" in l_audit:
             snap = l_audit["universe_snapshot"]
             m_cutoff = max(
@@ -349,9 +350,11 @@ class SystemAuditor:
                 & (snap["RollingSameVolCount"] <= thresholds["max_same_vol_count"])
             )
             s_status = (
-                "✅ PASS" if m_mask.sum() == l_audit["tickers_passed"] else "❌ FAIL"
+                "[OK] PASS"
+                if m_mask.sum() == l_audit["tickers_passed"]
+                else "[ERROR] FAIL"
             )
-            if s_status == "❌ FAIL":
+            if s_status == "[ERROR] FAIL":
                 all_passed = False
             print(
                 f"LAYER 1: SURVIVAL  | Universe: {len(snap)} -> Survivors: {m_mask.sum()} | {s_status}"
@@ -359,10 +362,10 @@ class SystemAuditor:
 
         # --- 3. LAYER 2: SELECTION AUDIT ---
         if inputs.mode == "Manual List":
-            print(f"LAYER 2: SELECTION | Mode: MANUAL LIST | ✅ VERIFIED")
+            print(f"LAYER 2: SELECTION | Mode: MANUAL LIST | [OK] VERIFIED")
         else:
             print(
-                f"LAYER 2: SELECTION | Strategy: {inputs.metric} | Selection Match: ✅ PASS"
+                f"LAYER 2: SELECTION | Strategy: {inputs.metric} | Selection Match: [OK] PASS"
             )
 
         # --- 4. LAYER 3: PERFORMANCE AUDIT ---
@@ -398,9 +401,11 @@ class SystemAuditor:
             for name, eng_val, man_val in audit_data:
                 eng_val = eng_val or 0
                 status = (
-                    "✅ PASS" if np.isclose(eng_val, man_val, atol=1e-6) else "❌ FAIL"
+                    "[OK] PASS"
+                    if np.isclose(eng_val, man_val, atol=1e-6)
+                    else "[ERROR] FAIL"
                 )
-                if status == "❌ FAIL":
+                if status == "[ERROR] FAIL":
                     all_passed = False
                 print(f"{name:<20} | {eng_val:>12.6f} | {man_val:>12.6f} | {status}")
 
@@ -421,7 +426,7 @@ class SystemAuditor:
         3. Universal Selection (Strategy Math reconciliation for ALL candidates)
         """
         # --- LATE IMPORTS to avoid circular dependency ---
-        from strategy.registry import STRATEGY_REGISTRY
+        from strategy.registry import get_strategy_registry
 
         try:
             from IPython.display import display
@@ -430,9 +435,10 @@ class SystemAuditor:
 
         res = getattr(analyzer, "last_run", None)
         engine = getattr(analyzer, "engine", None)
-        if not res or not res.debug_data:
-            print("❌ Audit Aborted: No debug data.")
-            return
+        # Add 'not engine' here
+        if not res or not res.debug_data or not engine:
+            print("[ERROR] Audit Aborted: Missing required debug data or engine.")
+            return TaskResult(ok=False, msg="Audit Aborted: Missing data.")
 
         debug = res.debug_data
         inputs = debug["inputs_snapshot"]
@@ -440,11 +446,11 @@ class SystemAuditor:
 
         print("\n" + "=" * 85)
         print(
-            f"🛡️  STARTING NUCLEAR AUDIT | {res.decision_date.date()} | {inputs.metric}"
+            f"[GUARD]  STARTING NUCLEAR AUDIT | {res.decision_date.date()} | {inputs.metric}"
         )
         print("*" * 85)
         print(
-            "⚠️  ASSUMPTION: Verification logic is independent, but trusts Engine source DataFrames"
+            "[WARNING]  ASSUMPTION: Verification logic is independent, but trusts Engine source DataFrames"
         )
         print(
             "    (engine.features_df, engine.df_close, and debug['portfolio_raw_components'])"
@@ -609,9 +615,9 @@ class SystemAuditor:
 
         df_perf = pd.DataFrame(audit_rows)
         df_perf["Status"] = df_perf["Delta"].apply(
-            lambda x: "✅ PASS" if abs(x) < 1e-7 else "❌ FAIL"
+            lambda x: "[OK] PASS" if abs(x) < 1e-7 else "[ERROR] FAIL"
         )
-        print("📝 1. PERFORMANCE RECONCILIATION")
+        print("[NOTE] 1. PERFORMANCE RECONCILIATION")
         display(
             df_perf.pivot_table(
                 index=["Entity", "Metric"],
@@ -625,19 +631,21 @@ class SystemAuditor:
         # PART 2: SURVIVAL AUDIT (Liquidity/Quality Gate)
         # --------------------------------------------------------------------------
         print("\n" + "=" * 85)
-        print("📝 2. SURVIVAL AUDIT")
+        print("[NOTE] 2. SURVIVAL AUDIT")
         if inputs.universe_subset:
             print(
-                "   Mode: CASCADE/SUBSET | Logic: Quality filters bypassed per design. | ✅ BYPASS"
+                "   Mode: CASCADE/SUBSET | Logic: Quality filters bypassed per design. | [OK] BYPASS"
             )
         else:
             audit_liq = debug.get("audit_liquidity")
 
             # SAFETY CHECK: Handle missing or None audit_liquidity data
             if audit_liq is None:
-                print("   ⚠️  WARNING: audit_liquidity data not found in debug output.")
                 print(
-                    "   Status: ❌ SKIP (Cannot verify survival logic without debug data)"
+                    "   [WARNING]  WARNING: audit_liquidity data not found in debug output."
+                )
+                print(
+                    "   Status: [ERROR] SKIP (Cannot verify survival logic without debug data)"
                 )
             else:
                 snapshot = audit_liq["universe_snapshot"]
@@ -658,9 +666,9 @@ class SystemAuditor:
                     )
                 ]
                 s_match = (
-                    "✅ PASS"
+                    "[OK] PASS"
                     if audit_liq["tickers_passed"] == len(m_survivors)
-                    else "❌ FAIL"
+                    else "[ERROR] FAIL"
                 )
                 print(
                     f"   Survival Integrity: {s_match} (Engine: {audit_liq['tickers_passed']} vs Auditor: {len(m_survivors)})"
@@ -669,13 +677,12 @@ class SystemAuditor:
         # --- PART 3: UNIVERSAL SELECTION AUDIT ---
         if inputs.mode == "Ranking":
             print("\n" + "=" * 85)
-            print(f"📝 3. UNIVERSAL SELECTION AUDIT | Strategy: {inputs.metric}")
+            print(f"[NOTE] 3. UNIVERSAL SELECTION AUDIT | Strategy: {inputs.metric}")
 
             if "full_universe_ranking" not in debug:
-                print(
-                    "❌ Audit Error: 'full_universe_ranking' not found in debug data."
-                )
-                return
+                msg = "Audit Error: 'full_universe_ranking' not found in debug data."
+                print(f"[ERROR] {msg}")
+                return TaskResult(ok=False, msg=msg)
 
             # --- FIX: Define survivors from the Engine's own result list ---
             eng_rank_df = debug["full_universe_ranking"]
@@ -722,6 +729,13 @@ class SystemAuditor:
                 ir_63=feat_now["IR_63"],
                 beta_63=feat_now["Beta_63"],
                 dd_21=feat_now["DD_21"],
+                # --- ADD THESE MISSING FIELDS ---
+                autocorr_15=feat_now.get("Autocorr_15", 0.0),
+                range_pos_20=feat_now.get("Range_Pos_20", 0.0),
+                slope_p_5=feat_now.get("Slope_P_5", 0.0),
+                slope_v_5=feat_now.get("Slope_V_5", 0.0),
+                convexity=feat_now.get("Convexity", 0.0),
+                # --------------------------------
                 macro_trend=macro_now["Macro_Trend"],
                 macro_trend_vel=macro_now.get(
                     "Macro_Trend_Vel", 0.0
@@ -729,8 +743,19 @@ class SystemAuditor:
                 macro_vix_z=macro_now["Macro_Vix_Z"],
                 macro_vix_ratio=macro_now["Macro_Vix_Ratio"],
             )
-            # Run Manual Registry Math on Full Universe
-            manual_scores = STRATEGY_REGISTRY[inputs.metric](audit_obs)
+
+            # 1. Initialize the registry (it needs the config from the engine)
+            registry = get_strategy_registry(engine.config)
+
+            # 2. Get the blueprint for the specific metric
+            blueprint = registry.get(inputs.metric)
+
+            if not blueprint:
+                print(f"[ERROR] Metric '{inputs.metric}' not found in registry.")
+                return TaskResult(ok=False, msg=f"Metric {inputs.metric} missing.")
+
+            # 3. Run Manual Registry Math (Call the .formula attribute)
+            manual_scores = blueprint.formula(audit_obs)
 
             # Compare
             audit_data = []
@@ -740,7 +765,9 @@ class SystemAuditor:
                 delta = eng_val - man_val
 
                 status = (
-                    "✅ PASS" if np.isclose(eng_val, man_val, atol=1e-8) else "❌ FAIL"
+                    "[OK] PASS"
+                    if np.isclose(eng_val, man_val, atol=1e-8)
+                    else "[ERROR] FAIL"
                 )
 
                 audit_data.append(
@@ -755,7 +782,7 @@ class SystemAuditor:
                 )
 
             df_audit_all = pd.DataFrame(audit_data).set_index("Rank")
-            n_pass = (df_audit_all["Status"] == "✅ PASS").sum()
+            n_pass = (df_audit_all["Status"] == "[OK] PASS").sum()
             n_fail = len(df_audit_all) - n_pass
 
             print(
@@ -764,8 +791,10 @@ class SystemAuditor:
             print(f"   Result: {n_pass} PASSED | {n_fail} FAILED")
 
         if n_fail > 0:
-            print(f"⚠️  DISPLAYING FAILURES (Top {n_tickers}):")
-            display(df_audit_all[df_audit_all["Status"] == "❌ FAIL"].head(n_tickers))
+            print(f"[WARNING]  DISPLAYING FAILURES (Top {n_tickers}):")
+            display(
+                df_audit_all[df_audit_all["Status"] == "[ERROR] FAIL"].head(n_tickers)
+            )
         else:
             print(
                 f"   All scores match registry math. {inputs.metric} results of the first {n_tickers} tickers"
@@ -779,10 +808,7 @@ class SystemAuditor:
         print("=" * 85)
 
         # After Performance Part:
-        perf_failed = (df_perf["Status"] == "❌ FAIL").any()
-
-        # After Selection Part:
-        # if n_fail > 0: ranking_failed = True
+        perf_failed = (df_perf["Status"] == "[ERROR] FAIL").any()
 
         if perf_failed or n_fail > 0:
             return TaskResult(ok=False, msg="Nuclear audit failed reconciliation.")
@@ -801,15 +827,25 @@ class SystemAuditor:
         import numpy as np
         import warnings
 
-        # 0. PULL SETTINGS FROM GLOBAL_SETTINGS (or analyzer.engine.settings if stored there)
+        # Pull the config that the analyzer ACTUALLY used
+        # This is safer than instantiating a new TradingConfig()
+        engine = getattr(analyzer, "engine", None)
+        if engine and hasattr(engine, "config"):
+            config = engine.config
+        else:
+            from core.settings import TradingConfig
+
+            config = TradingConfig()
+
+        # 0. PULL SETTINGS FROM TradingConfig (or analyzer.engine.settings if stored there)
         # This ensures the auditor uses the EXACT same rules as the engine
-        atr_p = GLOBAL_SETTINGS["atr_period"]
-        rsi_p = GLOBAL_SETTINGS["rsi_period"]
-        win_5 = GLOBAL_SETTINGS["5d_window"]
-        win_21 = GLOBAL_SETTINGS["21d_window"]
-        win_63 = GLOBAL_SETTINGS["63d_window"]
-        q_win = GLOBAL_SETTINGS["quality_window"]
-        q_min = GLOBAL_SETTINGS["quality_min_periods"]
+        atr_p = config.atr_period
+        rsi_p = config.rsi_period
+        win_5 = config.win_5d
+        win_21 = config.win_21d
+        win_63 = config.win_63d
+        q_win = config.quality_window
+        q_min = config.quality_min_periods
 
         start_time = time.time()
         engine = analyzer.engine
@@ -828,13 +864,13 @@ class SystemAuditor:
 
         print(f"\n{'='*95}")
         print(
-            f"🕵️  NUCLEAR FEATURE AUDIT | Mode: {mode.upper()} | Tickers: {len(audit_tickers)}"
+            f"[AUDIT]  NUCLEAR FEATURE AUDIT | Mode: {mode.upper()} | Tickers: {len(audit_tickers)}"
         )
         print(f"{'='*95}")
 
         # STEP 1: BOUNDARY INTEGRITY
         leaks = features_to_audit.groupby(level=0).head(1)["Ret_1d"].dropna().count()
-        leak_status = "✅ PASS" if leaks == 0 else f"❌ FAIL ({leaks} leaks)"
+        leak_status = "[OK] PASS" if leaks == 0 else f"[ERROR] FAIL ({leaks} leaks)"
         print(
             f"STEP 1: BOUNDARY INTEGRITY   | MultiIndex Isolation Check | {leak_status}"
         )
@@ -892,12 +928,12 @@ class SystemAuditor:
         )
 
         # FIX: Allow division by zero (i.e. no down day) to create inf (correct RSI=100),
-        # inf→100, -inf→0, NaN→50
+        # inf->100, -inf->0, NaN->50
         # then clean up remaining NaNs (initial periods/no movement)
-        # - Initial periods: Before the 14-day lookback is filled, the EWM mean is undefined → NaN.
-        # - Flat prices: If price doesn't move (Avg Up = 0 and Avg Down = 0), RS is 0/0 → NaN.
+        # - Initial periods: Before the 14-day lookback is filled, the EWM mean is undefined -> NaN.
+        # - Flat prices: If price doesn't move (Avg Up = 0 and Avg Down = 0), RS is 0/0 -> NaN.
         # - By convention, RSI is set to 50 (neutral) when there is no directional momentum.
-        rs = roll_up / roll_down  # Keep zero denominator → inf
+        rs = roll_up / roll_down  # Keep zero denominator -> inf
         raw_rsi = 100 - (100 / (1 + rs))
         shadow_data["shadow_RSI"] = raw_rsi.replace({np.inf: 100, -np.inf: 0}).fillna(
             50
@@ -1021,12 +1057,12 @@ class SystemAuditor:
                 else:
                     corr = e_v.corr(s_v)
 
-            status = "✅ PASS" if (delta < 1e-6 or corr > 0.99999) else "❌ FAIL"
+            status = "[OK] PASS" if (delta < 1e-6 or corr > 0.99999) else "[ERROR] FAIL"
             print(f"{col:<20} | {delta:>12.4e} | {corr:>12.6f} | {status}")
 
         vix_z = engine.macro_df["Macro_Vix_Z"].abs().max()
         print(
-            f"{'Macro_Vix_Signals':<20} | {'N/A':<12} | {'N/A':<12} | {'✅ LIVE' if vix_z > 0 else '❌ MISSING VIX, VIX3M'}"
+            f"{'Macro_Vix_Signals':<20} | {'N/A':<12} | {'N/A':<12} | {'[OK] LIVE' if vix_z > 0 else '[ERROR] MISSING VIX, VIX3M'}"
         )
         print(f"{'='*95}")
 

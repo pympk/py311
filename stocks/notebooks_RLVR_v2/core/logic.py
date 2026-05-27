@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+
 from typing import List
 
 
@@ -15,7 +16,13 @@ class AlphaLogic:
             return 0.0
 
         # Arithmetic Mean of the group
-        arith_mean = reward_matrix.loc[date, tickers].mean()
+        # 1. Pull the row for the date (Returns a Series)
+        row = reward_matrix.loc[date]
+
+        # 2. Filter for specific tickers and calculate mean
+        # .reindex is safer for type checkers than double-indexing
+        arith_mean = row.reindex(tickers).mean()
+
         # Transform to Log for the Agent's additive math
         return float(np.log1p(arith_mean))
 

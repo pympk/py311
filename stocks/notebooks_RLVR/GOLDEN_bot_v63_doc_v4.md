@@ -36,7 +36,49 @@ Calculates the growth of an $N$-asset portfolio where weights are allowed to dri
 *   **Clipping:** Not applicable; derived directly from the terminal equity value.
 
 ---  
-### Metric: Momentum (21d)
+
+### Metric: Sharpe (TRP)
+
+| Field | Specification |
+| :--- | :--- |
+| **Identity** | **Category:** Risk-Adjusted \| **Regime:** Efficiency |
+| **Description** | Risk-adjusted efficiency of the Total Return Premium. |
+| **Logic Tag** | `QuantUtils.calc_sharpe_cross_section` |
+
+#### 1. Mathematical Logic
+Calculates a cross-sectional risk-adjusted performance metric for $N$ assets using historical returns and a static risk/volatility proxy vector.
+
+1.  **TRP Vector Calculation (Risk Denominator):**
+    For each asset $i$, compute the average daily Total Return Premium ($\text{TRP}_{i,t}$) over the active evaluation window of $T$ days:
+    $$\text{TRP}_i = \frac{1}{T}\sum_{t=1}^{T} \text{TRP}_{i,t}$$
+
+2.  **Expected Return Calculation:**
+    Calculate the arithmetic mean of returns for each asset $i$ over the active window, ignoring $NaN$ values:
+    $$\bar{R}_i = \frac{1}{T_i}\sum_{t=1}^{T} R_{i,t}$$
+    *Where $T_i$ is the count of valid non-NaN returns for asset $i$.*
+
+3.  **Denominator Floor Protection:**
+    To prevent division-by-zero or near-zero errors, apply a safety floor to the mean TRP value:
+    $$\hat{\sigma}_{TRP, i} = \max(\text{TRP}_i, 10^{-8})$$
+
+4.  **Ratio Calculation:**
+    $$\text{Sharpe (TRP)}_i = \frac{\bar{R}_i}{\hat{\sigma}_{TRP, i}}$$
+    *Note: Downstream cleaning converts any resulting $NaN$, positive infinite, or negative infinite values to $0.0$.*
+
+#### 2. Strategy Interpretation
+*   **Quality Dial:** Serves as a measure of trend stability and quality. High positive values indicate stable, low-volatility, institutional-led trends relative to the asset's risk premium.
+*   **Intervention Trigger:** Directly influences position sizing.
+    $$\text{Size Factor} = \frac{\min(\max(\text{Sharpe (TRP)}, 0), 3)}{2.0}$$
+    If $\text{Sharpe (TRP)} < 0.5$, the position size is reduced by 50%.
+
+#### 3. Data Scaling (Agent View)
+*   **Scaling Type:** `None` (Raw Ratio).
+*   **Unit:** Dimensionless (average return per unit of TRP).
+*   **Clipping:** Raw values can be unbounded but are capped at downstream execution (e.g., clipped to $[0, 3]$ for position sizing calculations).  
+
+
+---  
+### Metric: Momentum (21d)  
 
 | Field | Specification |
 | :--- | :--- |

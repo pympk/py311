@@ -1,8 +1,8 @@
-import pytest
 import pandas as pd
 import numpy as np
 
-from core.features import generate_features
+from core.settings import TradingConfig
+from data_pipeline.builder import generate_features
 
 
 def test_feature_engineering_wilders_atr():
@@ -26,9 +26,12 @@ def test_feature_engineering_wilders_atr():
     )
 
     # 2. Run the Generator (Period=2 means Alpha = 1/2 = 0.5)
-    feats_df, _ = generate_features(
-        df_mock, atr_period=2, rsi_period=2, quality_min_periods=1
-    )
+    test_config = TradingConfig()
+    test_config.atr_period = 2
+    test_config.rsi_period = 2
+    test_config.quality_min_periods = 1
+
+    feats_df, _ = generate_features(df_mock, config=test_config)
 
     atr_series = feats_df["ATR"]
 

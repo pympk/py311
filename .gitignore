@@ -22,7 +22,7 @@ temp/
 # output/
 lumen/
 lumen_/
-
+trash*
 
 # Ignore picks directory (add this if missing)
 stocks/notebooks_mean_reversion/executed/
