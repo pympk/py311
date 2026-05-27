@@ -57,3 +57,35 @@ poetry run code2prompt --path "C:\Users\ping\Files_win10\python\py311\stocks\not
 
 C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\verify_UI_n_features_calc_v3.ipynb
 
+To explicitly include only the specific directories and the file shown in the
+image (while skipping the output directory), you should use multiple --path
+arguments. This ensures code2prompt only processes the items you explicitly
+list.
+
+Here is the modified command:
+
+poetry run code2prompt `
+  --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\core" `
+  --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\data_pipeline" `
+  --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\rl_discovery" `
+  --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\strategy" `
+  --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\tests" `
+  --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\walk_forward" `
+  --exclude "**/__pycache__/**,**/__init__.py" | Out-File -Encoding utf8 project_content.txt
+
+What this command does:
+
+1.  Explicit Inclusion: It uses the --path flag multiple times to target each
+    specific directory (core, data_pipeline, rl_discovery, strategy, tests,
+    walk_forward) and the specific file (main.ipynb) from your image.
+2.  Skipping output: By not including a --path for the output directory, the
+    tool will ignore it completely.
+3.  Maintains Filters: It preserves your original exclusion logic for
+    __pycache__ and __init__.py files within those included paths.
+4.  Unicode Support: Keeps the utf8 encoding to ensure the notebook content is
+    saved correctly.
+
+Note: The backticks ( ` ) are PowerShell line-continuation characters used to
+make the command easier to read. You can remove them and put everything on one
+line if you prefer.
+
