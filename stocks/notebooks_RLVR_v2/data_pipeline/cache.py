@@ -73,16 +73,31 @@ class AlphaCache:
             if ensemble.empty:
                 continue
 
-            # 1. Add the Date column
-            ensemble["Date"] = date
+            ####################################
+            # # 1. Add the Date column
+            # ensemble["Date"] = date
 
-            # 2. Give the current index (the Tickers) a name
-            # This makes it a "Label" that set_index can understand
+            # # 2. Give the current index (the Tickers) a name
+            # # This makes it a "Label" that set_index can understand
+            # ensemble.index.name = "Ticker"
+
+            # # 3. Pass a list of strings [str, str]
+            # # This puts Date at Level 0 and Ticker at Level 1
+            # ensemble = ensemble.set_index(["Date", "Ticker"])
+            ####################################
+
+            # 1. Name the current index
             ensemble.index.name = "Ticker"
 
-            # 3. Pass a list of strings [str, str]
-            # This puts Date at Level 0 and Ticker at Level 1
+            # 2. Promote the Ticker index to a standard column
+            ensemble = ensemble.reset_index()
+
+            # 3. Add the Date column
+            ensemble["Date"] = date
+
+            # 4. Sink them both into a clean MultiIndex
             ensemble = ensemble.set_index(["Date", "Ticker"])
+            ###################################
 
             cache_parts.append(ensemble)
 

@@ -28,8 +28,8 @@ class DiscoveryEnv:
             idx = self.calendar.get_loc(start_date)
             self.current_date_idx = cast(int, idx)
         else:
-            # Start far enough in so we have cache data
-            self.current_date_idx = 252
+            # Start at the beginning of the provided calendar slice
+            self.current_date_idx = 0
 
         self.equity_curve = [1.0]
         return self._get_observation()

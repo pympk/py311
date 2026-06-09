@@ -237,7 +237,7 @@ class MacroVisualizer:
         # Subtitle line (Matches the styling of row 2 and 3 titles)
         subtitle = "Line: Intensity (Z-Score) | Background: Structure (Ratio < 1.0 = Healthy, > 1.0 = Crisis)"
 
-        for ann in fig.layout.annotations:
+        for ann in fig.layout.annotations:  # type: ignore
             # Find the specific annotation for this subplot
             if "Volatility Regime" in ann.text or "VIX Ratio" in ann.text:
                 # <sup> is the standard way Plotly handles the smaller subtitle text

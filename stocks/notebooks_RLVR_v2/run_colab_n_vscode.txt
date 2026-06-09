@@ -1,0 +1,16 @@
+import os
+from google.colab import drive
+
+# 1. Mount your Google Drive
+drive.mount('/content/drive')
+
+# 2. Define the path to your project folder inside "Computers"
+# Replace 'stocks/notebooks_RLVR_v2' with your actual folder path
+project_root = '/content/drive/Othercomputers/stocks/notebooks_RLVR_v2'
+
+# 3. Change the current working directory to match your local setup
+if os.path.exists(project_root):
+    os.chdir(project_root)
+    print(f"📂 Execution root successfully changed to: {os.getcwd()}")
+else:
+    print(f"❌ Error: Path not found. Check your folder names.")

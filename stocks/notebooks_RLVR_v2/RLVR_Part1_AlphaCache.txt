@@ -1,0 +1,158 @@
+# ======================================================================
+# Notebook: RLVR_Part1_AlphaCache.ipynb
+# Converted by nb2txt
+# ======================================================================
+
+
+──────────────────────────────────────────────────────────────────────
+## CELL 1  |  Type: MARKDOWN
+──────────────────────────────────────────────────────────────────────
+
+# Part 1: AlphaCache Generation (CPU-Optimized)
+
+ This notebook loads raw market and macro data, sets up the Universe Screener,
+
+ and builds the multi-day lookback Feature Cube (`AlphaCache`).
+
+ The resulting feature cube is saved to disk for the training notebook.
+
+──────────────────────────────────────────────────────────────────────
+## CELL 2  |  Type: CODE
+──────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 1: Setup, Environment Switch, and Path Configuration
+import os
+import sys
+from pathlib import Path
+
+# ============================================================================
+# --- ENVIRONMENT SWITCH ---
+# Set to True if running in Google Colab.
+# Set to False if running locally in Windows PC VSCode.
+# ============================================================================
+RUNNING_IN_COLAB = True
+
+if RUNNING_IN_COLAB:
+    from google.colab import drive
+
+    # 1. Mount Google Drive
+    drive.mount("/content/drive")
+
+    # 2. Define codebase paths
+    project_path = Path("/content/drive/MyDrive")
+    codebase_path = project_path / "notebooks_RLVR_v2"
+else:
+    # 1. Local Windows VSCode Paths
+    project_path = Path("C:/Users/ping/Files_win10/python/py311/stocks")
+    codebase_path = project_path / "notebooks_RLVR_v2"
+
+# 3. Change the Current Working Directory
+os.chdir(codebase_path)
+
+# 4. Add to system path so absolute imports work
+if str(codebase_path) not in sys.path:
+    sys.path.append(str(codebase_path))
+
+# Verify environment visibility
+print("\n--- Environment Check ---")
+print(f"Current Directory: {os.getcwd()}")
+visible_files = os.listdir()
+print(f"Files visible here: {visible_files}")
+
+if "core" in visible_files and "rl_discovery" in visible_files:
+    print("\n[OK] SUCCESS: Python can see your architecture! Imports will now work.")
+else:
+    print("\n[ERROR] FAILURE: Python cannot see 'core' or 'rl_discovery'.")
+    print("Please check your directory configuration and folder structure.")
+```
+
+# --- Output ---
+# [stdout]
+Drive already mounted at /content/drive; to attempt to forcibly remount, call drive.mount("/content/drive", force_remount=True).
+
+--- Environment Check ---
+Current Directory: /content/drive/MyDrive/notebooks_RLVR_v2
+Files visible here: ['trash.ipynb', 'verify_UI_n_features_calc_v3.ipynb', 'metric_definitions.md', 'RLVR_agent_v0.ipynb', 'RLVR_agent.txt', 'RLVR_agent_v2.txt', 'RLVR_agent_v2.ipynb', 'main.py', 'RLVR_agent_v1.txt', 'fed_data_yield_spread.ipynb', 'main.ipynb', 'walk_forward', 'strategy', 'tests', 'rl_discovery', 'output', 'core', 'data_pipeline', 'RLVR_Part1_AlphaCache.ipynb', 'RLVR_Part2_Training.ipynb']
+
+[OK] SUCCESS: Python can see your architecture! Imports will now work.
+
+──────────────────────────────────────────────────────────────────────
+## CELL 3  |  Type: CODE
+──────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 2: Load Raw Data into RAM
+import pandas as pd
+
+print("Loading DataFrames into RAM. Please wait...")
+df_ohlcv = pd.read_parquet(codebase_path / "output/df_ohlcv.parquet")
+features_df = pd.read_parquet(codebase_path / "output/features_df.parquet")
+macro_df = pd.read_parquet(codebase_path / "output/macro_df.parquet")
+print("Data loaded successfully.")
+```
+
+# --- Output ---
+# [stdout]
+Loading DataFrames into RAM. Please wait...
+Data loaded successfully.
+
+──────────────────────────────────────────────────────────────────────
+## CELL 4  |  Type: CODE
+──────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 3: Imports
+from core.settings import TradingConfig, CacheConfig  # Imported shared configuration
+from data_pipeline.screener import UniverseScreener
+from data_pipeline.cache import AlphaCache
+```
+
+──────────────────────────────────────────────────────────────────────
+## CELL 5  |  Type: CODE
+──────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 4: Data Pipeline Preparation & Alpha Cache Generation
+print("\n--- [TASK 1] Initializing Universe and AlphaCache ---")
+
+# Setup Config & Extract Wide Close Prices
+config = TradingConfig()
+
+# Convert MultiIndex OHLCV to Wide Format (Dates x Tickers)
+df_close = df_ohlcv["Adj Close"].unstack(level=0)
+
+# Ensure clean calendar
+trading_calendar = pd.DatetimeIndex(df_close.dropna(how="all").index.sort_values())
+
+# 1. Initialize Screener (The Gatekeeper)
+screener = UniverseScreener(
+    df_close=df_close,
+    features_df=features_df,
+    macro_df=macro_df,
+    trading_calendar=trading_calendar,
+    config=config,
+)
+
+# 1. Instantiate Cache using central Lookback constant
+cache = AlphaCache(screener=screener, config=config, lookbacks=[CacheConfig.LOOKBACK])
+
+# 2. Build starting from central Start Date constant
+train_start = CacheConfig.START_DATE
+cache.build(start_date=train_start)
+
+# 3. Save to the centrally managed dynamic filename
+cache_file_path = project_path / CacheConfig.get_filename()
+cache.feature_cube.to_parquet(cache_file_path)
+print(f"\n[SAVED] AlphaCache successfully written to {cache_file_path}")
+```
+
+# --- Output ---
+# [stdout]
+
+--- [TASK 1] Initializing Universe and AlphaCache ---
+
+
+# ======================================================================
+# End of notebook: RLVR_Part1_AlphaCache.ipynb
+# ======================================================================

@@ -2,6 +2,27 @@ from dataclasses import dataclass, field
 
 
 @dataclass
+class CacheConfig:
+    """
+    [SHARED CONSTANTS] A single source of truth for the dataset slices
+    and feature lookback window.
+    """
+
+    LOOKBACK: int = 189
+    START_DATE: str = "2022-01-01"
+    END_DATE: str = "2023-01-01"
+
+    @classmethod
+    def get_filename(cls) -> str:
+        """Generates a standardized, descriptive parquet filename."""
+        import pandas as pd
+
+        start_yr = pd.Timestamp(cls.START_DATE).strftime("%Y")
+        end_yr = pd.Timestamp(cls.END_DATE).strftime("%Y")
+        return f"alpha_cache_{cls.LOOKBACK}d_{start_yr}_{end_yr}.parquet"
+
+
+@dataclass
 class StrategyParams:
     standard_confidence: float = 1.0
     strong_confidence: float = 1.5

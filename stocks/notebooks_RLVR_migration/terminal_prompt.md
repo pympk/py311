@@ -89,3 +89,18 @@ Note: The backticks ( ` ) are PowerShell line-continuation characters used to
 make the command easier to read. You can remove them and put everything on one
 line if you prefer.
 
+poetry run code2prompt `
+  --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\core" `
+  --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\data_pipeline" `
+  --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\rl_discovery" `
+  --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\strategy" `
+  --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\tests" `
+  --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\walk_forward" `
+  --exclude "**/__pycache__/**,**/__init__.py,**/core/utils.py" | Out-File -Encoding utf8 codebase2.txt
+
+poetry run code2prompt `
+  --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\RLVR_Part1_AlphaCache.ipynb" `
+  --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\RLVR_Part2_Training.ipynb" `
+  |Out-File -Encoding utf8 RLVR_agent.txt
+
+poetry run code2prompt --path "C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\RLVR_agent.ipynb"  | Out-File -Encoding utf8 RLVR_agent.txt
