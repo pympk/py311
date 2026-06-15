@@ -1,3 +1,5 @@
+import os
+
 from dataclasses import dataclass, field
 
 
@@ -8,9 +10,9 @@ class CacheConfig:
     and feature lookback window.
     """
 
-    LOOKBACK: int = 189
-    START_DATE: str = "2022-01-01"
-    END_DATE: str = "2023-01-01"
+    LOOKBACK: int = int(os.getenv("CACHE_LOOKBACK", 10))
+    START_DATE: str = os.getenv("CACHE_START_DATE", "2026-01-01")
+    END_DATE: str = os.getenv("CACHE_END_DATE", "2023-01-01")
 
     @classmethod
     def get_filename(cls) -> str:
@@ -18,8 +20,7 @@ class CacheConfig:
         import pandas as pd
 
         start_yr = pd.Timestamp(cls.START_DATE).strftime("%Y")
-        end_yr = pd.Timestamp(cls.END_DATE).strftime("%Y")
-        return f"alpha_cache_{cls.LOOKBACK}d_{start_yr}_{end_yr}.parquet"
+        return f"alpha_cache_{cls.LOOKBACK}d_{start_yr}.parquet"
 
 
 @dataclass

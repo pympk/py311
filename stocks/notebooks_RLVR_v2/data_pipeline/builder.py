@@ -1,10 +1,13 @@
 import pandas as pd
+import pandas as pd
 import numpy as np
 
 from typing import Tuple, Optional
 
 from core.quant import QuantUtils, TickerEngine
 from core.settings import TradingConfig
+
+pd.set_option("future.no_silent_downcasting", True)
 
 
 class MacroFeaturePipeline:
@@ -37,7 +40,9 @@ class MacroFeaturePipeline:
 
         # 2. FED Data Integration
         if df_fed is not None:
-            fed_data = df_fed.reindex(all_dates).ffill().bfill()
+            fed_data = (
+                df_fed.reindex(all_dates).ffill().bfill().infer_objects(copy=False)
+            )
             macro_df["High_Yield_Spread"] = fed_data["High_Yield_Spread"]
             macro_df["Yield_Curve_10Y2Y"] = fed_data["Yield_Curve_10Y2Y"]
 

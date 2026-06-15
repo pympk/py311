@@ -1,0 +1,454 @@
+==============================================================================
+# MERGED NOTEBOOKS CONVERSION
+# Total notebooks: 1
+# ==============================================================================
+
+##############################################################################
+## NOTEBOOK: RLVR_Part2_Training_v3.ipynb
+## PATH: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\RLVR_Part2_Training_v3.ipynb
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 1  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+# Part 2: RL Oracle Bootstrap, Training, and Validation (GPU-Accelerated)
+
+ This notebook reloads the pre-computed Feature Cube (`AlphaCache`) generated in Part 1,
+
+ bootstraps the environments, and runs PPO training with periodic metric logging and checkpointing.
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 2  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 1: Setup, Environment Switch, and Path Configuration
+import os
+import sys
+from pathlib import Path
+
+os.environ["CACHE_LOOKBACK"] = "189"
+os.environ["CACHE_START_DATE"] = "2020-01-01"
+os.environ["CACHE_END_DATE"] = "2023-01-01"
+
+
+# ============================================================================
+# --- ENVIRONMENT SWITCH ---
+# Set to True if running in Google Colab.
+# Set to False if running locally in Windows PC VSCode.
+# ============================================================================
+RUNNING_IN_COLAB = False
+
+if RUNNING_IN_COLAB:
+    from google.colab import drive
+
+    drive.mount("/content/drive")
+    project_path = Path(
+        "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks"
+    )
+    codebase_path = project_path / "notebooks_RLVR_v2"
+else:
+    project_path = Path("C:/Users/ping/Files_win10/python/py311/stocks")
+    codebase_path = project_path / "notebooks_RLVR_v2"
+
+data_path = project_path / "data" / "processed"
+data_path.mkdir(parents=True, exist_ok=True)
+
+output_path = codebase_path / "output"
+output_path.mkdir(parents=True, exist_ok=True)
+
+os.chdir(codebase_path)
+
+if str(codebase_path) not in sys.path:
+    sys.path.append(str(codebase_path))
+
+# Verify environment visibility
+print("\n--- Environment Check ---")
+print(f"Current Directory: {os.getcwd()}")
+visible_files = os.listdir()
+print(f"Files visible here: {visible_files}")
+
+if "core" in visible_files and "rl_discovery" in visible_files:
+    print("\n[OK] SUCCESS: Python can see your architecture! Imports will now work.")
+    print(f"project_path: {project_path}")
+    print(f"data_path: {data_path}")
+    print(f"codebase_path: {codebase_path}")
+    print(f"output_path: {output_path}")
+else:
+    print("\n[ERROR] FAILURE: Python cannot see 'core' or 'rl_discovery'.")
+    print("Please check your directory configuration and folder structure.")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 3  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 2: Load Raw Data into RAM
+import pandas as pd
+
+print("Loading DataFrames into RAM. Please wait...")
+df_ohlcv = pd.read_parquet(project_path / "data" / "df_OHLCV_stocks_etfs.parquet")
+
+macro_df = pd.read_parquet(data_path / "macro_df.parquet")
+features_df = pd.read_parquet(data_path / "features_df.parquet")
+
+print("Data loaded successfully.")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 4  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 3: Imports
+import torch
+import numpy as np
+import plotly.graph_objects as go
+import pickle
+from typing import cast
+
+# --- Domain Imports ---
+from core.settings import TradingConfig, CacheConfig  # Imported shared configuration
+from data_pipeline.screener import UniverseScreener
+from rl_discovery.oracle import RLOracle
+from rl_discovery.environment import DiscoveryEnv
+from rl_discovery.adapter import RLVRGymEnv
+from rl_discovery.agent import AbsoluteZeroAgent
+from rl_discovery.trainer import RolloutBuffer, PPOTrainer
+from rl_discovery.validator import AgentEvaluator
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 5  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 4: Reload AlphaCache & Bootstrap RL Oracle/Environments
+print("\n--- [TASK 2] Reloading AlphaCache and Instantiating Environments ---")
+
+# 1. Re-create config
+config = TradingConfig()
+
+# 2. Re-derive the inputs needed for environment mapping
+df_close = df_ohlcv["Adj Close"].unstack(level=0)
+trading_calendar = pd.DatetimeIndex(df_close.dropna(how="all").index.sort_values())
+
+# 3. Re-instantiate screener (lightweight meta-wrapper)
+screener = UniverseScreener(
+    df_close=df_close,
+    features_df=features_df,
+    macro_df=macro_df,
+    trading_calendar=trading_calendar,
+    config=config,
+)
+
+# 1. Resolve path using identical centralized filename logic
+# cache_file_path = project_path / CacheConfig.get_filename()
+cache_file_path = output_path / CacheConfig.get_filename()
+feature_cube = pd.read_parquet(cache_file_path)
+
+
+# Stub object to mimic original AlphaCache interface downstream
+class AlphaCacheStub:
+    def __init__(self, feature_cube, screener, config):
+        self.feature_cube = feature_cube
+        self.screener = screener
+        self.config = config
+
+
+cache = AlphaCacheStub(feature_cube, screener, config)
+print(f"[RELOADED] AlphaCache features loaded successfully from {cache_file_path}")
+
+# 5. Bootstrapping RL Oracle (Reward Truth)
+holding_period = 5
+oracle = RLOracle(screener, config)
+oracle.precompute_reward_matrix(holding_period=holding_period)
+
+# 6. Establish Train / Test Splits
+# Get all unique dates present in the feature_cube
+feature_cube_unique_dates = feature_cube.index.get_level_values("Date").unique()
+
+# Adjust cal_train and cal_test based on feature_cube availability
+cal_train = trading_calendar[
+    (trading_calendar >= pd.Timestamp(CacheConfig.START_DATE))
+    & (trading_calendar < pd.Timestamp(CacheConfig.END_DATE))
+    & (
+        trading_calendar.isin(feature_cube_unique_dates)
+    )  # Ensure train calendar only has dates with features
+]
+
+cal_test = trading_calendar[(trading_calendar >= pd.Timestamp(CacheConfig.END_DATE))]
+# Ensure cal_test also only uses dates where feature data is available
+cal_test = cal_test[(cal_test.isin(feature_cube_unique_dates))]
+
+# 7. Initialize Environments
+env_train = DiscoveryEnv(
+    cache.feature_cube, oracle.reward_matrix, cal_train, holding_period
+)
+gym_train = RLVRGymEnv(env_train, macro_df)
+
+env_test = DiscoveryEnv(
+    cache.feature_cube, oracle.reward_matrix, cal_test, holding_period
+)
+gym_test = RLVRGymEnv(env_test, macro_df)
+print("[OK] Train and Test Gym environments are online.")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 6  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 4: Reload AlphaCache & Bootstrap RL Oracle/Environments
+print("\n--- [TASK 2] Reloading AlphaCache and Instantiating Environments ---")
+
+# 1. Re-create config
+config = TradingConfig()
+
+# 2. Re-derive the inputs needed for environment mapping
+df_close = df_ohlcv["Adj Close"].unstack(level=0)
+trading_calendar = pd.DatetimeIndex(df_close.dropna(how="all").index.sort_values())
+
+# 3. Re-instantiate screener (lightweight meta-wrapper)
+screener = UniverseScreener(
+    df_close=df_close,
+    features_df=features_df,
+    macro_df=macro_df,
+    trading_calendar=trading_calendar,
+    config=config,
+)
+
+# 1. Resolve path using identical centralized filename logic
+# cache_file_path = project_path / CacheConfig.get_filename()
+cache_file_path = output_path / CacheConfig.get_filename()
+feature_cube = pd.read_parquet(cache_file_path)
+
+
+# Stub object to mimic original AlphaCache interface downstream
+class AlphaCacheStub:
+    def __init__(self, feature_cube, screener, config):
+        self.feature_cube = feature_cube
+        self.screener = screener
+        self.config = config
+
+
+cache = AlphaCacheStub(feature_cube, screener, config)
+print(f"[RELOADED] AlphaCache features loaded successfully from {cache_file_path}")
+
+# 5. Bootstrapping RL Oracle (Reward Truth)
+holding_period = 5
+oracle = RLOracle(screener, config)
+oracle.precompute_reward_matrix(holding_period=holding_period)
+
+# 6. Establish Train / Test Splits
+# Get all unique dates present in the feature_cube
+feature_cube_unique_dates = feature_cube.index.get_level_values("Date").unique()
+
+# Adjust cal_train and cal_test based on feature_cube availability
+cal_train = trading_calendar[
+    (trading_calendar >= pd.Timestamp(CacheConfig.START_DATE))
+    & (trading_calendar < pd.Timestamp(CacheConfig.END_DATE))
+    & (
+        trading_calendar.isin(feature_cube_unique_dates)
+    )  # Ensure train calendar only has dates with features
+]
+
+cal_test = trading_calendar[(trading_calendar >= pd.Timestamp(CacheConfig.END_DATE))]
+# Ensure cal_test also only uses dates where feature data is available
+cal_test = cal_test[(cal_test.isin(feature_cube_unique_dates))]
+
+# 7. Initialize Environments
+env_train = DiscoveryEnv(
+    cache.feature_cube, oracle.reward_matrix, cal_train, holding_period
+)
+gym_train = RLVRGymEnv(env_train, macro_df)
+
+env_test = DiscoveryEnv(
+    cache.feature_cube, oracle.reward_matrix, cal_test, holding_period
+)
+gym_test = RLVRGymEnv(env_test, macro_df)
+print("[OK] Train and Test Gym environments are online.")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 7  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 5: PPO Agent Training with Diagnostic Logging & Checkpointing
+print("\n--- [TASK 3] Executing PPO Actor-Critic Training Loop ---")
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Hardware Accelerator in Use: {device}")
+
+# Neural Networks and Trainer Initialization
+agent = AbsoluteZeroAgent(obs_dim=33, action_dim=13).to(device)
+trainer = PPOTrainer(agent, lr=3e-4, clip_coef=0.2, ent_coef=0.01)
+
+num_epochs = 50
+num_steps = 64  # Rollout batch size
+
+# Ensure a directory exists for intermediate model weight checkpoints inside output_path
+checkpoint_dir = output_path / "model_checkpoints"
+checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+# Pre-allocate rollout memory
+buffer = RolloutBuffer(num_steps=num_steps, obs_dim=33, action_dim=13, device=device)
+
+# Track metrics for downstream model improvements and analytics
+training_history = []
+
+for epoch in range(num_epochs):
+    obs, _ = gym_train.reset()
+    epoch_rewards = []
+
+    # 1. Rollout Phase (Experience Collection)
+    for step in range(num_steps):
+        # NaN Trap guard
+        if np.isnan(obs).any():
+            raise ValueError(
+                "NaN detected in observation. Execution halted to protect gradients."
+            )
+
+        obs_tensor = torch.tensor(obs, dtype=torch.float32).to(device)
+
+        with torch.no_grad():
+            action, logprob, _, value = agent.get_action_and_value(
+                obs_tensor.unsqueeze(0)
+            )
+
+        # Step Environment
+        next_obs, reward, done, _, info = gym_train.step(action.cpu().numpy()[0])
+
+        # Store Transition
+        buffer.add(obs, action[0], logprob[0], reward, value[0], done)
+        epoch_rewards.append(reward)
+
+        obs = next_obs
+        if done:
+            obs, _ = gym_train.reset()
+
+    # 2. Advantage Calculation (GAE)
+    obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(device)
+    with torch.no_grad():
+        next_value = agent.get_value(obs_tensor).flatten()
+
+    buffer.compute_advantages(next_value, next_done=done)
+
+    # 3. Surrogate Objective Optimization Phase
+    # Note: If trainer.update returns metrics (policy loss, value loss, entropy),
+    # you can capture them here to save intermediate training loss profiles.
+    trainer.update(buffer, update_epochs=4, mini_batch_size=16)
+
+    # Reset buffer pointer
+    buffer.step = 0
+
+    mean_rew = np.mean(epoch_rewards)
+    pct_gain = (np.exp(mean_rew) - 1.0) * 100
+
+    # Log metrics
+    metrics = {"epoch": epoch + 1, "mean_step_reward": mean_rew, "pct_gain": pct_gain}
+    training_history.append(metrics)
+
+    # Display progress and save periodic intermediate checkpoints (Every 10 epochs)
+    if (epoch + 1) % 10 == 0:
+        print(
+            f"Epoch {epoch+1:03d}/{num_epochs} | Mean Step Reward: {mean_rew:.6f} ({pct_gain:.2f}%)"
+        )
+
+        # Save intermediate weights
+        chk_path = checkpoint_dir / f"absolute_zero_ppo_epoch_{epoch+1:03d}.pt"
+        torch.save(agent.state_dict(), str(chk_path))
+        print(f" -> [CHECKPOINT] Intermediate weights saved to {chk_path}")
+
+# --- Save Final Outputs for Diagnostics and Future Improvements ---
+
+# 1. Save detailed step-by-step training epoch history to CSV inside output_path
+df_history = pd.DataFrame(training_history)
+history_save_path = output_path / "ppo_training_history.csv"
+df_history.to_csv(history_save_path, index=False)
+print(f"\n[SAVED] Training history metrics successfully written to {history_save_path}")
+
+# 2. Save final optimized model state dictionary inside output_path
+model_file_path = output_path / "absolute_zero_ppo_agent_v1.pt"
+torch.save(agent.state_dict(), str(model_file_path))
+print(f"[SAVED] Final Trained Agent weights written to {model_file_path}")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 8  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 6: Out-of-Sample (OOS) Walk-Forward Evaluation
+print("\n--- [TASK 4] Walk-Forward Deterministic Evaluation (OOS) ---")
+
+# Evaluate deterministic model performance on the hold-out test set
+results = AgentEvaluator.evaluate(agent, gym_test, device)
+
+print(f"\n[OOS METRICS]")
+print(f"Total Cumulative Return: {results['total_return']*100:.2f}%")
+print(f"Sharpe Ratio (Annualized): {results['sharpe_ratio']:.3f}")
+print(f"Total Trading Steps: {results['steps']}")
+
+# 1. Save results dict as a pickle file (enables quick loading for later meta-analysis)
+results_save_path = output_path / "oos_evaluation_results.pkl"
+with open(results_save_path, "wb") as f:
+    pickle.dump(results, f)
+print(f"\n[SAVED] Complete evaluation dictionary saved to {results_save_path}")
+
+# 2. Apply "Year 1700" Fix (Drop first element to align correct temporal indexes)
+x_dates = results["dates"][1:]
+y_equity = results["equity_curve"][1:]
+
+# 3. Construct Interactive Plotly Chart
+import plotly.io as pio
+
+pio.renderers.default = "colab"
+
+fig = go.Figure()
+fig.add_trace(
+    go.Scatter(
+        x=x_dates,
+        y=y_equity,
+        mode="lines",
+        line=dict(color="green", width=2),
+        name="RL Agent Portfolio (OOS)",
+    )
+)
+
+fig.update_layout(
+    title=f"Absolute Zero: Out-of-Sample Agent Performance<br><sup>OOS Sharpe: {results['sharpe_ratio']:.2f} | Returns: {results['total_return']*100:.2f}%</sup>",
+    yaxis_title="Cumulative Return (Base 1.0)",
+    xaxis_title="Date",
+    template="plotly_white",
+    hovermode="x unified",
+    height=500,
+)
+
+# Show the interactive chart
+fig.show()
+
+# 4. Save sliced equity curve as raw CSV for benchmark comparisons
+df_results = pd.DataFrame({"Date": x_dates, "Equity_Curve": y_equity})
+csv_save_path = output_path / "oos_equity_curve.csv"
+df_results.to_csv(csv_save_path, index=False)
+print(f"[SAVED] Sliced equity curve raw data saved to {csv_save_path}")
+
+# 5. Save the interactive Chart as an HTML file
+html_save_path = output_path / "oos_performance_chart.html"
+fig.write_html(str(html_save_path))
+print(f"[SAVED] Interactive HTML chart saved to {html_save_path}")
+```
+
+##############################################################################
+## END OF: RLVR_Part2_Training_v3.ipynb
+##############################################################################
+
+
+==============================================================================
+# END OF MERGED FILE
+==============================================================================

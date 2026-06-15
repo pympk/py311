@@ -29,8 +29,8 @@ from strategy.registry import get_strategy_registry
 
 # Paths from notebook
 DATA_DIR = Path(r"c:\Users\ping\Files_win10\python\py311\stocks\data")
-OUTPUT_DIR = Path(
-    r"C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\output"
+DATA_PROCESSED_DIR = Path(
+    r"C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\data\processed"
 )
 
 
@@ -38,7 +38,7 @@ OUTPUT_DIR = Path(
 def audit_data():
     """Loads the actual processed features and raw OHLCV for auditing."""
     df_ohlcv = pd.read_parquet(DATA_DIR / "df_OHLCV_stocks_etfs.parquet")
-    features_df = pd.read_parquet(OUTPUT_DIR / "features_df.parquet")
+    features_df = pd.read_parquet(DATA_PROCESSED_DIR / "features_df.parquet")
     config = TradingConfig()
     return df_ohlcv, features_df, config
 
@@ -47,10 +47,10 @@ def audit_data():
 def engine_data(audit_data):
     """Loads the remaining wide/macro DataFrames needed for AlphaEngine."""
     df_ohlcv, features_df, config = audit_data
-    macro_df = pd.read_parquet(OUTPUT_DIR / "macro_df.parquet")
-    df_close_wide = pd.read_parquet(OUTPUT_DIR / "df_close_wide.parquet")
-    df_atrp_wide = pd.read_parquet(OUTPUT_DIR / "df_atrp_wide.parquet")
-    df_trp_wide = pd.read_parquet(OUTPUT_DIR / "df_trp_wide.parquet")
+    macro_df = pd.read_parquet(DATA_PROCESSED_DIR / "macro_df.parquet")
+    df_close_wide = pd.read_parquet(DATA_PROCESSED_DIR / "df_close_wide.parquet")
+    df_atrp_wide = pd.read_parquet(DATA_PROCESSED_DIR / "df_atrp_wide.parquet")
+    df_trp_wide = pd.read_parquet(DATA_PROCESSED_DIR / "df_trp_wide.parquet")
 
     return (
         df_ohlcv,

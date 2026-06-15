@@ -36,6 +36,13 @@ class AlphaCache:
                     decision_date
                 )
                 start_idx = int(decision_idx - lb)
+
+                # Fix 1: Prevent silent negative wrap-around indexing
+                if start_idx < 0:
+                    raise IndexError(
+                        f"Lookback period {lb} exceeds available history for decision date {decision_date.date()}"
+                    )
+
                 start_date = self.screener.trading_calendar[start_idx]
 
                 obs = self.screener.build_observation(
@@ -73,19 +80,6 @@ class AlphaCache:
             if ensemble.empty:
                 continue
 
-            ####################################
-            # # 1. Add the Date column
-            # ensemble["Date"] = date
-
-            # # 2. Give the current index (the Tickers) a name
-            # # This makes it a "Label" that set_index can understand
-            # ensemble.index.name = "Ticker"
-
-            # # 3. Pass a list of strings [str, str]
-            # # This puts Date at Level 0 and Ticker at Level 1
-            # ensemble = ensemble.set_index(["Date", "Ticker"])
-            ####################################
-
             # 1. Name the current index
             ensemble.index.name = "Ticker"
 
@@ -97,7 +91,6 @@ class AlphaCache:
 
             # 4. Sink them both into a clean MultiIndex
             ensemble = ensemble.set_index(["Date", "Ticker"])
-            ###################################
 
             cache_parts.append(ensemble)
 
@@ -114,6 +107,12 @@ class AlphaCache:
         print(f"[OK] AlphaCache built. Shape: {self.feature_cube.shape}")
 
     def get_vision(self, date: pd.Timestamp) -> pd.DataFrame:
+        # Fix 2: Guard against uninitialized or empty cubes lacking a MultiIndex
+        if self.feature_cube.empty or not isinstance(
+            self.feature_cube.index, pd.MultiIndex
+        ):
+            return pd.DataFrame()
+
         try:
             # Cast the result so Pylance knows it's a DataFrame
             return cast(pd.DataFrame, self.feature_cube.xs(date, level="Date"))
