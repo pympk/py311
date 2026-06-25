@@ -1,0 +1,435 @@
+==============================================================================
+# MERGED NOTEBOOKS CONVERSION
+# Total notebooks: 1
+# ==============================================================================
+
+##############################################################################
+## NOTEBOOK: 02_RLVR_Part2_Training_v9.ipynb
+## PATH: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\02_RLVR_Part2_Training_v9.ipynb
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 1  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### RUN in TPU
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 2  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 0: Set Run Parameters
+import os
+
+os.environ["CACHE_LOOKBACK"] = "10"
+os.environ["CACHE_START_DATE"] = "2026-01-01"
+# Set to "True" to force identical splits regardless of size, or "False" to split dynamically
+os.environ["DEBUG_MODE"] = "True"
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 3  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 1
+import time
+
+start_time = time.time()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 4  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 2: Setup
+import sys, os
+from pathlib import Path
+
+RUNNING_IN_COLAB = "google.colab" in sys.modules
+if RUNNING_IN_COLAB:
+    from google.colab import drive
+
+    drive.mount("/content/drive")
+    rl_root = Path(
+        "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2"
+    )
+else:
+    rl_root = Path("C:/Users/ping/Files_win10/python/py311/stocks/notebooks_RLVR_v2")
+
+if str(rl_root) not in sys.path:
+    sys.path.append(str(rl_root))
+os.chdir(rl_root)
+```
+
+# --- Output ---
+# [stdout]
+Drive already mounted at /content/drive; to attempt to forcibly remount, call drive.mount("/content/drive", force_remount=True).
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 5  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 3: Imports
+import torch
+import numpy as np
+import pandas as pd
+from core.settings import TradingConfig, CacheConfig
+from core.paths import OUTPUT_DIR
+from data_pipeline.loader import load_processed_data
+from data_pipeline.utils import get_master_trading_calendar, get_chronological_splits
+from data_pipeline.screener import UniverseScreener
+from rl_discovery.oracle import RLOracle
+from rl_discovery.environment import DiscoveryEnv
+from rl_discovery.adapter import RLVRGymEnv
+from rl_discovery.agent import AbsoluteZeroAgent
+from rl_discovery.trainer import RolloutBuffer, PPOTrainer
+from rl_discovery.validator import AgentEvaluator
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 6  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 4: Load Data & Environment Splits
+print("Loading preprocessed data & AlphaCache...")
+df_ohlcv, macro_df, features_df = load_processed_data()
+config = TradingConfig()
+
+df_close = df_ohlcv["Adj Close"].unstack(level=0).sort_index()
+trading_calendar = get_master_trading_calendar(df_ohlcv, config.calendar_ticker)
+
+screener = UniverseScreener(
+    df_close=df_close,
+    features_df=features_df,
+    macro_df=macro_df,
+    trading_calendar=trading_calendar,
+    config=config,
+)
+
+cache_file_path = OUTPUT_DIR / CacheConfig.get_filename()
+print(f"cache_file_path:\n{cache_file_path}\n")
+feature_cube = pd.read_parquet(cache_file_path)
+
+oracle = RLOracle(screener, config)
+oracle.precompute_reward_matrix(holding_period=config.holding_period)
+
+# Generate Splits via the updated utility
+cal_train, cal_val, cal_test = get_chronological_splits(
+    trading_calendar=trading_calendar,
+    feature_cube_dates=feature_cube.index.get_level_values("Date").unique(),
+    holding_period=config.holding_period,
+    min_dates_threshold=100,  # Adjust this threshold based on your minimum desired sequence length
+)
+
+env_train = DiscoveryEnv(
+    feature_cube, oracle.reward_matrix, cal_train, config.holding_period
+)
+gym_train = RLVRGymEnv(env_train, macro_df)
+
+env_val = DiscoveryEnv(
+    feature_cube, oracle.reward_matrix, cal_val, config.holding_period
+)
+gym_val = RLVRGymEnv(env_val, macro_df)
+
+env_test = DiscoveryEnv(
+    feature_cube, oracle.reward_matrix, cal_test, config.holding_period
+)
+gym_test = RLVRGymEnv(env_test, macro_df)
+```
+
+# --- Output ---
+# [stdout]
+Loading preprocessed data & AlphaCache...
+cache_file_path:
+/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2/output/alpha_cache_10d_2026.parquet
+
+[INFO] Entering Debug/Scarcity mode (DEBUG_MODE=True, Total Dates=118) less than min_dates_threshold of 100. Identical calendars will be used across all splits.
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 7  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+import random
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+# --- THE V6 HYPERPARAMETERS ---
+
+###########################
+# SEEDS = [42, 12345, 987654, 555666777, 20240620, 314159265]
+SEEDS = [42]
+###########################
+
+# 1 epoch = 1024 steps (shuffled out of chronological order) = 8 mini_batch
+# 1 gradient update after 1 mini_batch
+NUM_EPOCHS = 50
+NUM_STEPS = 1024
+MINI_BATCH_SIZE = 128  # Larger batches for smooth gradients
+ENT_COEF = 0.001  # Allows the agent to reduce variance/uncertainty
+EVAL_FREQ = 2  # Check Validation every 2 epochs
+PATIENCE = 5  # Give it room to breathe
+
+metadata_payload = {
+    "SEEDS": SEEDS,
+    "NUM_EPOCHS": NUM_EPOCHS,
+    "NUM_STEPS": NUM_STEPS,
+    "MINI_BATCH_SIZE": MINI_BATCH_SIZE,
+    "ENT_COEF": ENT_COEF,
+    "EVAL_FREQ": EVAL_FREQ,
+    "PATIENCE": PATIENCE,
+    "RANK_MAX_OFFSET": config.rank_max_width,
+    "HOLDING_PERIOD": config.holding_period,
+}
+
+checkpoint_dir = OUTPUT_DIR / "model_checkpoints"
+checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+global_best_sharpe = -np.inf
+global_best_model_path = None
+global_best_seed = None
+
+print("\n--- [TASK 3] Executing PPO V6 Meta-Loop ---")
+
+for seed in SEEDS:
+    print(f"\n{'='*50}\n🚀 STARTING TRAINING SEED: {seed}\n{'='*50}")
+    set_seed(seed)
+
+    agent = AbsoluteZeroAgent(obs_dim=33, action_dim=13).to(device)
+    trainer = PPOTrainer(agent, lr=3e-4, clip_coef=0.2, ent_coef=ENT_COEF)
+    buffer = RolloutBuffer(
+        num_steps=NUM_STEPS, obs_dim=33, action_dim=13, device=device
+    )
+
+    best_val_sharpe = -np.inf
+    patience_counter = 0
+
+    for epoch in range(NUM_EPOCHS):
+        obs, _ = gym_train.reset()
+        epoch_rewards = []
+
+        for step in range(NUM_STEPS):
+            obs_tensor = torch.tensor(obs, dtype=torch.float32).to(device)
+            with torch.no_grad():
+                action, logprob, _, value = agent.get_action_and_value(
+                    obs_tensor.unsqueeze(0)
+                )
+
+            raw_action = action.cpu().numpy()[0]
+            next_obs, reward, done, _, info = gym_train.step(raw_action)
+
+            buffer.add(obs, action[0], logprob[0], reward, value[0], done)
+            epoch_rewards.append(reward)
+
+            obs = next_obs
+            if done:
+                obs, _ = gym_train.reset()
+
+        obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(device)
+        with torch.no_grad():
+            next_value = agent.get_value(obs_tensor).flatten()
+
+        buffer.compute_advantages(next_value, next_done=done)
+        diagnostics = trainer.update(
+            buffer, update_epochs=4, mini_batch_size=MINI_BATCH_SIZE
+        )
+        buffer.step = 0
+
+        if (epoch + 1) % EVAL_FREQ == 0:
+            print(
+                f"Epoch {epoch+1:03d} | Rew: {np.mean(epoch_rewards):.4f} | Loss: {diagnostics['total_loss']:.4f} | Ent: {diagnostics['entropy']:.4f}"
+            )
+
+            val_results = AgentEvaluator.evaluate(agent, gym_val, device)
+            val_sharpe = val_results["sharpe_ratio"]
+            val_ret = val_results["total_return"] * 100
+
+            print(f"   -> [VAL] Sharpe: {val_sharpe:.3f} | Return: {val_ret:.2f}%")
+
+            if val_sharpe > best_val_sharpe:
+                best_val_sharpe = val_sharpe
+                patience_counter = 0
+
+                # Dynamic Filename
+                dynamic_name = (
+                    f"champion_seed_{seed}_ep_{epoch+1}_sh_{val_sharpe:.2f}.pt"
+                )
+                seed_best_path = checkpoint_dir / dynamic_name
+                torch.save(agent.state_dict(), str(seed_best_path))
+                print(f"   -> 🟢 NEW BEST! Saved as: {dynamic_name}")
+
+                # Track Global
+                if val_sharpe > global_best_sharpe:
+                    global_best_sharpe = val_sharpe
+                    global_best_model_path = seed_best_path
+                    global_best_seed = seed
+            else:
+                patience_counter += 1
+                print(
+                    f"   -> 🔴 No improvement. Patience: {patience_counter}/{PATIENCE}"
+                )
+
+            if patience_counter >= PATIENCE:
+                print(f"🛑 EARLY STOPPING triggered for Seed {seed}")
+                break
+
+print(f"\n{'*'*50}")
+print(f"🏆 GLOBAL CHAMPION CROWNED 🏆")
+print(f"Best Seed:   {global_best_seed}")
+print(f"Best Sharpe: {global_best_sharpe:.3f}")
+print(f"File Path:   {global_best_model_path.name}")
+print(f"{'*'*50}\n")
+```
+
+# --- Output ---
+# [stdout]
+
+--- [TASK 3] Executing PPO V6 Meta-Loop ---
+
+==================================================
+🚀 STARTING TRAINING SEED: 42
+==================================================
+Epoch 002 | Rew: 0.0030 | Loss: -0.0217 | Ent: 18.4509
+   -> [VAL] Sharpe: 1.292 | Return: 5.09%
+   -> 🟢 NEW BEST! Saved as: champion_seed_42_ep_2_sh_1.29.pt
+Epoch 004 | Rew: 0.0022 | Loss: -0.0258 | Ent: 18.4615
+   -> [VAL] Sharpe: 0.913 | Return: 3.38%
+   -> 🔴 No improvement. Patience: 1/5
+Epoch 006 | Rew: 0.0025 | Loss: -0.0218 | Ent: 18.4488
+   -> [VAL] Sharpe: 2.009 | Return: 10.32%
+   -> 🟢 NEW BEST! Saved as: champion_seed_42_ep_6_sh_2.01.pt
+Epoch 008 | Rew: 0.0037 | Loss: -0.0251 | Ent: 18.4593
+   -> [VAL] Sharpe: 1.451 | Return: 6.86%
+   -> 🔴 No improvement. Patience: 1/5
+# [ERROR] ValueError: Expected parameter loc (Tensor of shape (128, 13)) of distribution Normal(loc: torch.Size([128, 13]), scale: torch.Size([128, 13])) to satisfy the constraint Real(), but found invalid values:
+tensor([[nan, nan, nan,  ..., nan, nan, nan],
+        [nan, nan, nan,  ..., nan, nan, nan],
+        [nan, nan, nan,  ..., nan, nan, nan],
+        ...,
+        [nan, nan, nan,  ..., nan, nan, nan],
+        [nan, nan, nan,  ..., nan, nan, nan],
+        [nan, nan, nan,  ..., nan, nan, nan]], grad_fn=<AddmmBackward0>)
+# Traceback:
+[0;31m---------------------------------------------------------------------------[0m
+[0;31mValueError[0m                                Traceback (most recent call last)
+[0;32m/tmp/ipykernel_1220/1067845170.py[0m in [0;36m<cell line: 0>[0;34m()[0m
+[1;32m     88[0m [0;34m[0m[0m
+[1;32m     89[0m         [0mbuffer[0m[0;34m.[0m[0mcompute_advantages[0m[0;34m([0m[0mnext_value[0m[0;34m,[0m [0mnext_done[0m[0;34m=[0m[0mdone[0m[0;34m)[0m[0;34m[0m[0;34m[0m[0m
+[0;32m---> 90[0;31m         diagnostics = trainer.update(
+[0m[1;32m     91[0m             [0mbuffer[0m[0;34m,[0m [0mupdate_epochs[0m[0;34m=[0m[0;36m4[0m[0;34m,[0m [0mmini_batch_size[0m[0;34m=[0m[0mMINI_BATCH_SIZE[0m[0;34m[0m[0;34m[0m[0m
+[1;32m     92[0m         )
+
+[0;32m/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2/rl_discovery/trainer.py[0m in [0;36mupdate[0;34m(self, buffer, update_epochs, mini_batch_size)[0m
+[1;32m    148[0m [0;34m[0m[0m
+[1;32m    149[0m                 [0;31m# 1. Get new probabilities for the old actions using updated network[0m[0;34m[0m[0;34m[0m[0m
+[0;32m--> 150[0;31m                 _, newlogprob, entropy, newvalue = self.agent.get_action_and_value(
+[0m[1;32m    151[0m                     [0mb_obs[0m[0;34m[[0m[0mmb_inds[0m[0;34m][0m[0;34m,[0m [0mb_actions[0m[0;34m[[0m[0mmb_inds[0m[0;34m][0m[0;34m[0m[0;34m[0m[0m
+[1;32m    152[0m                 )
+
+[0;32m/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2/rl_discovery/agent.py[0m in [0;36mget_action_and_value[0;34m(self, x, action)[0m
+[1;32m     60[0m [0;34m[0m[0m
+[1;32m     61[0m         [0;31m# Create a Normal distribution for our 13 continuous dimensions[0m[0;34m[0m[0;34m[0m[0m
+[0;32m---> 62[0;31m         [0mprobs[0m [0;34m=[0m [0mNormal[0m[0;34m([0m[0maction_mean[0m[0;34m,[0m [0maction_std[0m[0;34m)[0m  [0;31m# # 13 independent Gaussians[0m[0;34m[0m[0;34m[0m[0m
+[0m[1;32m     63[0m [0;34m[0m[0m
+[1;32m     64[0m         [0;31m# If we aren't evaluating an old action, sample a new one[0m[0;34m[0m[0;34m[0m[0m
+
+[0;32m/usr/local/lib/python3.12/dist-packages/torch/distributions/normal.py[0m in [0;36m__init__[0;34m(self, loc, scale, validate_args)[0m
+[1;32m     64[0m         [0;32melse[0m[0;34m:[0m[0;34m[0m[0;34m[0m[0m
+[1;32m     65[0m             [0mbatch_shape[0m [0;34m=[0m [0mself[0m[0;34m.[0m[0mloc[0m[0;34m.[0m[0msize[0m[0;34m([0m[0;34m)[0m[0;34m[0m[0;34m[0m[0m
+[0;32m---> 66[0;31m         [0msuper[0m[0;34m([0m[0;34m)[0m[0;34m.[0m[0m__init__[0m[0;34m([0m[0mbatch_shape[0m[0;34m,[0m [0mvalidate_args[0m[0;34m=[0m[0mvalidate_args[0m[0;34m)[0m[0;34m[0m[0;34m[0m[0m
+[0m[1;32m     67[0m [0;34m[0m[0m
+[1;32m     68[0m     [0;32mdef[0m [0mexpand[0m[0;34m([0m[0mself[0m[0;34m,[0m [0mbatch_shape[0m[0;34m,[0m [0m_instance[0m[0;34m=[0m[0;32mNone[0m[0;34m)[0m[0;34m:[0m[0;34m[0m[0;34m[0m[0m
+
+[0;32m/usr/local/lib/python3.12/dist-packages/torch/distributions/distribution.py[0m in [0;36m__init__[0;34m(self, batch_shape, event_shape, validate_args)[0m
+[1;32m     75[0m                 [0mvalid[0m [0;34m=[0m [0mconstraint[0m[0;34m.[0m[0mcheck[0m[0;34m([0m[0mvalue[0m[0;34m)[0m[0;34m[0m[0;34m[0m[0m
+[1;32m     76[0m                 [0;32mif[0m [0;32mnot[0m [0mtorch[0m[0;34m.[0m[0m_is_all_true[0m[0;34m([0m[0mvalid[0m[0;34m)[0m[0;34m:[0m[0;34m[0m[0;34m[0m[0m
+[0;32m---> 77[0;31m                     raise ValueError(
+[0m[1;32m     78[0m                         [0;34mf"Expected parameter {param} "[0m[0;34m[0m[0;34m[0m[0m
+[1;32m     79[0m                         [0;34mf"({type(value).__name__} of shape {tuple(value.shape)}) "[0m[0;34m[0m[0;34m[0m[0m
+
+[0;31mValueError[0m: Expected parameter loc (Tensor of shape (128, 13)) of distribution Normal(loc: torch.Size([128, 13]), scale: torch.Size([128, 13])) to satisfy the constraint Real(), but found invalid values:
+tensor([[nan, nan, nan,  ..., nan, nan, nan],
+        [nan, nan, nan,  ..., nan, nan, nan],
+        [nan, nan, nan,  ..., nan, nan, nan],
+        ...,
+        [nan, nan, nan,  ..., nan, nan, nan],
+        [nan, nan, nan,  ..., nan, nan, nan],
+        [nan, nan, nan,  ..., nan, nan, nan]], grad_fn=<AddmmBackward0>)
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 8  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 6: OOS Deterministic Evaluation & Blotter Review
+import json
+
+print("\n--- [TASK 4] Walk-Forward Deterministic Evaluation (OOS) ---")
+
+# 1. Load the Ultimate Champion Model
+champion_agent = AbsoluteZeroAgent(obs_dim=33, action_dim=13).to(device)
+champion_agent.load_state_dict(torch.load(global_best_model_path))
+print(f"[LOADED] Champion weights restored from: {global_best_model_path.name}")
+
+# 2. Build Metadata Payload
+metadata_payload["BEST_SEED"] = global_best_seed
+metadata_payload["CHAMPION_FILE"] = global_best_model_path.name
+
+# 3. Evaluate using the V6 Glass Box
+results = AgentEvaluator.evaluate(
+    champion_agent, gym_test, device, detailed_log=True, metadata=metadata_payload
+)
+
+print(f"\n[OOS TEST METRICS]")
+print(f"Total Cumulative Return: {results['total_return']*100:.2f}%")
+print(f"Sharpe Ratio (Annualized): {results['sharpe_ratio']:.3f}")
+print(f"Total Trading Steps: {results['steps']}")
+
+# 4. Save results
+import pickle
+
+results_save_path = output_path / "oos_evaluation_results_v6.pkl"
+with open(results_save_path, "wb") as f:
+    pickle.dump(results, f)
+print(f"\n[SAVED] Complete V6 evaluation dictionary saved to {results_save_path}")
+
+# 5. Print the Glass Box Blotter (First 2 days)
+print("\n--- V6 GLASS BOX BLOTTER INSPECTION (First 2 Steps) ---")
+blotter = results["blotter"]
+for i in range(2):
+    print(json.dumps(blotter[i], indent=2))
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 9  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 7: Timing
+end_time = time.time()
+print(f"Time: {time.strftime('%H:%M:%S', time.gmtime(end_time - start_time))}")
+```
+
+##############################################################################
+## END OF: 02_RLVR_Part2_Training_v9.ipynb
+##############################################################################
+
+
+==============================================================================
+# END OF MERGED FILE
+==============================================================================

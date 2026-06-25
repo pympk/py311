@@ -10,9 +10,9 @@ class CacheConfig:
     and feature lookback window.
     """
 
-    LOOKBACK: int = int(os.getenv("CACHE_LOOKBACK", 10))
-    START_DATE: str = os.getenv("CACHE_START_DATE", "2026-01-01")
-    END_DATE: str = os.getenv("CACHE_END_DATE", "2023-01-01")
+    LOOKBACK: int = int(os.getenv("CACHE_LOOKBACK", 189))
+    START_DATE: str = os.getenv("CACHE_START_DATE", "1998-01-01")
+    END_DATE: str = os.getenv("CACHE_END_DATE", "2030-01-01")
 
     @classmethod
     def get_filename(cls) -> str:
@@ -76,3 +76,8 @@ class TradingConfig:
     # STRATEGY PARAMETERS & THRESHOLDS
     strategy_params: StrategyParams = field(default_factory=StrategyParams)
     thresholds: QualityThresholds = field(default_factory=QualityThresholds)
+
+    # TRAINING PARAMETERS
+    holding_period: int = 5
+    rank_max_offset: int = 500
+    rank_max_width: int = 10

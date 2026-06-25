@@ -157,7 +157,7 @@ class UniverseScreener:
 
             return MarketObservation(
                 lookback_close=lookback_close,
-                lookback_returns=lookback_close.pct_change(),
+                lookback_returns=lookback_close.ffill().pct_change(),
                 atrp=obs_atrp,
                 trp=obs_trp,
                 # Use square brackets for guaranteed columns.

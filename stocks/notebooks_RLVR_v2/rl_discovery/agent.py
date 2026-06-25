@@ -54,12 +54,12 @@ class AbsoluteZeroAgent(nn.Module):
         """
         Calculates the policy distribution, samples an action, and calculates its probability.
         """
-        action_mean = self.actor_mean(x)
-        action_logstd = self.actor_logstd.expand_as(action_mean)
-        action_std = torch.exp(action_logstd)
+        action_mean = self.actor_mean(x)  # # (batch, 13)
+        action_logstd = self.actor_logstd.expand_as(action_mean)  # # (batch, 13)
+        action_std = torch.exp(action_logstd)  # # (batch, 13)
 
         # Create a Normal distribution for our 13 continuous dimensions
-        probs = Normal(action_mean, action_std)
+        probs = Normal(action_mean, action_std)  # # 13 independent Gaussians
 
         # If we aren't evaluating an old action, sample a new one
         if action is None:
@@ -68,8 +68,10 @@ class AbsoluteZeroAgent(nn.Module):
         # PPO requires the log probability of the action and the entropy (for the exploration bonus)
         # .sum(1) collapses the 13 dimension probabilities into a single scalar per batch item
         return (
-            action,
-            probs.log_prob(action).sum(1),
-            probs.entropy().sum(1),
-            self.critic(x),
+            action,  # the sampled (or provided) action
+            probs.log_prob(action).sum(
+                1
+            ),  # log-probability of that action, summed over 13 dims
+            probs.entropy().sum(1),  # entropy of the distribution, summed over 13 dims
+            self.critic(x),  # state-value estimate
         )

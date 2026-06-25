@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 
 from typing import List
+from core.settings import TradingConfig
 
 
 class AlphaLogic:
@@ -45,24 +46,28 @@ class SelectionLogic:
 
     @staticmethod
     def apply_action(
-        ensemble: pd.DataFrame, action: np.ndarray, rank_max_offset: int = 50
-    ) -> List[str]:
+        ensemble: pd.DataFrame,
+        action: np.ndarray,
+        rank_max_offset: int = TradingConfig.rank_max_offset,
+        rank_max_width: int = TradingConfig.rank_max_width,
+    ) -> tuple:
         """Vectorized Matrix Multiplication + Sorting."""
         if ensemble.empty:
-            return []
+            return [], [], 0, 0, 0.0, 0.0
 
-        # 1. Action Decoding
-        n_features = ensemble.shape[1]
+        n_features = 11  # 13 dims total: first 11 are weights
         weights = action[:n_features]
 
         # Map normalized [-1, 1] to discrete ranges
         offset = int(np.interp(action[-2], [-1, 1], [0, rank_max_offset]))
-        width = int(np.interp(action[-1], [-1, 1], [1, 10]))  # Your Max-10 constraint
+        width = int(np.interp(action[-1], [-1, 1], [1, rank_max_width]))
 
-        # 2. Vectorized Scoring [Tickers x Features] @ [Features]
-        scores = ensemble.values @ weights
+        # Vectorized Scoring
+        scores = pd.Series(ensemble.values @ weights, index=ensemble.index)
+        sorted_tickers = scores.sort_values(ascending=False)
 
-        # 3. High-Speed Sort (Numpy is 10x faster than Pandas for this)
-        top_indices = np.argsort(scores)[::-1][offset : offset + width]
+        # Extract metadata
+        top_3 = sorted_tickers.index[:3].tolist()
+        selected = sorted_tickers.index[offset : offset + width].tolist()
 
-        return ensemble.index[top_indices].tolist()
+        return selected, top_3, offset, width, float(scores.max()), float(scores.min())

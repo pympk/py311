@@ -48,21 +48,44 @@ class DiscoveryEnv:
         obs_dict = self._get_observation()
         ensemble = obs_dict["ensemble"]
 
-        # 1. Delegate Ticker Selection (Stateless)
-        selected_tickers = SelectionLogic.apply_action(ensemble, action)
+        # 1. Delegate Ticker Selection (Unpacking the new V6 Tuple)
+        selected_tickers, top_3, offset, width, max_s, min_s = (
+            SelectionLogic.apply_action(ensemble, action)
+        )
 
-        # 2. Delegate Reward Calculation (Stateless)
+        # 2. Delegate Reward Calculation
         reward = AlphaLogic.calculate_veritable_reward(
             self.reward_matrix, date, selected_tickers
         )
 
-        # 3. Update internal state
-        self.equity_curve.append(self.equity_curve[-1] * np.exp(reward))
-        self.current_date_idx += self.holding_period
+        # 3. Update internal state (REALISTIC OVERLAPPING MATH)
+        # Agent gets raw reward for learning, but equity assumes 1/5th capital deployment
+        sleeve_return = np.exp(reward) - 1.0
+        portfolio_impact = sleeve_return / self.holding_period
+        self.equity_curve.append(self.equity_curve[-1] * (1.0 + portfolio_impact))
+
+        # DAILY STEPPING
+        self.current_date_idx += 1
 
         done = self.current_date_idx >= (len(self.calendar) - self.holding_period - 1)
 
-        info = {"date": date, "tickers": selected_tickers, "reward": reward}
+        # 4. Temporal Alignment for Debugging
+        buy_date = self.calendar[self.current_date_idx]
+        sell_date = self.calendar[self.current_date_idx + self.holding_period]
+
+        info = {
+            "date": date,
+            "buy_date": buy_date,
+            "sell_date": sell_date,
+            "tickers": selected_tickers,
+            "top_3": top_3,
+            "reward": reward,
+            "universe_size": len(ensemble),
+            "offset": offset,
+            "width": width,
+            "max_score": max_s,
+            "min_score": min_s,
+        }
         return self._get_observation(), reward, done, info
 
 

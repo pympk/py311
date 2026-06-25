@@ -13,10 +13,6 @@ pd.set_option("future.no_silent_downcasting", True)
 class MacroFeaturePipeline:
     @staticmethod
     def process(
-        # df_ohlcv: pd.DataFrame,
-        # df_indices: pd.DataFrame,
-        # df_fed: pd.DataFrame,
-        # config: TradingConfig,
         df_ohlcv: pd.DataFrame,
         df_indices: Optional[pd.DataFrame],  # Allow None
         df_fed: Optional[pd.DataFrame],  # Allow None
@@ -155,7 +151,7 @@ class MicroFeaturePipeline:
 
         # 4. Momentum & Consistency
         mom_21 = TickerEngine.map_kernels(
-            df_ohlcv["Adj Close"], lambda x: x.pct_change(win_21)
+            df_ohlcv["Adj Close"], lambda x: x.pct_change(win_21, fill_method=None)
         )
         consistency = TickerEngine.map_kernels(
             rets, lambda x: (x > 0).astype(float).rolling(win_5).mean()

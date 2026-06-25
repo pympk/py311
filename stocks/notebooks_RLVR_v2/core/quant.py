@@ -25,7 +25,7 @@ class QuantUtils:
     ) -> Union[pd.Series, pd.DataFrame]:
         # We use cast here internally because Pandas methods like .replace()
         # often confuse the type checker's ability to track Series vs DataFrame
-        res = data.pct_change().replace([np.inf, -np.inf], np.nan)
+        res = data.pct_change(fill_method=None).replace([np.inf, -np.inf], np.nan)
         return cast(Union[pd.Series, pd.DataFrame], res)
 
     @overload

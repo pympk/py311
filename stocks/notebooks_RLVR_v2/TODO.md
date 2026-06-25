@@ -1,3 +1,13 @@
+refactor 3 rlvr files
+common utils: clean df_ohlcv, load dataframes, path names, master_calendar
+do we used these df_atrp_wide, df_trp_wide 
+
+
+add Slippage 5-basis-point slippage penalty 
+Stack the 189d and 21d Feature Cubes
+Reward about SPY
+
+
 create data dir
 move and save data from data dir
 use output dir only for output 
