@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
+import pickle
 
+from pathlib import Path
 from typing import Optional, Dict, Any, cast
 
 from core.quant import QuantUtils
@@ -734,6 +736,8 @@ class SystemAuditor:
                 range_pos_20=feat_now.get("Range_Pos_20", 0.0),
                 slope_p_5=feat_now.get("Slope_P_5", 0.0),
                 slope_v_5=feat_now.get("Slope_V_5", 0.0),
+                slope_p_5_z=feat_now.get("Slope_P_5_Z", 0.0),
+                slope_v_5_z=feat_now.get("Slope_V_5_Z", 0.0),
                 convexity=feat_now.get("Convexity", 0.0),
                 # --------------------------------
                 macro_trend=macro_now["Macro_Trend"],
@@ -1065,6 +1069,74 @@ class SystemAuditor:
             f"{'Macro_Vix_Signals':<20} | {'N/A':<12} | {'N/A':<12} | {'[OK] LIVE' if vix_z > 0 else '[ERROR] MISSING VIX, VIX3M'}"
         )
         print(f"{'='*95}")
+
+    @staticmethod
+    def audit_oos_results(
+        pkl_path: Path, df_ohlcv_path: Path, slippage_bps: float = 5.0
+    ) -> pd.DataFrame:
+        """
+        Loads the actual RL output and real market data to independently verify
+        that the RL environment's math and date-alignments are honest.
+        """
+        # 1. Load the real RL results
+        with open(pkl_path, "rb") as f:
+            results = pickle.load(f)
+        blotter_df = pd.DataFrame(results["blotter"])
+
+        # 2. Load the real market prices
+        # We only need 'Adj Close' to verify the returns
+        df_ohlcv = pd.read_parquet(df_ohlcv_path, columns=["Adj Close"])
+        prices = df_ohlcv["Adj Close"].unstack(level=0)
+
+        calculated_returns = []
+
+        # 3. Iterate through every single trade the agent made out-of-sample
+        for _, row in blotter_df.iterrows():
+            buy_date = pd.to_datetime(row["buy_date"])
+            sell_date = pd.to_datetime(row["sell_date"])
+            tickers = row["chosen_tickers"]
+
+            # Fetch the actual historical prices for those specific days
+            buy_prices: Any = prices.loc[buy_date, tickers]
+            sell_prices: Any = prices.loc[sell_date, tickers]
+
+            # Independent math: (Sell - Buy) / Buy
+            raw_returns = (sell_prices - buy_prices) / buy_prices
+
+            # Deduct standard slippage
+            net_returns = raw_returns - (slippage_bps * 2 / 10000)
+
+            # The portfolio return is the average of the basket
+            calculated_returns.append(net_returns.mean())
+
+        # 4. Compare RL reported return vs Independent calculation
+        verification_df = pd.DataFrame(
+            {
+                "Date": pd.to_datetime(blotter_df["decision_date"]),
+                "RL_Env_Reported_Return": blotter_df["actual_return"],
+                "Auditor_Calculated_Return": calculated_returns,
+            }
+        )
+
+        # Calculate the divergence
+        verification_df["Difference"] = (
+            verification_df["RL_Env_Reported_Return"]
+            - verification_df["Auditor_Calculated_Return"]
+        )
+
+        max_diff = verification_df["Difference"].abs().max()
+
+        print(f"Max divergence between RL Env and Auditor: {max_diff:.6f}")
+        if max_diff < 1e-4:
+            print(
+                "✅ PASSED: OOS Returns are mathematically sound and properly aligned."
+            )
+        else:
+            print(
+                "❌ FAILED: RL Environment contains forward-looking leaks or price misalignment."
+            )
+
+        return verification_df
 
 
 #

@@ -95,7 +95,11 @@ class RLOracle:
             try:
                 suffix = " (Z)" if blueprint.scaling_type == "Z-Score" else " (S)"
                 tagged_name = f"{name}{suffix}"
-                scores = blueprint.get_agent_view(obs, config=self.config)
+
+                # scores = blueprint.get_agent_view(obs, config=self.config)
+                # Replace blueprint.get_agent_view(obs, config=self.config)
+                # with direct execution of the callable blueprint:
+                scores = blueprint(obs)
 
                 if isinstance(scores, (pd.Series, pd.DataFrame)):
                     alpha_results[tagged_name] = scores

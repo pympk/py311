@@ -68,6 +68,8 @@ def test_data():
     features_df["Range_Pos_20"] = 0.6
     features_df["Slope_P_5"] = 0.05
     features_df["Slope_V_5"] = 0.02
+    features_df["Slope_P_5_Z"] = 0.05
+    features_df["Slope_V_5_Z"] = 0.02
     features_df["Convexity"] = 0.01
 
     # Insert distinctive values on a targeted date to trace outputs directly
@@ -79,7 +81,7 @@ def test_data():
     # 3. macro_df: Index (Date)
     macro_df = pd.DataFrame(index=dates)
     macro_df["Macro_Trend"] = 1.0
-    macro_df["Macro_Trend_Vel"] = 0.1
+    macro_df["Macro_Trend_Vel_Z"] = 0.1
     macro_df["Macro_Vix_Z"] = -0.5
     macro_df["Macro_Vix_Ratio"] = 0.95
 

@@ -52,7 +52,7 @@ def get_strategy_registry(config: TradingConfig) -> Dict[str, MetricBlueprint]:
             name="Oversold (-RSI)",
             category="Mean Reversion",
             regime="Contrarian",
-            description="Inverse RSI(14). Transforms 0-100 into a 'Pressure' gauge.",
+            description="Inverse RSI(14). Scaled between -1.0 and 1.0.",
             agent_hint="Higher is more oversold. Look for the 'Hook' (Convexity > 0) to time entry.",
             intervention_trigger=f"BUY if Value > {100-S_PARAMS.rsi_oversold} AND Convexity > 0.2; SELL/FLAT if Value < {100-S_PARAMS.rsi_overbought}.",
             scaling_type="RSI",
@@ -96,17 +96,25 @@ def get_strategy_registry(config: TradingConfig) -> Dict[str, MetricBlueprint]:
             scaling_type="Z-Score",
             formula=lambda obs: -obs.atrp,
         ),
-        "OBV Divergence (5d)": MetricBlueprint(
-            name="OBV Divergence (5d)",
+        "Slope_P_5_Z": MetricBlueprint(
+            name="Slope_P_5_Z",
+            category="Price/Velocity",
+            regime="Confirmation",
+            description="Temporally Z-scored price slope over 5 days.",
+            agent_hint="Detects velocity of price trend.",
+            intervention_trigger=f"CONFIRM TREND if Value > {S_PARAMS.standard_confidence}std; FLAT/REVERSAL if Value < -{S_PARAMS.standard_confidence}std.",
+            scaling_type="Z-Score",
+            formula=lambda obs: obs.slope_p_5_z,
+        ),
+        "Slope_V_5_Z": MetricBlueprint(
+            name="Slope_V_5_Z",
             category="Volume/Fuel",
             regime="Confirmation",
-            description="Z-scored gap between relative volume flow and price trend.",
-            agent_hint="Detects smart money accumulation/distribution. Volume is normalized relative to its 63d mean.",
-            intervention_trigger=f"INVALIDATE Longs if Price Trend (+) but Divergence < -{S_PARAMS.standard_confidence}std.",
+            description="Temporally Z-scored volume slope over 5 days.",
+            agent_hint="Detects volume flow velocity.",
+            intervention_trigger=f"ACCUMULATION if Value > {S_PARAMS.standard_confidence}std; DISTRIBUTION if Value < -{S_PARAMS.standard_confidence}std.",
             scaling_type="Z-Score",
-            formula=lambda obs: (
-                QuantUtils.zscore(obs.slope_v_5) - QuantUtils.zscore(obs.slope_p_5)
-            ),
+            formula=lambda obs: obs.slope_v_5_z,
         ),
         "Convexity": MetricBlueprint(
             name="Convexity",
@@ -119,6 +127,3 @@ def get_strategy_registry(config: TradingConfig) -> Dict[str, MetricBlueprint]:
             formula=lambda obs: obs.convexity,
         ),
     }
-
-
-#

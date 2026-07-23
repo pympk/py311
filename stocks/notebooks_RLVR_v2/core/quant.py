@@ -375,16 +375,6 @@ class QuantUtils:
     # This is the only one with real code.
     # Note: No @overload decorator here.
 
-    # @staticmethod
-    # def zscore(data: Union[pd.Series, pd.DataFrame]) -> Union[pd.Series, pd.DataFrame]:
-    #     if data.empty:
-    #         return data
-
-    #     m = data.mean()
-    #     s = data.std()
-    #     denom = np.where((s != 0) & (~pd.isna(s)), s, 1.0)
-    #     return (data - m) / denom
-
     @staticmethod
     def zscore(data: Union[pd.Series, pd.DataFrame]) -> Union[pd.Series, pd.DataFrame]:
         if data.empty:

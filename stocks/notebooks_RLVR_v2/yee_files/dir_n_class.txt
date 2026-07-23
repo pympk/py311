@@ -1,0 +1,300 @@
+00_01_02_03.txt
+00_RLVR_data_process_v6.ipynb
+01_RLVR_Part1_AlphaCache_v4.ipynb
+02_RLVR_Part2_Training_v16.ipynb
+03_RLVR_Part3_Analysis_v4.ipynb
+change_log.md
+core\auditor.py
+    class SystemAuditor
+        def verify_math_integrity
+        def verify_ranking_integrity
+        def verify_vol_alignment_integrity
+        def verify_feature_engineering_integrity
+        def verify_macro_engine
+        def verify_analyzer_short
+        def verify_analyzer_long
+        def audit_feature_engineering_integrity
+        def audit_oos_results
+core\contracts.py
+    class MarketObservation
+    class FilterPack
+        def __repr__
+    class EngineInput
+    class EngineOutput
+    class SelectionResult
+    class DiscoveryResult
+    class MetricBlueprint
+        def __call__
+core\logic.py
+    class AlphaLogic
+        def calculate_veritable_reward
+        def slugify_columns
+    class SelectionLogic
+        def apply_action
+core\paths.py
+    def find_notebooks_root
+core\quant.py
+    class QuantUtils
+        def compute_returns
+        def compute_returns
+        def compute_returns
+        def calculate_gain
+        def calculate_gain
+        def calculate_gain
+        def calculate_sharpe
+        def calc_sharpe_cross_section
+        def calc_sharpe_multivariate_aligned
+        def calc_sharpe_univariate
+        def compute_portfolio_stats
+        def calculate_rsi
+        def calculate_tr
+        def calculate_atr
+        def calculate_rolling_beta
+        def calculate_rolling_ir
+        def calculate_rolling_sharpe
+        def calculate_autocorr
+        def calculate_range_pos
+        def calculate_rolling_slope_5d_fast
+        def calculate_obv_fast
+        def calculate_convexity_5d_fast
+        def zscore
+        def zscore
+        def zscore
+    class TickerEngine
+        def map_kernels
+core\result.py
+    class TaskResult
+    class HeadlessReporter
+        def get_metadata
+        def get_metrics_table
+core\settings.py
+    class CacheConfig
+        def get_filename
+    class StrategyParams
+    class QualityThresholds
+    class TradingConfig
+data_pipeline\builder.py
+    class MacroFeaturePipeline
+        def process
+    class MicroFeaturePipeline
+        def process
+    class QualityFilterPipeline
+        def process
+    def generate_features
+data_pipeline\cache.py
+    class AlphaCache
+        def __init__
+        def compute_alpha_ensemble
+        def build
+        def get_vision
+    class CheckpointAlphaCache
+        def build
+data_pipeline\loader.py
+    def load_raw_global_data
+    def load_processed_data
+data_pipeline\screener.py
+    class UniverseScreener
+        def __init__
+        def validate_timeline
+        def filter_universe
+        def build_observation
+dir_n_class.txt
+features_df_out.xlsx
+fed_data_yield_spread.ipynb
+list_file_n_class.ipynb
+main.ipynb
+main.py
+metric_definitions.md
+nb2txt.ipynb
+nb2txt.py
+    def extract_notebook
+    def nb2txt
+    def main
+observation_action_dimensions.md
+rl_discovery\adapter.py
+    class ObservationScaler
+        def __init__
+        def transform
+        def load_state
+    class ObservationAdapter
+        def process
+    class RLVRGymEnv
+        def __init__
+        def reset
+        def step
+        def _build_obs
+rl_discovery\agent.py
+    def layer_init
+    class AbsoluteZeroAgent
+        def __init__
+        def get_value
+        def get_action_and_value
+rl_discovery\environment.py
+    class DiscoveryEnv
+        def __init__
+        def reset
+        def _get_observation
+        def step
+rl_discovery\oracle.py
+    class RLOracle
+        def __init__
+        def precompute_reward_matrix
+        def get_batch_reward
+        def compute_context_vector
+        def compute_alpha_matrix
+        def normalize_alpha_matrix
+        def run_discovery_action
+rl_discovery\trainer.py
+    class RolloutBuffer
+        def __init__
+        def add
+        def compute_advantages
+    class PPOTrainer
+        def __init__
+        def update_lr
+        def update
+rl_discovery\validator.py
+    class AgentEvaluator
+        def evaluate
+run_pipeline.ipynb
+run_pipeline.py
+strategy\registry.py
+    def get_strategy_registry
+teir_1_files.txt
+tests\test_alpha_cache.py
+    def mock_config
+    def test_data
+    def screener
+    def mock_strategy_registry
+    def test_compute_alpha_ensemble
+    def test_alpha_cache_build_and_vision
+    def test_alpha_cache_out_of_bounds_lookback
+    def test_alpha_cache_empty_universe
+    def test_alpha_cache_get_vision_missing_date
+tests\test_audit_pipeline.py
+    def audit_data
+    def engine_data
+    def test_audit_rsi_atrp_parity
+    def test_audit_momentum_drawdown_parity
+    def get_mapped_value
+    def test_audit_portfolio_drift_weights
+    def test_audit_cross_sectional_blueprints
+tests\test_data_process.py
+    class MockThresholds
+    class MockConfig
+    def dummy_ohlcv
+    def test_cell3_logic
+tests\test_features.py
+    def test_feature_engineering_wilders_atr
+tests\test_observation_fixes.py
+    def fake_ohlcv_data
+    def test_rsi_bomb_scaling
+    def test_macro_dimension_strictness
+    def test_slope_dead_node_fix
+tests\test_quant.py
+    def test_compute_returns_boundary_integrity
+    def test_ranking_integrity_sharpe_vol
+    def test_volatility_alignment_temporal_coupling
+    def test_sharpe_alignment
+tests\test_rl_adapter.py
+    def test_observation_adapter_integrity
+    class MockDiscoveryEnv
+        def __init__
+        def reset
+        def step
+    def test_gym_wrapper_compliance
+tests\test_rl_agent.py
+    def test_agent_tensor_shapes
+    def test_agent_gradient_flow
+tests\test_rl_metrics.py
+    def dummy_environment_data
+    def test_selection_logic_zero_width
+    def test_environment_alpha_and_slippage
+    def test_environment_downside_penalty_and_cash
+tests\test_rl_trainer.py
+    def test_buffer_advantage_calculation
+    def test_ppo_trainer_update
+tests\test_rl_validator.py
+    class MockDiscoveryEnv
+        def __init__
+        def reset
+        def step
+    def test_evaluator_deterministic_execution
+tests\test_splits.py
+    def sample_dates
+    def test_standard_splits
+    def test_debug_mode_fallback
+    def test_scarcity_mode_fallback
+    def test_purge_gap_leakage_protection
+    def test_filtering_mismatched_dates
+tests\test_verify_oos_returns.py
+    def test_real_oos_returns_integration
+TODO.md
+troubleshoot.md
+verify_alphacache.ipynb
+verify_rlvr_pipeline_v1.ipynb
+verify_UI_n_features_calc.xlsx
+verify_UI_n_features_calc_v4.ipynb
+walk_forward\analyzer.py
+    class TraceId
+    class ChartRenderer
+        def update
+    class ReportRenderer
+        def render
+    class VolatilityRegime
+        def contains
+    class MacroVisualizer
+        def extract_macro_slice
+        def detect_regime
+        def create_shading_shapes
+        def update
+        def _update_volatility_title
+    class ChartController
+        def __init__
+        def _create_figure
+        def _init_traces
+        def _init_reference_lines
+        def update
+        def _create_event_shapes
+    class PricePanelUpdater
+        def update
+    class WalkForwardUI
+        def __init__
+        def _build_widgets
+        def _wire_events
+        def _on_mode_change
+        def get_input_values
+        def layout
+        def set_loading
+        def show_error
+        def clear_output
+    class ReportGenerator
+        def generate
+    class WalkForwardAnalyzer
+        def __init__
+        def _on_run
+        def _create_engine_input
+        def _update_filter_pack
+        def show
+    def create_walk_forward_analyzer
+    def run_headless_simulation
+walk_forward\engine.py
+    class AlphaEngine
+        def __init__
+        def _prepare_data
+        def _execute_strategy
+        def _rank_and_slice
+        def _select_tickers
+        def _get_debug_components
+        def _get_normalized_plot_data
+        def _error_result
+        def _build_engine_output
+        def run
+        def shutdown
+        def _prepare_initial_weights
+walk_forward\performance.py
+    def _prepare_initial_weights
+    def calculate_buy_and_hold_performance
+    class PerformanceCalculator
+        def calculate_period_metrics
+yt_audio.ipynb

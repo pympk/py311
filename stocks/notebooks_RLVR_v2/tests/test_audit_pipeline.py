@@ -80,7 +80,10 @@ def test_audit_rsi_atrp_parity(audit_data):
     avg_gain = gain.ewm(alpha=1 / config.rsi_period, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1 / config.rsi_period, adjust=False).mean()
     rs = avg_gain / avg_loss
-    manual_rsi = (100 - (100 / (1 + rs))).iloc[-1]
+
+    # ---> FIX: Apply Pipeline Scaling <---
+    manual_rsi_raw = (100 - (100 / (1 + rs))).iloc[-1]
+    manual_rsi = (manual_rsi_raw - 50) / 50
 
     # Manual ATRP (Wilder's)
     prev_close = adj_close.shift(1)

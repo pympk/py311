@@ -1,0 +1,1206 @@
+==============================================================================
+# MERGED NOTEBOOKS CONVERSION
+# Total notebooks: 4
+# ==============================================================================
+
+##############################################################################
+## NOTEBOOK: 00_RLVR_data_process_v7.ipynb
+## PATH: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\00_RLVR_data_process_v7.ipynb
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 1  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### RUN IN CPU ~00:05:00
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 2  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 1
+import time
+
+start_time = time.time()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 3  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 2: Setup
+import sys, os
+from pathlib import Path
+
+RUNNING_IN_COLAB = "google.colab" in sys.modules
+if RUNNING_IN_COLAB:
+    from google.colab import drive  # type: ignore
+    drive.mount("/content/drive")
+    rl_root = Path("/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2")
+    !pip install -q pyarrow fastparquet
+else:
+    rl_root = Path("C:/Users/ping/Files_win10/python/py311/stocks/notebooks_RLVR_v2")
+
+if str(rl_root) not in sys.path:
+    sys.path.append(str(rl_root))
+os.chdir(rl_root)
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 4  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 3: Load Data, Filter & Align Dates
+import pandas as pd
+import numpy as np
+from core.settings import TradingConfig
+from core.paths import GLOBAL_PROCESSED_DIR, LOCAL_DATA_DIR
+from data_pipeline.loader import load_raw_global_data
+from data_pipeline.utils import get_master_trading_calendar
+from data_pipeline.builder import generate_features
+
+pd.set_option("future.no_silent_downcasting", True)
+config = TradingConfig()
+
+print("Loading raw global data...")
+df_ohlcv, df_fed, df_indices = load_raw_global_data()
+
+# ---> FIX: Type assertions for Pylance <---
+assert isinstance(df_ohlcv, pd.DataFrame), "df_ohlcv must be a pandas DataFrame"
+assert isinstance(df_ohlcv.index, pd.MultiIndex), "df_ohlcv index must be a MultiIndex"
+
+# ---------------------------------------------------------
+# OPTIMIZATION 1: Truncate Dates Early
+# We train from 1998, but need ~1 year (252 days) for rolling features.
+# ---------------------------------------------------------
+CUTOFF_DATE = pd.Timestamp("1997-01-01")
+df_ohlcv = df_ohlcv[df_ohlcv.index.get_level_values("Date") >= CUTOFF_DATE]
+
+print(f"Aligning to Master Trading Calendar ({config.calendar_ticker})...")
+master_dates = get_master_trading_calendar(df_ohlcv, config.calendar_ticker)
+master_dates = master_dates[master_dates >= CUTOFF_DATE]
+
+# Filter out dates that are not in the master calendar
+df_ohlcv = df_ohlcv[df_ohlcv.index.get_level_values("Date").isin(master_dates)]
+
+# ---------------------------------------------------------
+# OPTIMIZATION 2: Fast Pre-Screening (Shift Left)
+# Drop stocks that NEVER meet the $1M median dollar volume threshold
+# to save RAM during feature generation.
+# ---------------------------------------------------------
+print("Pre-screening universe to drop perpetually illiquid stocks...")
+df_ohlcv["DollarVolume"] = df_ohlcv["Adj Close"] * df_ohlcv["Volume"]
+
+# Calculate rolling 126d median (as per config.quality_min_periods)
+# and find the max value it ever reached in its history.
+max_med_dv = (
+    df_ohlcv.groupby(level="Ticker")["DollarVolume"]
+    .rolling(window=config.quality_min_periods, min_periods=30)
+    .median()
+    .groupby(level=0)  # Use level=0 to avoid the duplicate "Ticker" name error
+    .max()
+)
+
+# Keep only tickers that breached the $1M threshold at least once
+valid_tickers = max_med_dv[
+    max_med_dv >= config.thresholds.min_median_dollar_volume
+].index
+
+# ---> FIX: PROTECT THE BENCHMARK & CALENDAR TICKERS <---
+protected_tickers = pd.Index([config.calendar_ticker, config.benchmark_ticker])
+valid_tickers = valid_tickers.union(protected_tickers)
+
+df_ohlcv = df_ohlcv[
+    df_ohlcv.index.get_level_values("Ticker").isin(valid_tickers)
+].copy()
+df_ohlcv.drop(columns=["DollarVolume"], inplace=True)
+print(
+    f"Universe reduced to {len(valid_tickers)} viable tickers (Benchmarks protected)."
+)
+
+
+# ---------------------------------------------------------
+# OPTIMIZATION 3: Smart Forward Fill (No Cartesian Product)
+# Reindex each stock ONLY within its own valid date range (IPO to Delist)
+# ---------------------------------------------------------
+def fill_ticker(df_ticker):
+    # Find the min and max date for THIS specific stock
+    min_date = df_ticker.index.get_level_values("Date").min()
+    max_date = df_ticker.index.get_level_values("Date").max()
+
+    # Create a calendar just for this stock's lifespan
+    stock_calendar = master_dates[
+        (master_dates >= min_date) & (master_dates <= max_date)
+    ]
+
+    # Reindex and forward fill gaps (up to max_data_gap_ffill)
+    df_ticker = df_ticker.droplevel("Ticker").reindex(stock_calendar)
+
+    price_cols = ["Adj Open", "Adj High", "Adj Low", "Adj Close"]
+    if config.handle_zeros_as_nan:
+        df_ticker[price_cols] = df_ticker[price_cols].replace(0, np.nan)
+
+    df_ticker[price_cols] = df_ticker[price_cols].ffill(limit=config.max_data_gap_ffill)
+    df_ticker["Volume"] = df_ticker["Volume"].fillna(0)
+
+    return df_ticker
+
+
+print("Forward-filling intra-lifespan data gaps...")
+# Let Pandas naturally reconstruct the MultiIndex
+df_ohlcv = df_ohlcv.groupby(level="Ticker").apply(fill_ticker)
+
+# Ensure index names are correct after apply
+if isinstance(df_ohlcv.index, pd.MultiIndex):
+    df_ohlcv.index.names = ["Ticker", "Date"]
+
+# Align df_fed & df_indices
+if df_fed is not None:
+    df_fed["Date"] = pd.to_datetime(df_fed["Date"])
+    df_fed = df_fed.set_index("Date").reindex(master_dates).ffill()
+
+if df_indices is not None:
+    assert isinstance(df_indices.index, pd.MultiIndex)
+    df_indices = df_indices[
+        df_indices.index.get_level_values("Date").isin(master_dates)
+    ].sort_index()  # Sorts by all levels naturally
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 5  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+print(f"df_ohlcv.info():\n{df_ohlcv.info()}\n")
+print(f"df_fed.info():\n{df_fed.info()}\n")
+print(f"df_indices.info():\n{df_indices.info()}\n")
+
+print(f"df_ohlcv.describe():\n{df_ohlcv.describe()}\n")
+print(f"df_fed.describe():\n{df_fed.describe()}\n")
+print(f"df_indices.describe():\n{df_indices.describe()}\n")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 6  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+import pandas as pd
+
+print("=== Analyzing Ticker Lifespans ===")
+
+# 1. Get the global max and min dates of the whole dataset
+global_min_date = df_ohlcv.index.get_level_values("Date").min()
+global_max_date = df_ohlcv.index.get_level_values("Date").max()
+print(f"Global Dataset Range: {global_min_date.date()} to {global_max_date.date()}")
+
+# 2. Get the specific min and max dates for EACH ticker
+ticker_lifespans = (
+    df_ohlcv.index.to_frame(index=False).groupby("Ticker")["Date"].agg(["min", "max"])
+)
+ticker_lifespans.columns = ["First_Trade", "Last_Trade"]
+
+# 3. Identify different categories
+# "Delisted" = stopped trading before the global max date
+delisted = ticker_lifespans[ticker_lifespans["Last_Trade"] < global_max_date]
+# "Late IPO" = started trading after the global min date
+late_ipos = ticker_lifespans[ticker_lifespans["First_Trade"] > global_min_date]
+# "Came and Went" = Started late AND Delisted early
+# ---> FIX: Added .copy() at the end of the slice to prevent SettingWithCopyWarning <---
+came_and_went = ticker_lifespans[
+    (ticker_lifespans["First_Trade"] > global_min_date)
+    & (ticker_lifespans["Last_Trade"] < global_max_date)
+].copy()
+
+print(f"\nTotal Tickers: {len(ticker_lifespans)}")
+print(f"Tickers that Delisted before end date: {len(delisted)}")
+print(f"Tickers that IPO'd after start date: {len(late_ipos)}")
+print(f"Tickers that 'Came and Went' (Both): {len(came_and_went)}")
+
+# Display a sample of the ones that "came and went"
+if not came_and_went.empty:
+    print("\nSample of stocks that 'Came and Went':")
+    came_and_went["Lifespan_Days"] = (
+        came_and_went["Last_Trade"] - came_and_went["First_Trade"]
+    ).dt.days
+    print(came_and_went.sort_values("Lifespan_Days").head(10))
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 7  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 4: Generate Features
+print("Generating features_df and macro_df (~6 mins)...")
+features_df, macro_df = generate_features(
+    df_ohlcv=df_ohlcv, df_indices=df_indices, df_fed=df_fed, config=config
+)
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 8  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 5: Save Datasets
+print("Saving Processed Datasets...")
+
+# 1. Save "Production/Daily" copies to the Global Directory for other notebooks
+df_ohlcv.to_parquet(GLOBAL_PROCESSED_DIR / "df_ohlcv.parquet")
+if df_fed is not None:
+    df_fed.to_parquet(GLOBAL_PROCESSED_DIR / "df_fed.parquet")
+if df_indices is not None:
+    df_indices.to_parquet(GLOBAL_PROCESSED_DIR / "df_indices.parquet")
+
+# 2. Save "Version-Locked Snapshots" to the Local Directory for RLVR Training & Cache
+LOCAL_DATA_DIR.mkdir(parents=True, exist_ok=True)
+df_ohlcv.to_parquet(LOCAL_DATA_DIR / "df_ohlcv.parquet")
+if df_fed is not None:
+    df_fed.to_parquet(LOCAL_DATA_DIR / "df_fed.parquet")
+if df_indices is not None:
+    df_indices.to_parquet(LOCAL_DATA_DIR / "df_indices.parquet")
+
+# 3. Save matching features and macro files to the Local Directory
+features_df.to_parquet(LOCAL_DATA_DIR / "features_df.parquet")
+macro_df.to_parquet(LOCAL_DATA_DIR / "macro_df.parquet")
+
+print(f"All files exported to LOCAL_DATA_DIR: {LOCAL_DATA_DIR}.")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 9  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 6: Timing
+end_time = time.time()
+print(f"Time: {time.strftime('%H:%M:%S', time.gmtime(end_time - start_time))}")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 10  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+
+```
+
+##############################################################################
+## END OF: 00_RLVR_data_process_v7.ipynb
+##############################################################################
+
+
+##############################################################################
+## NOTEBOOK: 01_RLVR_Part1_AlphaCache_v5.ipynb
+## PATH: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\01_RLVR_Part1_AlphaCache_v5.ipynb
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 1  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### RUN IN TPU ~01:30:00 to process 1998-2026
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 2  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 0: Set Run Parameters
+import os
+
+os.environ["CACHE_LOOKBACK"] = "41"
+os.environ["CACHE_START_DATE"] = "1998-01-01"
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 3  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 1
+import time
+
+start_time = time.time()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 4  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 2: Setup
+import sys, os
+from pathlib import Path
+
+RUNNING_IN_COLAB = "google.colab" in sys.modules
+if RUNNING_IN_COLAB:
+    from google.colab import drive
+
+    drive.mount("/content/drive")
+    rl_root = Path(
+        "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2"
+    )
+else:
+    rl_root = Path("C:/Users/ping/Files_win10/python/py311/stocks/notebooks_RLVR_v2")
+
+if str(rl_root) not in sys.path:
+    sys.path.append(str(rl_root))
+os.chdir(rl_root)
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 5  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 3: Load Data & Initialize Cache
+from core.settings import TradingConfig, CacheConfig
+from core.paths import OUTPUT_DIR
+from data_pipeline.loader import load_processed_data
+from data_pipeline.utils import get_master_trading_calendar
+from data_pipeline.screener import UniverseScreener
+from data_pipeline.cache import CheckpointAlphaCache  # Extracted from original notebook
+
+print("Loading preprocessed data...")
+df_ohlcv, macro_df, features_df = load_processed_data()
+config = TradingConfig()
+
+# Reconstruct wide df_close dynamically and sync calendar
+df_close = df_ohlcv["Adj Close"].unstack(level=0).sort_index()
+trading_calendar = get_master_trading_calendar(df_ohlcv, config.calendar_ticker)
+
+screener = UniverseScreener(
+    df_close=df_close,
+    features_df=features_df,
+    macro_df=macro_df,
+    trading_calendar=trading_calendar,
+    config=config,
+)
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 6  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 4: Build Cache
+import os
+from pathlib import Path
+from core.paths import OUTPUT_DIR, LOCAL_DATA_DIR  # Added LOCAL_DATA_DIR
+
+# Create directories if they do not exist.
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+LOCAL_DATA_DIR.mkdir(parents=True, exist_ok=True)
+print(f"Successfully ensured output directory exists: {OUTPUT_DIR}")
+print(f"Successfully ensured local data directory exists: {LOCAL_DATA_DIR}")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 7  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 5: Build Cache
+cache_file_path = LOCAL_DATA_DIR / CacheConfig.get_filename()
+
+# Add a warning if the cache file already exists
+if cache_file_path.exists():
+    print(
+        f"Warning: Cache file already exists at {cache_file_path}. Resuming build process."
+    )
+
+cache = CheckpointAlphaCache(
+    screener=screener, config=config, lookbacks=[CacheConfig.LOOKBACK]
+)
+
+cache.build(
+    start_date=CacheConfig.START_DATE,
+    end_date=None,
+    checkpoint_path=cache_file_path,
+    save_every_n_days=2000,  # save every ~7 minutes
+)
+
+# print(cache.describe())
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 8  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 6: Timing
+end_time = time.time()
+print(f"Time: {time.strftime('%H:%M:%S', time.gmtime(end_time - start_time))}")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 9  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 7: Disconnect from TPU
+from google.colab import runtime
+
+# This will restart and unassign the current runtime,
+# effectively disconnecting from the T4 GPU.
+runtime.unassign()
+print("Runtime unassigned. This session has been disconnected.")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 10  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+
+```
+
+##############################################################################
+## END OF: 01_RLVR_Part1_AlphaCache_v5.ipynb
+##############################################################################
+
+
+##############################################################################
+## NOTEBOOK: 03_RLVR_Part3_Analysis_v4.ipynb
+## PATH: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\03_RLVR_Part3_Analysis_v4.ipynb
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 1  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+# RLVR Part 3 Analysis
+
+ Notebook converted to percent format with text-based data outputs for preservation.
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 2  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+results_save_filename = "oos_results_ent_0.01_pen_1.0_lr_0.0003.pkl"
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 3  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 1: Setup & Load the OOS Data
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 4  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+import pickle
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from pathlib import Path
+from plotly.subplots import make_subplots
+from IPython.display import display
+
+# Set your local PC path
+rl_root = Path(r"C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2")
+output_dir = rl_root / "output"
+
+pkl_path = output_dir / results_save_filename
+
+if not pkl_path.exists():
+    raise FileNotFoundError(f"Cannot find {pkl_path}. Ensure local directory synced!")
+
+# Load the OOS Results
+with open(pkl_path, "rb") as f:
+    results = pickle.load(f)
+
+# Convert the blotter (list of dicts) into a Pandas DataFrame
+blotter_df = pd.DataFrame(results["blotter"])
+
+# Format the date column properly using 'decision_date'
+blotter_df["date"] = pd.to_datetime(blotter_df["decision_date"])
+blotter_df = blotter_df.sort_values("date").reset_index(drop=True)
+
+print(f"✅ Data successfully loaded. Total days evaluated: {len(blotter_df)}")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 5  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 2: Champion Model & High-Level OOS Metrics
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 6  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+metadata = results.get("metadata", {})
+champion_file = metadata.get("CHAMPION_FILE", "Unknown (Check metadata logging)")
+best_seed = metadata.get("BEST_SEED", "Unknown")
+
+print(f"{'='*50}")
+print(f"🏆 CHAMPION MODEL LOADED: {champion_file}")
+print(f"   results_save_filename: {results_save_filename}")
+print(f"🌱 Winning Seed: {best_seed}")
+print(f"{'='*50}")
+
+print(f"\n📈 Out-Of-Sample Performance:")
+print(f"Total Cumulative Return : {results['total_return']*100:.2f}%")
+print(f"Sharpe Ratio (Ann)      : {results['sharpe_ratio']:.3f}")
+print(f"Total Trading Steps     : {results['steps']} days")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 7  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### Visualizing the Agent's Brain (Training Diagnostics)
+This shows how the Neural Network converged over time.
+* **Policy Loss**: How much the agent is changing its strategy (should stabilize).
+* **Value Loss**: How accurate the Critic is at predicting rewards (should drop).
+* **Entropy**: The "Curiosity" dial (gradually drops as the agent becomes confident).
+* **Avg Reward**: The raw alpha the agent achieved in the training environment.
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 8  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+training_history = results.get("training_history", [])
+metadata = results.get("metadata", {})
+
+if training_history:
+    history_df = pd.DataFrame(training_history)
+
+    # Let's print out the exact parameters used to train this model
+    print("=" * 50)
+    print("⚙️ HYPERPARAMETERS USED FOR THIS RUN:")
+    for k, v in metadata.items():
+        print(f" - {k.ljust(20)} : {v}")
+    print("=" * 50)
+
+    # Plotting
+    fig = make_subplots(
+        rows=2,
+        cols=2,
+        subplot_titles=(
+            "Total & Policy Loss",
+            "Value Loss (Prediction Error)",
+            "Entropy (Curiosity/Exploration)",
+            "Average Step Reward",
+        ),
+        shared_xaxes=True,
+        vertical_spacing=0.1,
+    )
+
+    # Top Left: Total Loss & Policy Loss
+    fig.add_trace(
+        go.Scatter(
+            x=history_df["epoch"],
+            y=history_df["total_loss"],
+            mode="lines",
+            name="Total Loss",
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=history_df["epoch"],
+            y=history_df["policy_loss"],
+            mode="lines",
+            name="Policy Loss",
+        ),
+        row=1,
+        col=1,
+    )
+
+    # Top Right: Value Loss (The Critic)
+    fig.add_trace(
+        go.Scatter(
+            x=history_df["epoch"],
+            y=history_df["value_loss"],
+            mode="lines",
+            name="Value Loss",
+            line=dict(color="orange"),
+        ),
+        row=1,
+        col=2,
+    )
+
+    # Bottom Left: Entropy
+    fig.add_trace(
+        go.Scatter(
+            x=history_df["epoch"],
+            y=history_df["entropy"],
+            mode="lines",
+            name="Entropy",
+            line=dict(color="green"),
+        ),
+        row=2,
+        col=1,
+    )
+
+    # Bottom Right: Avg Epoch Reward
+    fig.add_trace(
+        go.Scatter(
+            x=history_df["epoch"],
+            y=history_df["avg_reward"],
+            mode="lines",
+            name="Avg Reward",
+            line=dict(color="purple"),
+        ),
+        row=2,
+        col=2,
+    )
+
+    fig.update_layout(
+        height=700,
+        width=1000,
+        title_text="🧠 Agent Training Diagnostics (Winning Seed)",
+    )
+    fig.show()
+else:
+    print(
+        "⚠️ No training history found in this pickle file. (Was it trained using the old script?)"
+    )
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 9  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 3: Parsing the Action Dimensions (The Agent's Personality)
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 10  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Based on registry.py * 2 + Rank Offset + Rank Width (12*2 + 1 + 1 = 14 total dims)
+action_names = [
+    "Log Price Gain",
+    "Sharpe (TRP)",
+    "Momentum (21d)",
+    "Info Ratio (63d)",
+    "Oversold (-RSI)",
+    "Dip Buyer (-dd_21)",
+    "Range Position (20d)",
+    "Return Autocorr (15d)",
+    "Low Volatility (-ATRP)",
+    "Slope_P_5_Z",
+    "Slope_V_5_Z",
+    "Convexity",
+    "Rank Offset (Start Pos)",
+    "Rank Width (0 = Cash)",
+]
+
+# Extract raw actions using the correct column name 'raw_actions'
+actions = np.vstack(blotter_df["raw_actions"].values)
+
+# Add them as individual columns for easy plotting
+for i, name in enumerate(action_names):
+    if i < actions.shape[1]:
+        blotter_df[name] = actions[:, i]
+
+print("✅ Agent actions successfully unpacked into readable strategies.")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 11  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 4: Visualizing the Agent's "Personality" (Action Distribution)
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 12  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Calculate the mean weight for each strategy across the entire OOS period
+mean_actions = blotter_df[action_names].mean().reset_index()
+mean_actions.columns = ["Strategy", "Average Weight"]
+mean_actions = mean_actions.sort_values("Average Weight", ascending=True)
+
+fig = px.bar(
+    mean_actions,
+    x="Average Weight",
+    y="Strategy",
+    orientation="h",
+    title="🤖 Agent 'Personality' - Average Strategy Weights (OOS)",
+    color="Average Weight",
+    color_continuous_scale="Viridis",
+)
+fig.update_layout(height=600, width=900)
+fig.show()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 13  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 5: Equity Curve, Alpha Curve, & Drawdown Chart vs Benchmark
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 14  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+hp = results.get("metadata", {}).get("HOLDING_PERIOD", 5)
+blotter_df["Mkt_Impact"] = blotter_df["mkt_return"] / hp
+blotter_df["Benchmark_Equity"] = (1 + blotter_df["Mkt_Impact"]).cumprod()
+
+# Calculate Agent Drawdown
+blotter_df["Peak"] = blotter_df["agent_equity"].cummax()
+blotter_df["Drawdown"] = (blotter_df["agent_equity"] / blotter_df["Peak"]) - 1.0
+
+# Create Subplots (3 Rows)
+fig = make_subplots(
+    rows=3,
+    cols=1,
+    shared_xaxes=True,
+    vertical_spacing=0.05,
+    row_heights=[0.5, 0.25, 0.25],
+    subplot_titles=(
+        "📈 OOS Equity Curve (Agent vs SPY)",
+        "🔥 Cumulative Alpha Equity (Outperformance)",
+        "📉 Agent Drawdown Profile",
+    ),
+)
+
+# Top Pane: Agent Equity
+fig.add_trace(
+    go.Scatter(
+        x=blotter_df["date"],
+        y=blotter_df["agent_equity"],
+        mode="lines",
+        name="Agent Strategy",
+        line=dict(color="blue", width=2),
+    ),
+    row=1,
+    col=1,
+)
+
+# Top Pane: Benchmark Equity
+fig.add_trace(
+    go.Scatter(
+        x=blotter_df["date"],
+        y=blotter_df["Benchmark_Equity"],
+        mode="lines",
+        name="Benchmark (SPY)",
+        line=dict(color="gray", width=2, dash="dash"),
+    ),
+    row=1,
+    col=1,
+)
+
+# Middle Pane: Alpha Equity
+fig.add_trace(
+    go.Scatter(
+        x=blotter_df["date"],
+        y=blotter_df["alpha_equity"],
+        mode="lines",
+        name="Alpha Equity",
+        line=dict(color="purple", width=2),
+    ),
+    row=2,
+    col=1,
+)
+fig.add_hline(y=1.0, line_dash="dot", line_color="black", row=2, col=1)
+
+# Bottom Pane: Drawdown Area
+fig.add_trace(
+    go.Scatter(
+        x=blotter_df["date"],
+        y=blotter_df["Drawdown"],
+        mode="lines",
+        fill="tozeroy",
+        name="Drawdown",
+        line=dict(color="red", width=1),
+    ),
+    row=3,
+    col=1,
+)
+
+fig.update_layout(
+    height=900,
+    width=1000,
+    hovermode="x unified",
+    title_text="Performance & Risk Profiling (Slippage Applied)",
+)
+fig.update_yaxes(title_text="Multiplier", row=1, col=1)
+fig.update_yaxes(title_text="Alpha Multiplier", row=2, col=1)
+fig.update_yaxes(title_text="Drawdown %", tickformat=".1%", row=3, col=1)
+fig.show()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 15  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 6: DataFrame Info Check
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 16  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+blotter_df.info()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 17  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+print(blotter_df.head())
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 18  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 7: Sample Selected Tickers
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 19  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Print chosen tickers along with their corresponding dates (first and last rows)
+first_idx = 0
+last_idx = -1
+
+first_date = blotter_df["date"].iloc[first_idx]
+last_date = blotter_df["date"].iloc[last_idx]
+
+print(f"Sample chosen tickers from the first row ({first_date.strftime('%Y-%m-%d')}):")
+print(blotter_df["chosen_tickers"].iloc[first_idx])
+
+print(f"\nSample chosen tickers from the last row ({last_date.strftime('%Y-%m-%d')}):")
+print(blotter_df["chosen_tickers"].iloc[last_idx])
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 20  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 8: Pandas Display Settings
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 21  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Force Pandas to display all columns without truncating in text representation
+pd.set_option("display.max_columns", None)
+pd.set_option("display.width", 2000)
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 22  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 9: Rank Start, Offset, and Universe Tickers
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 23  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+sample_idx = 0
+row = blotter_df.iloc[sample_idx]
+
+u_size = row.get("universe_size", "N/A")
+r_offset = row.get("decoded_offset", "N/A")
+r_width = row.get("decoded_width", "N/A")
+selected = row.get("chosen_tickers", [])
+num_selected = len(selected)
+
+print(f"=== Universe Selection on {row['date'].strftime('%Y-%m-%d')} ===")
+print(f"Total Available Universe (universe_size) : {u_size}")
+print(f"Calculated Rank Start (offset)           : {r_offset}")
+print(f"Calculated Rank Width (width)            : {r_width}")
+print(f"Final Tickers Bought                     : {num_selected}")
+print(f"Sample Tickers Bought: {selected[:10]} ...")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 24  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 10: Top 5 Best Days & Crash Analysis
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 25  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+print("🌟 TOP 5 HIGHEST RETURN DAYS (Net of Slippage) 🌟")
+
+top_5 = blotter_df.nlargest(5, "actual_return")[
+    ["date", "actual_return", "alpha", "agent_equity"] + action_names[:3]
+].copy()
+
+# Format numeric columns for output readability
+top_5["date"] = top_5["date"].dt.strftime("%Y-%m-%d")
+top_5["actual_return"] = top_5["actual_return"].apply(lambda x: f"{x:.4%}")
+top_5["alpha"] = top_5["alpha"].apply(lambda x: f"{x:.4%}")
+top_5["agent_equity"] = top_5["agent_equity"].apply(lambda x: f"{x:.3f}")
+for col in action_names[:3]:
+    top_5[col] = top_5[col].apply(lambda x: f"{x:.4f}")
+
+# Output as a clean text table
+print(top_5.to_string(index=False))
+
+print("\n" + "=" * 50)
+print("🚨 CRASH ANALYSIS (Worst Single-Day Return) 🚨")
+worst_idx = blotter_df["actual_return"].idxmin()
+worst_day = blotter_df.iloc[worst_idx]
+day_before = blotter_df.iloc[max(0, worst_idx - 1)]
+
+print(
+    f"Worst Day: {worst_day['date'].strftime('%Y-%m-%d')} | "
+    f"Return: {worst_day['actual_return']*100:.2f}% | "
+    f"Portfolio Value: {worst_day['agent_equity']:.3f}"
+)
+print("-" * 50)
+print("🔍 What was the agent's strategy allocation going into this crash?")
+
+crash_weights = pd.DataFrame(
+    {
+        "Strategy": action_names,
+        "Weight on Worst Day": worst_day[action_names].values,
+        "Weight Day Prior": day_before[action_names].values,
+    }
+).copy()
+
+# Formatting weights for display
+crash_weights_formatted = crash_weights.copy()
+crash_weights_formatted["Weight on Worst Day"] = crash_weights_formatted[
+    "Weight on Worst Day"
+].apply(lambda x: f"{x:.6f}")
+crash_weights_formatted["Weight Day Prior"] = crash_weights_formatted[
+    "Weight Day Prior"
+].apply(lambda x: f"{x:.6f}")
+
+print("\nStrategy Allocation Details (Pre-and-Post Crash):")
+print(crash_weights_formatted.to_string(index=False))
+
+fig = px.line_polar(
+    crash_weights,
+    r="Weight on Worst Day",
+    theta="Strategy",
+    line_close=True,
+    title=f"Radar: Agent's Brain on {worst_day['date'].strftime('%Y-%m-%d')} (Crash Day)",
+)
+fig.update_traces(fill="toself", line_color="red")
+fig.show()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 26  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 11: Observation Space Sanity Check (Hunting for Extremes)
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 27  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+print("🔍 EXTRACTING 33-DIM OBSERVATION SPACE WITH DESCRIPTIVE LABELS...")
+
+# 1. Extract raw observation arrays
+obs_raw = blotter_df["observation"].values
+obs_array = np.vstack([np.array(x).flatten() for x in obs_raw])
+num_dims = obs_array.shape[1]
+
+# 2. Re-establish exact feature lists matching Phase 3 logic
+cross_sectional_features = [
+    "Log Price Gain (Z)",
+    "Sharpe (TRP) (S)",
+    "Momentum (21d) (S)",
+    "Info Ratio (63d) (S)",
+    "Oversold (-RSI) (S)",
+    "Dip Buyer (-dd_21) (S)",
+    "Range Position (20d) (S)",
+    "Return Autocorr (15d) (S)",
+    "Low Volatility (-ATRP) (Z)",
+    "Slope_P_5_Z (Z)",
+    "Slope_V_5_Z (Z)",
+    "Convexity (Z)",
+]
+
+macro_features = [
+    "Mkt_Ret",
+    "Mkt_Ret_Z",
+    "Macro_Trend",
+    "Macro_Trend_Z",
+    "High_Yield_Spread_Z",
+    "Yield_Curve_10Y2Y_Z",
+    "Macro_Trend_Vel_Z",
+    "Macro_Trend_Mom",
+    "Macro_Vix_Z",
+    "Macro_Vix_Ratio",
+    "Mkt_Vol_63d_Z",
+]
+
+# Generate the full list of 33 mapped column names
+mapped_names = (
+    [f"Mean: {f}" for f in cross_sectional_features]
+    + [f"Std: {f}" for f in cross_sectional_features]
+    + macro_features
+)
+
+# 3. Create 'obs_df' globally with descriptive column headers & dates
+obs_df = pd.DataFrame(obs_array, columns=mapped_names, index=blotter_df["date"])
+
+# 4. Compute summary statistics
+desc_stats = pd.DataFrame(obs_array).describe().T[["mean", "std", "min", "max"]]
+
+# 5. Assemble mapping table
+mapping_table = pd.DataFrame(
+    {
+        "Dim Index": [f"Dim_{i:02d}" for i in range(num_dims)],
+        "Feature Name": mapped_names,
+        "Mean": desc_stats["mean"].values,
+        "Std Dev": desc_stats["std"].values,
+        "Min": desc_stats["min"].values,
+        "Max": desc_stats["max"].values,
+    }
+)
+
+
+# Formatting helper to append [CLIP] to values near the +/- 4.0 threshold
+def format_with_clip(val):
+    if pd.isna(val):
+        return ""
+    formatted = f"{val:.5f}"
+    if abs(abs(val) - 4.0) < 1e-5:
+        return f"{formatted} [CLIP]"
+    return formatted
+
+
+# Apply formatting for console print output
+mapping_table_print = mapping_table.copy()
+mapping_table_print["Mean"] = mapping_table_print["Mean"].apply(lambda x: f"{x:.5f}")
+mapping_table_print["Std Dev"] = mapping_table_print["Std Dev"].apply(
+    lambda x: f"{x:.5f}"
+)
+mapping_table_print["Min"] = mapping_table_print["Min"].apply(format_with_clip)
+mapping_table_print["Max"] = mapping_table_print["Max"].apply(format_with_clip)
+
+print("\n--- Mapped Observation Space Statistics ---")
+print(mapping_table_print.to_string(index=False))
+
+print("\n📈 GENERATING BOX PLOT OF OBSERVATION DIMENSIONS...")
+fig = go.Figure()
+
+for col in obs_df.columns:
+    fig.add_trace(
+        go.Box(
+            y=obs_df[col],
+            name=col,
+            boxpoints="outliers",
+            jitter=0.5,
+            marker=dict(size=2),
+        )
+    )
+
+fig.update_layout(
+    title="🤖 Agent Observation Space Distribution (Check for wild outliers)",
+    yaxis_title="Value",
+    xaxis_title="Observation Dimension",
+    height=600,
+    width=1000,
+    showlegend=False,
+    shapes=[
+        dict(
+            type="line",
+            y0=3,
+            y1=3,
+            x0=-0.5,
+            x1=num_dims - 0.5,
+            line=dict(color="orange", width=1, dash="dash"),
+        ),
+        dict(
+            type="line",
+            y0=-3,
+            y1=-3,
+            x0=-0.5,
+            x1=num_dims - 0.5,
+            line=dict(color="orange", width=1, dash="dash"),
+        ),
+        dict(
+            type="line",
+            y0=4.0,
+            y1=4.0,
+            x0=-0.5,
+            x1=num_dims - 0.5,
+            line=dict(color="red", width=1, dash="dash"),
+        ),
+        dict(
+            type="line",
+            y0=-4.0,
+            y1=-4.0,
+            x0=-0.5,
+            x1=num_dims - 0.5,
+            line=dict(color="red", width=1, dash="dash"),
+        ),
+    ],
+)
+fig.show()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 28  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 12: Map actual names to the dimensions
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 29  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Build the 33 column names
+mapped_cols = (
+    [f"Mean: {f}" for f in cross_sectional_features]
+    + [f"Std: {f}" for f in cross_sectional_features]
+    + macro_features
+)
+
+# Rename the dataframe columns
+obs_df.columns = mapped_cols
+
+print("🚨 THE SUSPECT DIMENSIONS 🚨")
+obs_desc = obs_df.describe().T[["min", "max", "mean", "std"]].copy()
+obs_desc_print = obs_desc.reset_index().rename(columns={"index": "Feature"})
+
+# Apply standard formatting and clip visualization
+obs_desc_print["mean"] = obs_desc_print["mean"].apply(lambda x: f"{x:.5f}")
+obs_desc_print["std"] = obs_desc_print["std"].apply(lambda x: f"{x:.5f}")
+obs_desc_print["min"] = obs_desc_print["min"].apply(format_with_clip)
+obs_desc_print["max"] = obs_desc_print["max"].apply(format_with_clip)
+
+print(obs_desc_print.to_string(index=False))
+```
+
+##############################################################################
+## END OF: 03_RLVR_Part3_Analysis_v4.ipynb
+##############################################################################
+
+
+==============================================================================
+# END OF MERGED FILE
+==============================================================================

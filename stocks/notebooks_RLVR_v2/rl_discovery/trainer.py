@@ -112,6 +112,28 @@ class PPOTrainer:
         self.vf_coef = vf_coef  # Critic loss scaling
         self.max_grad_norm = max_grad_norm
 
+    def update_lr(self, current_epoch: int, total_epochs: int):
+        """
+        Linearly decays the learning rate from its initial value down to 0
+        over the course of training.
+        """
+        # Get initial LR from optimizer param groups
+        initial_lr = (
+            self.optimizer.param_groups[0]["initial_lr"]
+            if "initial_lr" in self.optimizer.param_groups[0]
+            else self.optimizer.param_groups[0]["lr"]
+        )
+
+        # Save it if not already saved
+        if "initial_lr" not in self.optimizer.param_groups[0]:
+            self.optimizer.param_groups[0]["initial_lr"] = initial_lr
+
+        fraction = 1.0 - (current_epoch - 1.0) / total_epochs
+        new_lr = initial_lr * max(0.0, fraction)
+
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = new_lr
+
     def update(
         self, buffer: RolloutBuffer, update_epochs: int = 4, mini_batch_size: int = 64
     ) -> dict:

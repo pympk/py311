@@ -24,6 +24,8 @@ lumen/
 lumen_/
 trash*
 
+colab/archive
+
 # Ignore picks directory (add this if missing)
 stocks/notebooks_mean_reversion/executed/
 stocks/notebooks_mean_reversion/archive/

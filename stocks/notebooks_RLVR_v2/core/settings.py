@@ -10,7 +10,7 @@ class CacheConfig:
     and feature lookback window.
     """
 
-    LOOKBACK: int = int(os.getenv("CACHE_LOOKBACK", 189))
+    LOOKBACK: int = int(os.getenv("CACHE_LOOKBACK", 41))
     START_DATE: str = os.getenv("CACHE_START_DATE", "1998-01-01")
     END_DATE: str = os.getenv("CACHE_END_DATE", "2030-01-01")
 
@@ -77,7 +77,13 @@ class TradingConfig:
     strategy_params: StrategyParams = field(default_factory=StrategyParams)
     thresholds: QualityThresholds = field(default_factory=QualityThresholds)
 
-    # TRAINING PARAMETERS
+    # TRAINING & SIMULATION PARAMETERS
     holding_period: int = 5
     rank_max_offset: int = 500
     rank_max_width: int = 10
+
+    # NEW: INSTITUTIONAL RL PARAMETERS
+    slippage_rate: float = 0.0010  # 10 bps round-trip slippage
+
+    # downside_penalty: float = 2.0  # 2x penalty on underperformance (Alpha < 0)
+    downside_penalty: float = 1.0  # 1x penalty on underperformance (Alpha < 0)

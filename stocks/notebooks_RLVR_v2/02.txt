@@ -1,0 +1,622 @@
+==============================================================================
+# MERGED NOTEBOOKS CONVERSION
+# Total notebooks: 1
+# ==============================================================================
+
+##############################################################################
+## NOTEBOOK: 02_RLVR_Part2_Training_v19a.ipynb
+## PATH: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\02_RLVR_Part2_Training_v19a.ipynb
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 1  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### RUN in TPU ~00:22:47
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 2  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 0: Set Run Parameters
+import os
+
+os.environ["CACHE_LOOKBACK"] = "41"
+os.environ["CACHE_START_DATE"] = "1998-01-01"
+# Set to "True" to force identical splits regardless of size, or "False" to split dynamically
+# os.environ["DEBUG_MODE"] = "False"
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 3  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 1
+import time
+
+start_time = time.time()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 4  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 2: Setup
+import sys, os
+from pathlib import Path
+
+RUNNING_IN_COLAB = "google.colab" in sys.modules
+if RUNNING_IN_COLAB:
+    from google.colab import drive
+
+    drive.mount("/content/drive")
+    rl_root = Path(
+        "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2"
+    )
+else:
+    rl_root = Path("C:/Users/ping/Files_win10/python/py311/stocks/notebooks_RLVR_v2")
+
+if str(rl_root) not in sys.path:
+    sys.path.append(str(rl_root))
+os.chdir(rl_root)
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 5  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 3: Imports
+import torch
+import numpy as np
+import pandas as pd
+from core.settings import TradingConfig, CacheConfig
+from core.paths import OUTPUT_DIR, LOCAL_DATA_DIR
+from data_pipeline.loader import load_processed_data
+from data_pipeline.utils import get_master_trading_calendar, get_chronological_splits
+from data_pipeline.screener import UniverseScreener
+from rl_discovery.oracle import RLOracle
+from rl_discovery.environment import DiscoveryEnv
+from rl_discovery.adapter import RLVRGymEnv
+from rl_discovery.agent import AbsoluteZeroAgent
+from rl_discovery.trainer import RolloutBuffer, PPOTrainer
+from rl_discovery.validator import AgentEvaluator
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 6  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 4: Load Data & Environment Splits
+print("Loading preprocessed data & AlphaCache...")
+df_ohlcv, macro_df, features_df = load_processed_data()
+config = TradingConfig()
+df_close = df_ohlcv["Adj Close"].unstack(level=0).sort_index()
+trading_calendar = get_master_trading_calendar(df_ohlcv, config.calendar_ticker)
+
+screener = UniverseScreener(
+    df_close=df_close,
+    features_df=features_df,
+    macro_df=macro_df,
+    trading_calendar=trading_calendar,
+    config=config,
+)
+
+cache_file_path = LOCAL_DATA_DIR / CacheConfig.get_filename()
+print(f"cache_file_path:\n{cache_file_path}\n")
+feature_cube = pd.read_parquet(cache_file_path)
+
+# Apply lookback prefix to match Cache column names
+lookback_prefix = f"{CacheConfig.LOOKBACK}d_"
+p_col = f"{lookback_prefix}Slope_P_5_Z"
+v_col = f"{lookback_prefix}Slope_V_5_Z"
+print(feature_cube[[p_col, v_col]].describe())
+
+oracle = RLOracle(screener, config)
+oracle.precompute_reward_matrix(holding_period=config.holding_period)
+
+# Generate Splits via the updated utility
+cal_train, cal_val, cal_test = get_chronological_splits(
+    trading_calendar=trading_calendar,
+    feature_cube_dates=feature_cube.index.get_level_values("Date").unique(),
+    holding_period=config.holding_period,
+    min_dates_threshold=100,  # Adjust this threshold based on your minimum desired sequence length
+)
+
+# -------------------------------------------------------------
+# FIXED ENVIRONMENT INITIALIZATIONS (Passing macro_df & config)
+# -------------------------------------------------------------
+
+env_train = DiscoveryEnv(
+    feature_cube=feature_cube,
+    reward_matrix=oracle.reward_matrix,
+    calendar=cal_train,
+    macro_df=macro_df,
+    config=config,
+)
+gym_train = RLVRGymEnv(env_train, macro_df)
+
+env_val = DiscoveryEnv(
+    feature_cube=feature_cube,
+    reward_matrix=oracle.reward_matrix,
+    calendar=cal_val,
+    macro_df=macro_df,
+    config=config,
+)
+gym_val = RLVRGymEnv(env_val, macro_df)
+
+env_test = DiscoveryEnv(
+    feature_cube=feature_cube,
+    reward_matrix=oracle.reward_matrix,
+    calendar=cal_test,
+    macro_df=macro_df,
+    config=config,
+)
+gym_test = RLVRGymEnv(env_test, macro_df)
+
+# ---> NEW: Freeze the scaler for Validation and Test environments # <---
+gym_val.is_training = False
+gym_test.is_training = False
+# <---
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 7  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+print("Parquet columns count:", len(feature_cube.columns))
+print("Parquet columns:", list(feature_cube.columns))
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 8  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 5
+# Calculate the duration in calendar years
+train_years = (cal_train.max() - cal_train.min()).days / 365.25
+val_years = (cal_val.max() - cal_val.min()).days / 365.25
+test_years = (cal_test.max() - cal_test.min()).days / 365.25
+
+print(f"Cal Train Start Date: {cal_train.min()}")
+print(f"Cal Train End Date: {cal_train.max()}")
+print(f"Cal Train Duration: {train_years:.2f} years")
+print(f"Cal Train Trading Days: {len(cal_train)}\n")
+
+print(f"Cal Val Start Date: {cal_val.min()}")
+print(f"Cal Val End Date: {cal_val.max()}")
+print(f"Cal Val Duration: {val_years:.2f} years")
+print(f"Cal Val Trading Days: {len(cal_val)}\n")
+
+print(f"Cal Test Start Date: {cal_test.min()}")
+print(f"Cal Test End Date: {cal_test.max()}")
+print(f"Cal Test Duration: {test_years:.2f} years")
+print(f"Cal Test Trading Days: {len(cal_test)}")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 9  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 6: Grid Setup & Environment Factory
+import copy
+from sklearn.model_selection import ParameterGrid
+
+# ============================================================
+# V14 PARAMETERS, commented out linear decay lr rate
+# ************************************************************
+# ==================================================
+# 🏆 CHAMPION MODEL LOADED: model_seed_987654_ep_16_sh_1.60.pt
+#    results_save_filename: oos_results_ent_0.01_pen_1.0_lr_0.0003.pkl
+# 🌱 Winning Seed: 987654
+# ==================================================
+
+# 📈 Out-Of-Sample Performance:
+# Total Cumulative Return : 57.89%
+# Sharpe Ratio (Ann)      : 1.043
+# Total Trading Steps     : 1066 days
+# ************************************************************
+# 1. Define the Sweep Grid (4 Combinations total)
+param_grid = {
+    # ==================
+    # "ENT_COEF": [0.001, 0.01],
+    # "downside_penalty": [1.0, 2.0],
+    "ENT_COEF": [0.01],
+    "downside_penalty": [1.0],
+    "LR": [3e-4],
+    # ==================
+    # Fixed parameters for this run
+    "NUM_EPOCHS": [50],
+    "NUM_STEPS": [1024],
+    "MINI_BATCH_SIZE": [128],
+    "EVAL_FREQ": [2],
+    "PATIENCE": [10],
+    "WARMUP_EPOCHS": [10],
+    "SEEDS": [[42, 12345, 987654]],  # 3 Seeds for faster grid testing
+    # "SEEDS": [[987654, 12345, 42]],  # 3 Seeds for faster grid testing
+}
+
+# # Generate a fast .pkl for quick test
+# param_grid = {
+#     "ENT_COEF": [0.01],
+#     "downside_penalty": [1.0],
+#     "LR": [3e-4],
+#     "NUM_EPOCHS": [5],  # Extremely short
+#     "NUM_STEPS": [1024],
+#     "MINI_BATCH_SIZE": [128],
+#     "EVAL_FREQ": [2],
+#     "PATIENCE": [10],
+#     "WARMUP_EPOCHS": [0],
+#     "SEEDS": [[42]],  # Just one seed
+# }
+
+
+grid = list(ParameterGrid(param_grid))
+print(f"Total Grid Combinations to test: {len(grid)}")
+
+
+def create_fresh_environments(
+    base_config, grid_params, df_close, features_df, macro_df, trading_calendar
+):
+    """
+    Creates fresh environments and oracles.
+    Crucial for applying new grid params (like downside_penalty which alters the Oracle reward matrix).
+    """
+    # Create a deep copy of config and update with grid params
+    run_config = copy.deepcopy(base_config)
+
+    if "downside_penalty" in grid_params:
+        run_config.downside_penalty = grid_params["downside_penalty"]
+    if "rank_max_offset" in grid_params:
+        run_config.rank_max_offset = grid_params["rank_max_offset"]
+
+    # Re-init Screener and Oracle to generate the new reward matrix
+    screener = UniverseScreener(
+        df_close=df_close,
+        features_df=features_df,
+        macro_df=macro_df,
+        trading_calendar=trading_calendar,
+        config=run_config,
+    )
+    oracle = RLOracle(screener, run_config)
+    oracle.precompute_reward_matrix(holding_period=run_config.holding_period)
+
+    # Init Envs
+    env_train = DiscoveryEnv(
+        feature_cube, oracle.reward_matrix, cal_train, macro_df, run_config
+    )
+    gym_train = RLVRGymEnv(env_train, macro_df)
+
+    env_val = DiscoveryEnv(
+        feature_cube, oracle.reward_matrix, cal_val, macro_df, run_config
+    )
+    gym_val = RLVRGymEnv(env_val, macro_df)
+    gym_val.is_training = False
+
+    env_test = DiscoveryEnv(
+        feature_cube, oracle.reward_matrix, cal_test, macro_df, run_config
+    )
+    gym_test = RLVRGymEnv(env_test, macro_df)
+    gym_test.is_training = False
+
+    return gym_train, gym_val, gym_test, run_config
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 10  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 7: Training Function
+import random
+from rl_discovery.adapter import (
+    ObservationScaler,
+)  # <--- NEW: Import the scaler directly
+
+# ---> RESTORED: Define device and set_seed <---
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+# ----------------------------------------------
+
+
+def train_agent_for_grid(grid_params, gym_train, gym_val, checkpoint_dir):
+    """
+    Trains multiple seeds for a specific set of hyperparameters.
+    Includes Burn-In to prevent early stopping on lucky initializations.
+    """
+    seeds = grid_params["SEEDS"]
+    num_epochs = grid_params["NUM_EPOCHS"]
+    warmup_epochs = grid_params["WARMUP_EPOCHS"]
+
+    grid_best_sharpe = -np.inf
+    grid_best_model_path = None
+    grid_best_seed = None
+    grid_best_history = []
+
+    # Auto-detect dims
+    obs_dim = gym_train.observation_space.shape[0]
+    action_dim = gym_train.action_space.shape[0]
+
+    for seed in seeds:
+        print(f"\n   -> 🚀 SEED: {seed}")
+        set_seed(seed)
+
+        # ---> NEW: Wipe the Scaler clean for the new seed! <---
+        gym_train.scaler = ObservationScaler(shape=(obs_dim,))
+
+        # Re-instantiate agent and buffer
+        agent = AbsoluteZeroAgent(obs_dim=obs_dim, action_dim=action_dim).to(device)
+        trainer = PPOTrainer(
+            agent,
+            lr=grid_params["LR"],  # <--- UPDATED TO USE GRID PARAM
+            clip_coef=0.2,
+            ent_coef=grid_params["ENT_COEF"],
+        )
+
+        buffer = RolloutBuffer(
+            num_steps=grid_params["NUM_STEPS"],
+            obs_dim=obs_dim,
+            action_dim=action_dim,
+            device=device,
+        )
+
+        seed_best_val_sharpe = -np.inf
+        patience_counter = 0
+        seed_history = []
+
+        for epoch in range(num_epochs):
+            obs, _ = gym_train.reset()
+            epoch_rewards = []
+
+            for step in range(grid_params["NUM_STEPS"]):
+                obs_tensor = torch.tensor(obs, dtype=torch.float32).to(device)
+                with torch.no_grad():
+                    action, logprob, _, value = agent.get_action_and_value(
+                        obs_tensor.unsqueeze(0)
+                    )
+
+                raw_action = action.cpu().numpy()[0]
+                next_obs, reward, done, _, info = gym_train.step(raw_action)
+
+                buffer.add(obs, action[0], logprob[0], reward, value[0], done)
+                epoch_rewards.append(reward)
+
+                obs = next_obs
+                if done:
+                    obs, _ = gym_train.reset()
+
+            # PPO Update
+            obs_tensor = torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(device)
+            with torch.no_grad():
+                next_value = agent.get_value(obs_tensor).flatten()
+
+            buffer.compute_advantages(next_value, next_done=done)
+
+            # ###############
+            # ###############
+            # # Linearly decays the learning rate from its initial value down to 0
+            # trainer.update_lr(epoch + 1, num_epochs)
+            # ###############
+            # ###############
+
+            diagnostics = trainer.update(
+                buffer, update_epochs=4, mini_batch_size=grid_params["MINI_BATCH_SIZE"]
+            )
+            buffer.step = 0
+
+            diagnostics["epoch"] = epoch + 1
+            diagnostics["avg_reward"] = float(np.mean(epoch_rewards))
+            seed_history.append(diagnostics)
+
+            # Validation Step
+            if (epoch + 1) % grid_params["EVAL_FREQ"] == 0:
+                gym_val.scaler.load_state(gym_train.scaler)
+                val_results = AgentEvaluator.evaluate(agent, gym_val, device)
+                val_sharpe = val_results["sharpe_ratio"]
+
+                # ---> NEW: BURN-IN LOGIC <---
+                is_warmup = (epoch + 1) <= warmup_epochs
+                status_icon = "🔥 [WARMUP]" if is_warmup else ""
+
+                print(
+                    f"      Ep {epoch+1:03d} | Rew: {diagnostics['avg_reward']:.4f} | Loss: {diagnostics['total_loss']:.4f} | Val Sharpe: {val_sharpe:.3f} {status_icon}"
+                )
+
+                if not is_warmup:
+                    if val_sharpe > seed_best_val_sharpe:
+                        seed_best_val_sharpe = val_sharpe
+                        patience_counter = 0
+
+                        dynamic_name = (
+                            f"model_seed_{seed}_ep_{epoch+1}_sh_{val_sharpe:.2f}.pt"
+                        )
+                        seed_best_path = checkpoint_dir / dynamic_name
+                        torch.save(agent.state_dict(), str(seed_best_path))
+                        print(f"         🟢 NEW BEST! Saved.")
+
+                        # Track best for this grid combo
+                        if val_sharpe > grid_best_sharpe:
+                            grid_best_sharpe = val_sharpe
+                            grid_best_model_path = seed_best_path
+                            grid_best_seed = seed
+                            grid_best_history = list(seed_history)
+                    else:
+                        patience_counter += 1
+                        print(
+                            f"         🔴 No improvement. Patience: {patience_counter}/{grid_params['PATIENCE']}"
+                        )
+
+                    if patience_counter >= grid_params["PATIENCE"]:
+                        print(f"      🛑 EARLY STOPPING triggered for Seed {seed}")
+                        break
+
+    return grid_best_model_path, grid_best_sharpe, grid_best_seed, grid_best_history
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 11  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 8: Grid Execution & OOS Evaluation
+import pickle
+import json
+
+checkpoint_dir = OUTPUT_DIR / "model_checkpoints"
+checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+global_ultimate_sharpe = -np.inf
+global_ultimate_pkl = None
+
+print("\n" + "=" * 60)
+print("🏆 STARTING PHASE 3: AUTOMATED HYPERPARAMETER SWEEP 🏆")
+print("=" * 60)
+
+for idx, params in enumerate(grid):
+    # ---> NEW: RESUME LOGIC <---
+    # Check if this exact combination already finished in a previous run
+    dynamic_pkl_name = f"oos_results_ent_{params['ENT_COEF']}_pen_{params['downside_penalty']}_lr_{params['LR']}_ep_{params['NUM_EPOCHS']}.pkl"
+    results_save_path = OUTPUT_DIR / dynamic_pkl_name
+
+    if results_save_path.exists():
+        print(
+            f"\n✅ [SKIPPING] GRID COMBO {idx+1}/{len(grid)} - Already completed: {dynamic_pkl_name}"
+        )
+
+        # Load the existing file to see if it's the global winner so far
+        with open(results_save_path, "rb") as f:
+            prev_results = pickle.load(f)
+            if prev_results["sharpe_ratio"] > global_ultimate_sharpe:
+                global_ultimate_sharpe = prev_results["sharpe_ratio"]
+                global_ultimate_pkl = dynamic_pkl_name
+        continue
+    # ---------------------------
+    print(f"\n\n{'='*50}")
+    print(f"🔧 GRID COMBO {idx+1}/{len(grid)}")
+    print(json.dumps({k: v for k, v in params.items() if k != "SEEDS"}, indent=2))
+    print(f"{'='*50}")
+
+    # 1. Create fresh environments (Applies new Grid constraints like downside_penalty)
+    gym_train, gym_val, gym_test, run_config = create_fresh_environments(
+        config, params, df_close, features_df, macro_df, trading_calendar
+    )
+
+    # 2. Train the Agent across seeds (Scaler is reset internally per seed)
+    best_model_path, best_sharpe, best_seed, best_history = train_agent_for_grid(
+        params, gym_train, gym_val, checkpoint_dir
+    )
+
+    if best_model_path is None:
+        print(
+            "⚠️ No model survived the warmup period with positive results. Skipping OOS."
+        )
+        continue
+
+    print(
+        f"\n⭐ [GRID {idx+1} WINNER] Seed: {best_seed} | Val Sharpe: {best_sharpe:.3f}"
+    )
+
+    # 3. Walk-Forward Deterministic Evaluation (OOS)
+    print("   -> Executing Walk-Forward OOS Evaluation...")
+    obs_dim = gym_train.observation_space.shape[0]
+    action_dim = gym_train.action_space.shape[0]
+
+    champion_agent = AbsoluteZeroAgent(obs_dim=obs_dim, action_dim=action_dim).to(
+        device
+    )
+    champion_agent.load_state_dict(torch.load(best_model_path))
+
+    # Sync scaler to test env
+    gym_test.scaler.load_state(gym_train.scaler)
+
+    metadata_payload = params.copy()
+    metadata_payload["BEST_SEED"] = best_seed
+    metadata_payload["CHAMPION_FILE"] = best_model_path.name
+
+    results = AgentEvaluator.evaluate(
+        champion_agent, gym_test, device, detailed_log=True, metadata=metadata_payload
+    )
+    results["metadata"] = metadata_payload
+    results["training_history"] = best_history
+
+    # 4. Save results dynamically
+    dynamic_pkl_name = f"oos_results_ent_{params['ENT_COEF']}_pen_{params['downside_penalty']}_lr_{params['LR']}.pkl"
+    results_save_path = OUTPUT_DIR / dynamic_pkl_name
+
+    with open(results_save_path, "wb") as f:
+        pickle.dump(results, f)
+
+    print(
+        f"   -> [OOS RESULTS] Return: {results['total_return']*100:.2f}% | Sharpe: {results['sharpe_ratio']:.3f}"
+    )
+    print(f"   -> 💾 Saved to: {dynamic_pkl_name}")
+
+    # 5. Track Global Ultimate Winner
+    if results["sharpe_ratio"] > global_ultimate_sharpe:
+        global_ultimate_sharpe = results["sharpe_ratio"]
+        global_ultimate_pkl = dynamic_pkl_name
+
+print("\n" + "*" * 60)
+print("🏆 SWEEP COMPLETE: GLOBAL CHAMPION CROWNED 🏆")
+print(f"Best OOS Sharpe: {global_ultimate_sharpe:.3f}")
+print(f"Data File:       {global_ultimate_pkl}")
+print("*" * 60 + "\n")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 12  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 9: Timing
+end_time = time.time()
+print(f"Time: {time.strftime('%H:%M:%S', time.gmtime(end_time - start_time))}")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 13  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 10: Disconnect from TPU
+from google.colab import runtime
+
+# This will restart and unassign the current runtime,
+# effectively disconnecting from the T4 GPU.
+runtime.unassign()
+print("Runtime unassigned. This session has been disconnected.")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 14  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+
+```
+
+##############################################################################
+## END OF: 02_RLVR_Part2_Training_v19a.ipynb
+##############################################################################
+
+
+==============================================================================
+# END OF MERGED FILE
+==============================================================================

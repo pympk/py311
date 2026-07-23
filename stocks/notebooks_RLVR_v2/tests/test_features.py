@@ -8,7 +8,7 @@ from data_pipeline.builder import generate_features
 def test_feature_engineering_wilders_atr():
     """
     Validates Feature Engineering Logic.
-    Enforces: Day 1 ATR must be NaN, Initialization, and Wilder's Smoothing.
+    Enforces: Initialization, Wilder's Smoothing, and RL-Safe Zero-Padding.
     """
     # 1. Create Synthetic Data (3 Days)
     dates = pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-03"])
@@ -36,10 +36,10 @@ def test_feature_engineering_wilders_atr():
     atr_series = feats_df["ATR"]
 
     # 3. Assertions
-    # Check Day 1 (No PrevClose)
-    assert np.isnan(
-        atr_series.iloc[0]
-    ), f"Day 1 Regression: Expected NaN, got {atr_series.iloc[0]}"
+    # Check Day 1 (No PrevClose -> Mathematically NaN -> Sanitized to 0.0 for PyTorch)
+    assert (
+        atr_series.iloc[0] == 0.0
+    ), f"Day 1 Regression: Expected RL-Safe 0.0, got {atr_series.iloc[0]}"
 
     # Check Day 2 (Initialization: H-L=20, |130-105|=25, |110-105|=5 -> TR=25)
     assert np.isclose(

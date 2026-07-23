@@ -1,5 +1,3 @@
-import pytest
-import torch
 import numpy as np
 import pandas as pd
 from rl_discovery.agent import AbsoluteZeroAgent
@@ -13,12 +11,14 @@ class MockDiscoveryEnv:
     def __init__(self):
         self.step_count = 0
         self.holding_period = 5
+        # Dynamic Space Detection requires a .cube attribute with 12 features
+        self.cube = pd.DataFrame(np.zeros((1, 12)))
 
     def reset(self):
         self.step_count = 0
         return {
             "date": pd.Timestamp("2024-01-01"),
-            "ensemble": pd.DataFrame(np.random.randn(2, 11)),
+            "ensemble": pd.DataFrame(np.random.randn(2, 12)),
         }
 
     def step(self, action):
@@ -27,7 +27,7 @@ class MockDiscoveryEnv:
         # Give a small positive reward
         reward = 0.01
         info = {"date": pd.Timestamp("2024-01-01") + pd.Timedelta(days=self.step_count)}
-        obs = {"date": info["date"], "ensemble": pd.DataFrame(np.random.randn(2, 11))}
+        obs = {"date": info["date"], "ensemble": pd.DataFrame(np.random.randn(2, 12))}
         return obs, reward, done, info
 
 
@@ -35,11 +35,20 @@ def test_evaluator_deterministic_execution():
     """
     [GUARD] Verifies the evaluator runs without gradients and outputs clean quant metrics.
     """
-    agent = AbsoluteZeroAgent()
     mock_macro = pd.DataFrame(
         np.random.randn(20, 11), index=pd.date_range("2024-01-01", periods=20)
     )
     env = RLVRGymEnv(MockDiscoveryEnv(), mock_macro)
+
+    # Extract shapes and narrow the types to satisfy Pylance/Pyright
+    obs_shape = env.observation_space.shape
+    action_shape = env.action_space.shape
+
+    assert obs_shape is not None, "Observation space shape is None"
+    assert action_shape is not None, "Action space shape is None"
+
+    # Dynamically match agent input/output dimensions to the environment space shapes
+    agent = AbsoluteZeroAgent(obs_dim=obs_shape[0], action_dim=action_shape[0])
 
     # Run evaluation
     results = AgentEvaluator.evaluate(agent, env)

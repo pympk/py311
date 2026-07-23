@@ -55,15 +55,21 @@ class SelectionLogic:
         if ensemble.empty:
             return [], [], 0, 0, 0.0, 0.0
 
-        n_features = 11  # 13 dims total: first 11 are weights
-        weights = action[:n_features]
+        # ---> DYNAMIC FEATURE WEIGHT EXTRACTION <---
+        # Automatically handles any feature count by slicing off the last 2 rank dimensions
+        weights = action[:-2]
 
-        # Map normalized [-1, 1] to discrete ranges
+        # Interpolate width from [0, rank_max_width] instead of [1, max]
+        # This mathematically allows the agent to buy 0 stocks and retreat to cash
         offset = int(np.interp(action[-2], [-1, 1], [0, rank_max_offset]))
-        width = int(np.interp(action[-1], [-1, 1], [1, rank_max_width]))
+        width = int(np.interp(action[-1], [-1, 1], [0, rank_max_width]))
+
+        # ---> THE FIX: Clean the NaNs before math <---
+        # In a Z-score space, 0.0 is exactly neutral (market average)
+        clean_ensemble = ensemble.fillna(0.0)
 
         # Vectorized Scoring
-        scores = pd.Series(ensemble.values @ weights, index=ensemble.index)
+        scores = pd.Series(clean_ensemble.values @ weights, index=clean_ensemble.index)
         sorted_tickers = scores.sort_values(ascending=False)
 
         # Extract metadata
@@ -71,3 +77,6 @@ class SelectionLogic:
         selected = sorted_tickers.index[offset : offset + width].tolist()
 
         return selected, top_3, offset, width, float(scores.max()), float(scores.min())
+
+
+#

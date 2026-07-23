@@ -175,11 +175,13 @@ class UniverseScreener:
                 range_pos_20=feat_now["Range_Pos_20"],
                 slope_p_5=feat_now["Slope_P_5"],
                 slope_v_5=feat_now["Slope_V_5"],
+                slope_p_5_z=feat_now["Slope_P_5_Z"],  # <--- ADDED
+                slope_v_5_z=feat_now["Slope_V_5_Z"],  # <--- ADDED
                 convexity=feat_now["Convexity"],
                 # For macro_snapshot (a Series), indexing returns a scalar.
                 # Use float() to ensure Pylance knows it's a scalar float.
                 macro_trend=float(macro_snapshot["Macro_Trend"]),
-                macro_trend_vel=float(macro_snapshot["Macro_Trend_Vel"]),
+                macro_trend_vel=float(macro_snapshot["Macro_Trend_Vel_Z"]),
                 macro_vix_z=float(macro_snapshot["Macro_Vix_Z"]),
                 macro_vix_ratio=float(macro_snapshot["Macro_Vix_Ratio"]),
             )

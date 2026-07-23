@@ -5,11 +5,11 @@ from rl_discovery.adapter import ObservationAdapter, RLVRGymEnv
 
 
 def test_observation_adapter_integrity():
-    """Verifies that Pandas structures flatten into exact 33D float32 Tensors safely."""
+    """Verifies that Pandas structures flatten into exact 35D float32 Tensors safely."""
 
-    # Mock 11-column Strategy Ensemble (3 Tickers)
-    strat_cols = [f"Strat_{i}" for i in range(11)]
-    ensemble = pd.DataFrame(np.random.randn(3, 11), columns=strat_cols)
+    # Mock 12-column Strategy Ensemble (3 Tickers)
+    strat_cols = [f"Strat_{i}" for i in range(12)]
+    ensemble = pd.DataFrame(np.random.randn(3, 12), columns=strat_cols)
     ensemble.iloc[0, 0] = np.nan  # Inject NaN to test safety
 
     # Mock 11-column Macro DataFrame row
@@ -29,10 +29,10 @@ def test_observation_adapter_integrity():
     macro_row = pd.Series(np.random.randn(11), index=macro_cols)
 
     # Process
-    obs = ObservationAdapter.process(ensemble, macro_row, expected_strats=11)
+    obs = ObservationAdapter.process(ensemble, macro_row, expected_strats=12)
 
     # Assertions
-    assert obs.shape == (33,), f"Shape Mismatch: Expected (33,), got {obs.shape}"
+    assert obs.shape == (35,), f"Shape Mismatch: Expected (35,), got {obs.shape}"
     assert obs.dtype == np.float32, f"Type Mismatch: Expected float32, got {obs.dtype}"
     assert not np.isnan(
         obs
@@ -42,17 +42,21 @@ def test_observation_adapter_integrity():
 class MockDiscoveryEnv:
     """Stubs out the complex AlphaLogic environment for wrapper testing."""
 
+    def __init__(self):
+        # Dynamic Space Detection requires a .cube attribute with 12 features
+        self.cube = pd.DataFrame(np.zeros((1, 12)))
+
     def reset(self):
         return {
             "date": pd.Timestamp("2024-01-01"),
-            "ensemble": pd.DataFrame(np.random.randn(2, 11)),
+            "ensemble": pd.DataFrame(np.random.randn(2, 12)),
         }
 
     def step(self, action):
         return (
             {
                 "date": pd.Timestamp("2024-01-02"),
-                "ensemble": pd.DataFrame(np.random.randn(2, 11)),
+                "ensemble": pd.DataFrame(np.random.randn(2, 12)),
             },
             0.05,
             False,

@@ -1,0 +1,825 @@
+==============================================================================
+# MERGED NOTEBOOKS CONVERSION
+# Total notebooks: 1
+# ==============================================================================
+
+##############################################################################
+## NOTEBOOK: 03_RLVR_Part3_Analysis_v4.ipynb
+## PATH: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\03_RLVR_Part3_Analysis_v4.ipynb
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 1  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+# RLVR Part 3 Analysis
+
+ Notebook converted to percent format with text-based data outputs for preservation.
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 2  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+results_save_filename = "oos_results_ent_0.01_pen_1.0_lr_0.0003.pkl"
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 3  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 1: Setup & Load the OOS Data
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 4  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+import pickle
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from pathlib import Path
+from plotly.subplots import make_subplots
+from IPython.display import display
+
+# Set your local PC path
+rl_root = Path(r"C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2")
+output_dir = rl_root / "output"
+
+pkl_path = output_dir / results_save_filename
+
+if not pkl_path.exists():
+    raise FileNotFoundError(f"Cannot find {pkl_path}. Ensure local directory synced!")
+
+# Load the OOS Results
+with open(pkl_path, "rb") as f:
+    results = pickle.load(f)
+
+# Convert the blotter (list of dicts) into a Pandas DataFrame
+blotter_df = pd.DataFrame(results["blotter"])
+
+# Format the date column properly using 'decision_date'
+blotter_df["date"] = pd.to_datetime(blotter_df["decision_date"])
+blotter_df = blotter_df.sort_values("date").reset_index(drop=True)
+
+print(f"✅ Data successfully loaded. Total days evaluated: {len(blotter_df)}")
+```
+
+# --- Output ---
+# [stdout]
+✅ Data successfully loaded. Total days evaluated: 1066
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 5  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 2: Champion Model & High-Level OOS Metrics
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 6  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+metadata = results.get("metadata", {})
+champion_file = metadata.get("CHAMPION_FILE", "Unknown (Check metadata logging)")
+best_seed = metadata.get("BEST_SEED", "Unknown")
+
+print(f"{'='*50}")
+print(f"🏆 CHAMPION MODEL LOADED: {champion_file}")
+print(f"   results_save_filename: {results_save_filename}")
+print(f"🌱 Winning Seed: {best_seed}")
+print(f"{'='*50}")
+
+print(f"\n📈 Out-Of-Sample Performance:")
+print(f"Total Cumulative Return : {results['total_return']*100:.2f}%")
+print(f"Sharpe Ratio (Ann)      : {results['sharpe_ratio']:.3f}")
+print(f"Total Trading Steps     : {results['steps']} days")
+```
+
+# --- Output ---
+# [stdout]
+==================================================
+🏆 CHAMPION MODEL LOADED: model_seed_987654_ep_16_sh_1.60.pt
+   results_save_filename: oos_results_ent_0.01_pen_1.0_lr_0.0003.pkl
+🌱 Winning Seed: 987654
+==================================================
+
+📈 Out-Of-Sample Performance:
+Total Cumulative Return : 57.89%
+Sharpe Ratio (Ann)      : 1.043
+Total Trading Steps     : 1066 days
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 7  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### Visualizing the Agent's Brain (Training Diagnostics)
+This shows how the Neural Network converged over time.
+* **Policy Loss**: How much the agent is changing its strategy (should stabilize).
+* **Value Loss**: How accurate the Critic is at predicting rewards (should drop).
+* **Entropy**: The "Curiosity" dial (gradually drops as the agent becomes confident).
+* **Avg Reward**: The raw alpha the agent achieved in the training environment.
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 8  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+training_history = results.get("training_history", [])
+metadata = results.get("metadata", {})
+
+if training_history:
+    history_df = pd.DataFrame(training_history)
+
+    # Let's print out the exact parameters used to train this model
+    print("=" * 50)
+    print("⚙️ HYPERPARAMETERS USED FOR THIS RUN:")
+    for k, v in metadata.items():
+        print(f" - {k.ljust(20)} : {v}")
+    print("=" * 50)
+
+    # Plotting
+    fig = make_subplots(
+        rows=2,
+        cols=2,
+        subplot_titles=(
+            "Total & Policy Loss",
+            "Value Loss (Prediction Error)",
+            "Entropy (Curiosity/Exploration)",
+            "Average Step Reward",
+        ),
+        shared_xaxes=True,
+        vertical_spacing=0.1,
+    )
+
+    # Top Left: Total Loss & Policy Loss
+    fig.add_trace(
+        go.Scatter(
+            x=history_df["epoch"],
+            y=history_df["total_loss"],
+            mode="lines",
+            name="Total Loss",
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=history_df["epoch"],
+            y=history_df["policy_loss"],
+            mode="lines",
+            name="Policy Loss",
+        ),
+        row=1,
+        col=1,
+    )
+
+    # Top Right: Value Loss (The Critic)
+    fig.add_trace(
+        go.Scatter(
+            x=history_df["epoch"],
+            y=history_df["value_loss"],
+            mode="lines",
+            name="Value Loss",
+            line=dict(color="orange"),
+        ),
+        row=1,
+        col=2,
+    )
+
+    # Bottom Left: Entropy
+    fig.add_trace(
+        go.Scatter(
+            x=history_df["epoch"],
+            y=history_df["entropy"],
+            mode="lines",
+            name="Entropy",
+            line=dict(color="green"),
+        ),
+        row=2,
+        col=1,
+    )
+
+    # Bottom Right: Avg Epoch Reward
+    fig.add_trace(
+        go.Scatter(
+            x=history_df["epoch"],
+            y=history_df["avg_reward"],
+            mode="lines",
+            name="Avg Reward",
+            line=dict(color="purple"),
+        ),
+        row=2,
+        col=2,
+    )
+
+    fig.update_layout(
+        height=700,
+        width=1000,
+        title_text="🧠 Agent Training Diagnostics (Winning Seed)",
+    )
+    fig.show()
+else:
+    print(
+        "⚠️ No training history found in this pickle file. (Was it trained using the old script?)"
+    )
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 9  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 3: Parsing the Action Dimensions (The Agent's Personality)
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 10  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Based on registry.py * 2 + Rank Offset + Rank Width (12*2 + 1 + 1 = 14 total dims)
+action_names = [
+    "Log Price Gain",
+    "Sharpe (TRP)",
+    "Momentum (21d)",
+    "Info Ratio (63d)",
+    "Oversold (-RSI)",
+    "Dip Buyer (-dd_21)",
+    "Range Position (20d)",
+    "Return Autocorr (15d)",
+    "Low Volatility (-ATRP)",
+    "Slope_P_5_Z",
+    "Slope_V_5_Z",
+    "Convexity",
+    "Rank Offset (Start Pos)",
+    "Rank Width (0 = Cash)",
+]
+
+# Extract raw actions using the correct column name 'raw_actions'
+actions = np.vstack(blotter_df["raw_actions"].values)
+
+# Add them as individual columns for easy plotting
+for i, name in enumerate(action_names):
+    if i < actions.shape[1]:
+        blotter_df[name] = actions[:, i]
+
+print("✅ Agent actions successfully unpacked into readable strategies.")
+```
+
+# --- Output ---
+# [stdout]
+✅ Agent actions successfully unpacked into readable strategies.
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 11  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 4: Visualizing the Agent's "Personality" (Action Distribution)
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 12  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Calculate the mean weight for each strategy across the entire OOS period
+mean_actions = blotter_df[action_names].mean().reset_index()
+mean_actions.columns = ["Strategy", "Average Weight"]
+mean_actions = mean_actions.sort_values("Average Weight", ascending=True)
+
+fig = px.bar(
+    mean_actions,
+    x="Average Weight",
+    y="Strategy",
+    orientation="h",
+    title="🤖 Agent 'Personality' - Average Strategy Weights (OOS)",
+    color="Average Weight",
+    color_continuous_scale="Viridis",
+)
+fig.update_layout(height=600, width=900)
+fig.show()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 13  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 5: Equity Curve, Alpha Curve, & Drawdown Chart vs Benchmark
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 14  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+hp = results.get("metadata", {}).get("HOLDING_PERIOD", 5)
+blotter_df["Mkt_Impact"] = blotter_df["mkt_return"] / hp
+blotter_df["Benchmark_Equity"] = (1 + blotter_df["Mkt_Impact"]).cumprod()
+
+# Calculate Agent Drawdown
+blotter_df["Peak"] = blotter_df["agent_equity"].cummax()
+blotter_df["Drawdown"] = (blotter_df["agent_equity"] / blotter_df["Peak"]) - 1.0
+
+# Create Subplots (3 Rows)
+fig = make_subplots(
+    rows=3,
+    cols=1,
+    shared_xaxes=True,
+    vertical_spacing=0.05,
+    row_heights=[0.5, 0.25, 0.25],
+    subplot_titles=(
+        "📈 OOS Equity Curve (Agent vs SPY)",
+        "🔥 Cumulative Alpha Equity (Outperformance)",
+        "📉 Agent Drawdown Profile",
+    ),
+)
+
+# Top Pane: Agent Equity
+fig.add_trace(
+    go.Scatter(
+        x=blotter_df["date"],
+        y=blotter_df["agent_equity"],
+        mode="lines",
+        name="Agent Strategy",
+        line=dict(color="blue", width=2),
+    ),
+    row=1,
+    col=1,
+)
+
+# Top Pane: Benchmark Equity
+fig.add_trace(
+    go.Scatter(
+        x=blotter_df["date"],
+        y=blotter_df["Benchmark_Equity"],
+        mode="lines",
+        name="Benchmark (SPY)",
+        line=dict(color="gray", width=2, dash="dash"),
+    ),
+    row=1,
+    col=1,
+)
+
+# Middle Pane: Alpha Equity
+fig.add_trace(
+    go.Scatter(
+        x=blotter_df["date"],
+        y=blotter_df["alpha_equity"],
+        mode="lines",
+        name="Alpha Equity",
+        line=dict(color="purple", width=2),
+    ),
+    row=2,
+    col=1,
+)
+fig.add_hline(y=1.0, line_dash="dot", line_color="black", row=2, col=1)
+
+# Bottom Pane: Drawdown Area
+fig.add_trace(
+    go.Scatter(
+        x=blotter_df["date"],
+        y=blotter_df["Drawdown"],
+        mode="lines",
+        fill="tozeroy",
+        name="Drawdown",
+        line=dict(color="red", width=1),
+    ),
+    row=3,
+    col=1,
+)
+
+fig.update_layout(
+    height=900,
+    width=1000,
+    hovermode="x unified",
+    title_text="Performance & Risk Profiling (Slippage Applied)",
+)
+fig.update_yaxes(title_text="Multiplier", row=1, col=1)
+fig.update_yaxes(title_text="Alpha Multiplier", row=2, col=1)
+fig.update_yaxes(title_text="Drawdown %", tickformat=".1%", row=3, col=1)
+fig.show()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 15  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 6: DataFrame Info Check
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 16  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+blotter_df.info()
+```
+
+# --- Output ---
+# [stdout]
+<class 'pandas.core.frame.DataFrame'>
+RangeIndex: 1066 entries, 0 to 1065
+Data columns (total 43 columns):
+ #   Column                   Non-Null Count  Dtype         
+---  ------                   --------------  -----         
+ 0   decision_date            1066 non-null   object        
+ 1   buy_date                 1066 non-null   object        
+ 2   sell_date                1066 non-null   object        
+ 3   universe_size            1066 non-null   int64         
+ 4   max_score                1066 non-null   float64       
+ 5   min_score                1066 non-null   float64       
+ 6   observation              1066 non-null   object        
+ 7   raw_actions              1066 non-null   object        
+ 8   decoded_offset           1066 non-null   int64         
+ 9   decoded_width            1066 non-null   int64         
+ 10  top_3_tickers            1066 non-null   object        
+ 11  chosen_tickers           1066 non-null   object        
+ 12  predicted_reward         1066 non-null   float64       
+ 13  rl_reward_received       1066 non-null   float64       
+ 14  raw_log_reward           1066 non-null   float64       
+ 15  actual_return            1066 non-null   float64       
+ 16  mkt_return               1066 non-null   float64       
+ 17  alpha                    1066 non-null   float64       
+ 18  penalized_alpha          1066 non-null   float64       
+ 19  slippage_applied         1066 non-null   float64       
+ 20  portfolio_impact         1066 non-null   float64       
+ 21  alpha_impact             1066 non-null   float64       
+ 22  agent_equity             1066 non-null   float64       
+ 23  alpha_equity             1066 non-null   float64       
+ 24  date                     1066 non-null   datetime64[ns]
+ 25  Log Price Gain           1066 non-null   float64       
+ 26  Sharpe (TRP)             1066 non-null   float64       
+ 27  Momentum (21d)           1066 non-null   float64       
+ 28  Info Ratio (63d)         1066 non-null   float64       
+ 29  Oversold (-RSI)          1066 non-null   float64       
+ 30  Dip Buyer (-dd_21)       1066 non-null   float64       
+ 31  Range Position (20d)     1066 non-null   float64       
+ 32  Return Autocorr (15d)    1066 non-null   float64       
+ 33  Low Volatility (-ATRP)   1066 non-null   float64       
+ 34  Slope_P_5_Z              1066 non-null   float64       
+ 35  Slope_V_5_Z              1066 non-null   float64       
+ 36  Convexity                1066 non-null   float64       
+ 37  Rank Offset (Start Pos)  1066 non-null   float64       
+ 38  Rank Width (0 = Cash)    1066 non-null   float64       
+ 39  Mkt_Impact               1066 non-null   float64       
+ 40  Benchmark_Equity         1066 non-null   float64       
+ 41  Peak                     1066 non-null   float64       
+ 42  Drawdown                 1066 non-null   float64       
+dtypes: datetime64[ns](1), float64(32), int64(3), object(7)
+memory usage: 358.2+ KB
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 17  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 7: Sample Selected Tickers
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 18  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Print chosen tickers along with their corresponding dates (first and last rows)
+first_idx = 0
+last_idx = -1
+
+first_date = blotter_df["date"].iloc[first_idx]
+last_date = blotter_df["date"].iloc[last_idx]
+
+print(f"Sample chosen tickers from the first row ({first_date.strftime('%Y-%m-%d')}):")
+print(blotter_df["chosen_tickers"].iloc[first_idx])
+
+print(f"\nSample chosen tickers from the last row ({last_date.strftime('%Y-%m-%d')}):")
+print(blotter_df["chosen_tickers"].iloc[last_idx])
+```
+
+# --- Output ---
+# [stdout]
+Sample chosen tickers from the first row (2022-04-07):
+['EA', 'SAP', 'TDY']
+
+Sample chosen tickers from the last row (2026-07-09):
+['AAL', 'KRMN', 'NTRA', 'WAB']
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 19  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 8: Pandas Display Settings
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 20  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Force Pandas to display all columns without truncating in text representation
+pd.set_option("display.max_columns", None)
+pd.set_option("display.width", 2000)
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 21  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 9: Rank Start, Offset, and Universe Tickers
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 22  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+sample_idx = -1
+row = blotter_df.iloc[sample_idx]
+
+u_size = row.get("universe_size", "N/A")
+r_offset = row.get("decoded_offset", "N/A")
+r_width = row.get("decoded_width", "N/A")
+selected = row.get("chosen_tickers", [])
+num_selected = len(selected)
+
+print(f"=== Universe Selection on {row['date'].strftime('%Y-%m-%d')} ===")
+print(f"Total Available Universe (universe_size) : {u_size}")
+print(f"Calculated Rank Start (offset)           : {r_offset}")
+print(f"Calculated Rank Width (width)            : {r_width}")
+print(f"Final Tickers Bought                     : {num_selected}")
+print(f"Sample Tickers Bought: {selected[:10]} ...")
+```
+
+# --- Output ---
+# [stdout]
+=== Universe Selection on 2026-07-09 ===
+Total Available Universe (universe_size) : 941
+Calculated Rank Start (offset)           : 219
+Calculated Rank Width (width)            : 4
+Final Tickers Bought                     : 4
+Sample Tickers Bought: ['AAL', 'KRMN', 'NTRA', 'WAB'] ...
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 23  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 10: Top 5 Best Days & Crash Analysis
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 24  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+print("🌟 TOP 5 HIGHEST RETURN DAYS (Net of Slippage) 🌟")
+
+top_5 = blotter_df.nlargest(5, "actual_return")[
+    ["date", "actual_return", "alpha", "agent_equity"] + action_names[:3]
+].copy()
+
+# Format numeric columns for output readability
+top_5["date"] = top_5["date"].dt.strftime("%Y-%m-%d")
+top_5["actual_return"] = top_5["actual_return"].apply(lambda x: f"{x:.4%}")
+top_5["alpha"] = top_5["alpha"].apply(lambda x: f"{x:.4%}")
+top_5["agent_equity"] = top_5["agent_equity"].apply(lambda x: f"{x:.3f}")
+for col in action_names[:3]:
+    top_5[col] = top_5[col].apply(lambda x: f"{x:.4f}")
+
+# Output as a clean text table
+print(top_5.to_string(index=False))
+
+print("\n" + "=" * 50)
+print("🚨 CRASH ANALYSIS (Worst Single-Day Return) 🚨")
+worst_idx = blotter_df["actual_return"].idxmin()
+worst_day = blotter_df.iloc[worst_idx]
+day_before = blotter_df.iloc[max(0, worst_idx - 1)]
+
+print(
+    f"Worst Day: {worst_day['date'].strftime('%Y-%m-%d')} | "
+    f"Return: {worst_day['actual_return']*100:.2f}% | "
+    f"Portfolio Value: {worst_day['agent_equity']:.3f}"
+)
+print("-" * 50)
+print("🔍 What was the agent's strategy allocation going into this crash?")
+
+crash_weights = pd.DataFrame(
+    {
+        "Strategy": action_names,
+        "Weight on Worst Day": worst_day[action_names].values,
+        "Weight Day Prior": day_before[action_names].values,
+    }
+).copy()
+
+# Formatting weights for display
+crash_weights_formatted = crash_weights.copy()
+crash_weights_formatted["Weight on Worst Day"] = crash_weights_formatted[
+    "Weight on Worst Day"
+].apply(lambda x: f"{x:.6f}")
+crash_weights_formatted["Weight Day Prior"] = crash_weights_formatted[
+    "Weight Day Prior"
+].apply(lambda x: f"{x:.6f}")
+
+print("\nStrategy Allocation Details (Pre-and-Post Crash):")
+print(crash_weights_formatted.to_string(index=False))
+
+fig = px.line_polar(
+    crash_weights,
+    r="Weight on Worst Day",
+    theta="Strategy",
+    line_close=True,
+    title=f"Radar: Agent's Brain on {worst_day['date'].strftime('%Y-%m-%d')} (Crash Day)",
+)
+fig.update_traces(fill="toself", line_color="red")
+fig.show()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 25  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 11: Observation Space Sanity Check (Hunting for Extremes)
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 26  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+print("🔍 EXTRACTING 33-DIM OBSERVATION SPACE WITH DESCRIPTIVE LABELS...")
+
+# 1. Extract raw observation arrays
+obs_raw = blotter_df["observation"].values
+obs_array = np.vstack([np.array(x).flatten() for x in obs_raw])
+num_dims = obs_array.shape[1]
+
+# 2. Re-establish exact feature lists matching Phase 3 logic
+cross_sectional_features = [
+    "Log Price Gain (Z)",
+    "Sharpe (TRP) (S)",
+    "Momentum (21d) (S)",
+    "Info Ratio (63d) (S)",
+    "Oversold (-RSI) (S)",
+    "Dip Buyer (-dd_21) (S)",
+    "Range Position (20d) (S)",
+    "Return Autocorr (15d) (S)",
+    "Low Volatility (-ATRP) (Z)",
+    "Slope_P_5_Z (Z)",
+    "Slope_V_5_Z (Z)",
+    "Convexity (Z)",
+]
+
+macro_features = [
+    "Mkt_Ret",
+    "Mkt_Ret_Z",
+    "Macro_Trend",
+    "Macro_Trend_Z",
+    "High_Yield_Spread_Z",
+    "Yield_Curve_10Y2Y_Z",
+    "Macro_Trend_Vel_Z",
+    "Macro_Trend_Mom",
+    "Macro_Vix_Z",
+    "Macro_Vix_Ratio",
+    "Mkt_Vol_63d_Z",
+]
+
+# Generate the full list of 33 mapped column names
+mapped_names = (
+    [f"Mean: {f}" for f in cross_sectional_features]
+    + [f"Std: {f}" for f in cross_sectional_features]
+    + macro_features
+)
+
+# 3. Create 'obs_df' globally with descriptive column headers & dates
+obs_df = pd.DataFrame(obs_array, columns=mapped_names, index=blotter_df["date"])
+
+# 4. Compute summary statistics
+desc_stats = pd.DataFrame(obs_array).describe().T[["mean", "std", "min", "max"]]
+
+# 5. Assemble mapping table
+mapping_table = pd.DataFrame(
+    {
+        "Dim Index": [f"Dim_{i:02d}" for i in range(num_dims)],
+        "Feature Name": mapped_names,
+        "Mean": desc_stats["mean"].values,
+        "Std Dev": desc_stats["std"].values,
+        "Min": desc_stats["min"].values,
+        "Max": desc_stats["max"].values,
+    }
+)
+
+
+# Formatting helper to append [CLIP] to values near the +/- 4.0 threshold
+def format_with_clip(val):
+    if pd.isna(val):
+        return ""
+    formatted = f"{val:.5f}"
+    if abs(abs(val) - 4.0) < 1e-5:
+        return f"{formatted} [CLIP]"
+    return formatted
+
+
+# Apply formatting for console print output
+mapping_table_print = mapping_table.copy()
+mapping_table_print["Mean"] = mapping_table_print["Mean"].apply(lambda x: f"{x:.5f}")
+mapping_table_print["Std Dev"] = mapping_table_print["Std Dev"].apply(
+    lambda x: f"{x:.5f}"
+)
+mapping_table_print["Min"] = mapping_table_print["Min"].apply(format_with_clip)
+mapping_table_print["Max"] = mapping_table_print["Max"].apply(format_with_clip)
+
+print("\n--- Mapped Observation Space Statistics ---")
+print(mapping_table_print.to_string(index=False))
+
+print("\n📈 GENERATING BOX PLOT OF OBSERVATION DIMENSIONS...")
+fig = go.Figure()
+
+for col in obs_df.columns:
+    fig.add_trace(
+        go.Box(
+            y=obs_df[col],
+            name=col,
+            boxpoints="outliers",
+            jitter=0.5,
+            marker=dict(size=2),
+        )
+    )
+
+fig.update_layout(
+    title="🤖 Agent Observation Space Distribution (Check for wild outliers)",
+    yaxis_title="Value",
+    xaxis_title="Observation Dimension",
+    height=600,
+    width=1000,
+    showlegend=False,
+    shapes=[
+        dict(
+            type="line",
+            y0=3,
+            y1=3,
+            x0=-0.5,
+            x1=num_dims - 0.5,
+            line=dict(color="orange", width=1, dash="dash"),
+        ),
+        dict(
+            type="line",
+            y0=-3,
+            y1=-3,
+            x0=-0.5,
+            x1=num_dims - 0.5,
+            line=dict(color="orange", width=1, dash="dash"),
+        ),
+        dict(
+            type="line",
+            y0=4.0,
+            y1=4.0,
+            x0=-0.5,
+            x1=num_dims - 0.5,
+            line=dict(color="red", width=1, dash="dash"),
+        ),
+        dict(
+            type="line",
+            y0=-4.0,
+            y1=-4.0,
+            x0=-0.5,
+            x1=num_dims - 0.5,
+            line=dict(color="red", width=1, dash="dash"),
+        ),
+    ],
+)
+fig.show()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 27  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### CELL 12: Map actual names to the dimensions
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 28  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Build the 33 column names
+mapped_cols = (
+    [f"Mean: {f}" for f in cross_sectional_features]
+    + [f"Std: {f}" for f in cross_sectional_features]
+    + macro_features
+)
+
+# Rename the dataframe columns
+obs_df.columns = mapped_cols
+
+print("🚨 THE SUSPECT DIMENSIONS 🚨")
+obs_desc = obs_df.describe().T[["min", "max", "mean", "std"]].copy()
+obs_desc_print = obs_desc.reset_index().rename(columns={"index": "Feature"})
+
+# Apply standard formatting and clip visualization
+obs_desc_print["mean"] = obs_desc_print["mean"].apply(lambda x: f"{x:.5f}")
+obs_desc_print["std"] = obs_desc_print["std"].apply(lambda x: f"{x:.5f}")
+obs_desc_print["min"] = obs_desc_print["min"].apply(format_with_clip)
+obs_desc_print["max"] = obs_desc_print["max"].apply(format_with_clip)
+
+print(obs_desc_print.to_string(index=False))
+```
+
+##############################################################################
+## END OF: 03_RLVR_Part3_Analysis_v4.ipynb
+##############################################################################
+
+
+==============================================================================
+# END OF MERGED FILE
+==============================================================================

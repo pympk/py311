@@ -1,10 +1,14 @@
 import pandas as pd
 import numpy as np
+import logging
 
 from typing import List, Dict, Any, Optional, Callable
 
 from core.settings import TradingConfig, QualityThresholds
 from dataclasses import dataclass, field
+
+# Set up logging if not already configured
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -31,7 +35,9 @@ class MarketObservation:
     range_pos_20: pd.Series
     slope_p_5: pd.Series
     slope_v_5: pd.Series
-    convexity: pd.Series  # Adding this now to prevent the next error!
+    slope_p_5_z: pd.Series  # <--- ADDED
+    slope_v_5_z: pd.Series  # <--- ADDED
+    convexity: pd.Series
 
     # Macro Scalars (or Series)
     macro_trend: float
@@ -127,52 +133,31 @@ class MetricBlueprint:
     scaling_type: str = "None"
 
     def __call__(self, obs) -> pd.Series:
-        """Returns RAW data (For Plots/Debug)."""
+        """Returns RAW data, with strict development tracking and graceful production fallback."""
         try:
             return self.formula(obs)
-        except Exception:
+
+        except (AttributeError, NameError, KeyError) as code_err:
+            # 1. DO NOT suppress coding/structural errors.
+            # If the variable or column does not exist, fail immediately to inform the developer.
+            raise type(code_err)(
+                f"[CRITICAL ERROR] Blueprint '{self.name}' failed due to a code/naming mismatch. "
+                f"Please verify if the required fields are defined in MarketObservation and screener.py. "
+                f"Original error: {code_err}"
+            ) from code_err
+
+        except Exception as data_err:
+            # 2. Log and degrade gracefully for math or indexing anomalies (e.g. division by zero, empty series)
+            logger.warning(
+                f"[WARNING] Blueprint '{self.name}' encountered a data exception on calculation: {data_err}. "
+                f"Generating fallback NaN series."
+            )
+
+            # Safe degradation index fallback
             target_index = (
                 obs.rsi.index if hasattr(obs, "rsi") else obs.lookback_close.columns
             )
             return pd.Series([float("nan")] * len(target_index), index=target_index)
-
-    def get_agent_view(self, obs, config: "TradingConfig") -> pd.Series:
-        """Returns SCALED, CLEANED, and CLIPPED data for the RL Agent."""
-        from core.quant import QuantUtils
-
-        raw = self.__call__(obs)
-
-        # 1. PRE-CLEAN: Remove Inf before they poison the batch statistics
-        # We replace inf with NaN so .mean() and .std() ignore them
-        # Explicitly hint clean_raw as a Series here
-        clean_raw: pd.Series = raw.replace([np.inf, -np.inf], np.nan)
-
-        # 2. Scaling Logic (Using CLEAN data)
-        if self.scaling_type == "Z-Score":
-            # Cross-sectional standardization using robust helper
-            scaled = QuantUtils.zscore(clean_raw)
-
-        elif self.scaling_type == "Center":
-            # Map [0, 1] to [-1, 1] (e.g. Range Position)
-            scaled = (clean_raw - 0.5) * 2
-        elif self.scaling_type == "RSI":
-            # Map [-100, 0] to [1, -1]
-            # RSI 30 (Oversold) -> -RSI -70 -> Scaled +1.0
-            # RSI 70 (Overbought) -> -RSI -30 -> Scaled -1.0
-            scaled = (clean_raw + 50) / 20
-        else:
-            scaled = clean_raw
-
-        # Tell Pylance exactly what 'scaled' is
-        scaled: pd.Series = scaled
-
-        # 3. Final Neutralization and Clipping
-        # - Missing/Inf data becomes 0 (Neutral)
-        # - Outliers capped at +/- feature_zscore_clip
-        # USE THE SINGLE SOURCE OF TRUTH
-        clip_val = config.feature_zscore_clip
-
-        return scaled.fillna(0).clip(-clip_val, clip_val)
 
 
 #

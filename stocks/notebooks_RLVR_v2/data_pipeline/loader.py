@@ -9,9 +9,10 @@ def load_raw_global_data():
     ohlcv_path = GLOBAL_DATA_DIR / "df_OHLCV_stocks_etfs.parquet"
     if ohlcv_path.exists():
         df_ohlcv = pd.read_parquet(ohlcv_path)
-        price_cols = ["Adj Open", "Adj High", "Adj Low", "Adj Close"]
-        df_ohlcv[price_cols] = df_ohlcv[price_cols].astype("float32")
-        df_ohlcv["Volume"] = df_ohlcv["Volume"].astype("float32")
+        # REMOVE OR COMMENT THESE OUT float32:
+        # price_cols = ["Adj Open", "Adj High", "Adj Low", "Adj Close"]
+        # df_ohlcv[price_cols] = df_ohlcv[price_cols].astype("float32")
+        # df_ohlcv["Volume"] = df_ohlcv["Volume"].astype("float32")
 
     fed_path = GLOBAL_DATA_DIR / "High_Yield_Spread_T10Y2Y_Spread.csv"
     if fed_path.exists():
@@ -35,7 +36,8 @@ def load_raw_global_data():
 
 def load_processed_data():
     """Loads aligned and preprocessed data needed for Cache building and Training."""
-    df_ohlcv = pd.read_parquet(GLOBAL_PROCESSED_DIR / "df_ohlcv.parquet")
+    # ---> REDIRECTED TO LOCAL_DATA_DIR TO PREVENT DESYNC WITH ALPHACACHE <---
+    df_ohlcv = pd.read_parquet(LOCAL_DATA_DIR / "df_ohlcv.parquet")
     macro_df = pd.read_parquet(LOCAL_DATA_DIR / "macro_df.parquet")
     features_df = pd.read_parquet(LOCAL_DATA_DIR / "features_df.parquet")
     return df_ohlcv, macro_df, features_df

@@ -1,0 +1,1240 @@
+
+################################################################################
+################################################################################
+### FILE [1] : settings.py
+### PATH   : ..\notebooks_RLVR_v2\core\settings.py
+################################################################################
+################################################################################
+
+import os
+
+from dataclasses import dataclass, field
+
+
+@dataclass
+class CacheConfig:
+    """
+    [SHARED CONSTANTS] A single source of truth for the dataset slices
+    and feature lookback window.
+    """
+
+    LOOKBACK: int = int(os.getenv("CACHE_LOOKBACK", 41))
+    START_DATE: str = os.getenv("CACHE_START_DATE", "1998-01-01")
+    END_DATE: str = os.getenv("CACHE_END_DATE", "2030-01-01")
+
+    @classmethod
+    def get_filename(cls) -> str:
+        """Generates a standardized, descriptive parquet filename."""
+        import pandas as pd
+
+        start_yr = pd.Timestamp(cls.START_DATE).strftime("%Y")
+        return f"alpha_cache_{cls.LOOKBACK}d_{start_yr}.parquet"
+
+
+@dataclass
+class StrategyParams:
+    standard_confidence: float = 1.0
+    strong_confidence: float = 1.5
+    extreme_confidence: float = 2.5
+    rsi_overbought: int = 70
+    rsi_oversold: int = 30
+    range_high: float = 0.8
+    range_low: float = 0.2
+    convexity_exit: float = -0.7
+
+
+@dataclass
+class QualityThresholds:
+    min_median_dollar_volume: int = 1_000_000
+    min_liquidity_percentile: float = 0.40
+    max_stale_pct: float = 0.05
+    max_same_vol_count: int = 10
+
+
+@dataclass
+class TradingConfig:
+    # ENVIRONMENT
+    benchmark_ticker: str = "SPY"
+    calendar_ticker: str = "SPY"
+
+    # DATA SANITIZER
+    handle_zeros_as_nan: bool = True
+    max_data_gap_ffill: int = 1
+    nan_price_replacement: float = 0.0
+
+    # STRATEGY & MATH
+    annual_period: int = 252
+    atr_period: int = 14
+    rsi_period: int = 14
+    range_pos_period: int = 20
+
+    # FEATURE ENGINE WINDOWS
+    win_5d: int = 5
+    win_21d: int = 21
+    win_63d: int = 63
+
+    # FEATURE GUARDRAILS (CLIPS)
+    feature_zscore_clip: float = 4.0
+    feature_ratio_clip: float = 10.0
+
+    # QUALITY/LIQUIDITY
+    quality_window: int = 252
+    quality_min_periods: int = 126
+
+    # STRATEGY PARAMETERS & THRESHOLDS
+    strategy_params: StrategyParams = field(default_factory=StrategyParams)
+    thresholds: QualityThresholds = field(default_factory=QualityThresholds)
+
+    # TRAINING & SIMULATION PARAMETERS
+    holding_period: int = 5
+    rank_max_offset: int = 500
+    rank_max_width: int = 10
+
+    # NEW: INSTITUTIONAL RL PARAMETERS
+    slippage_rate: float = 0.0010  # 10 bps round-trip slippage
+
+    # downside_penalty: float = 2.0  # 2x penalty on underperformance (Alpha < 0)
+    downside_penalty: float = 1.0  # 1x penalty on underperformance (Alpha < 0)
+
+################################################################################
+################################################################################
+### FILE [2] : builder.py
+### PATH   : ..\notebooks_RLVR_v2\data_pipeline\builder.py
+################################################################################
+################################################################################
+
+import pandas as pd
+import numpy as np
+
+from typing import Tuple, Optional
+
+from core.quant import QuantUtils, TickerEngine
+from core.settings import TradingConfig
+
+pd.set_option("future.no_silent_downcasting", True)
+
+
+class MacroFeaturePipeline:
+    @staticmethod
+    def process(
+        df_ohlcv: pd.DataFrame,
+        df_indices: Optional[pd.DataFrame],
+        df_fed: Optional[pd.DataFrame],
+        config: TradingConfig,
+    ) -> pd.DataFrame:
+        all_dates = df_ohlcv.index.get_level_values("Date").unique().sort_values()
+        macro_df = pd.DataFrame(index=all_dates)
+
+        # 1. Benchmark & Trend
+        if config.benchmark_ticker in df_ohlcv.index.get_level_values("Ticker"):
+            mkt_close = (
+                df_ohlcv.xs(config.benchmark_ticker, level="Ticker")["Adj Close"]
+                .reindex(all_dates)
+                .ffill()
+            )
+            macro_df["Mkt_Ret"] = mkt_close.pct_change().fillna(0.0)
+            macro_df["Macro_Trend"] = (mkt_close / mkt_close.rolling(200).mean()) - 1.0
+
+            # NEW: Z-Scored Market Metrics
+            mkt_roll_mean = macro_df["Mkt_Ret"].rolling(63, min_periods=21).mean()
+            mkt_roll_std = (
+                macro_df["Mkt_Ret"].rolling(63, min_periods=21).std().replace(0, 1e-8)
+            )
+            macro_df["Mkt_Ret_Z"] = (
+                ((macro_df["Mkt_Ret"] - mkt_roll_mean) / mkt_roll_std)
+                .clip(-config.feature_zscore_clip, config.feature_zscore_clip)
+                .fillna(0.0)
+            )
+
+            trend_roll_mean = (
+                macro_df["Macro_Trend"].rolling(252, min_periods=60).mean()
+            )
+            trend_roll_std = (
+                macro_df["Macro_Trend"]
+                .rolling(252, min_periods=60)
+                .std()
+                .replace(0, 1e-8)
+            )
+            macro_df["Macro_Trend_Z"] = (
+                ((macro_df["Macro_Trend"] - trend_roll_mean) / trend_roll_std)
+                .clip(-config.feature_zscore_clip, config.feature_zscore_clip)
+                .fillna(0.0)
+            )
+
+            mkt_vol = macro_df["Mkt_Ret"].rolling(63, min_periods=21).std()
+            vol_roll_mean = mkt_vol.rolling(252, min_periods=60).mean()
+            vol_roll_std = mkt_vol.rolling(252, min_periods=60).std().replace(0, 1e-8)
+            macro_df["Mkt_Vol_63d_Z"] = (
+                ((mkt_vol - vol_roll_mean) / vol_roll_std)
+                .clip(-config.feature_zscore_clip, config.feature_zscore_clip)
+                .fillna(0.0)
+            )
+        else:
+            macro_df["Mkt_Ret"] = 0.0
+            macro_df["Macro_Trend"] = 0.0
+            macro_df["Mkt_Ret_Z"] = 0.0
+            macro_df["Macro_Trend_Z"] = 0.0
+            macro_df["Mkt_Vol_63d_Z"] = 0.0
+
+        # 2. FED Data Integration
+        if df_fed is not None:
+            fed_data = (
+                df_fed.reindex(all_dates).ffill().bfill().infer_objects(copy=False)
+            )
+            for col in ["High_Yield_Spread", "Yield_Curve_10Y2Y"]:
+                roll_mean = fed_data[col].rolling(252, min_periods=60).mean()
+                roll_std = (
+                    fed_data[col].rolling(252, min_periods=60).std().replace(0, 1e-8)
+                )
+                macro_df[f"{col}_Z"] = (
+                    ((fed_data[col] - roll_mean) / roll_std)
+                    .clip(-config.feature_zscore_clip, config.feature_zscore_clip)
+                    .fillna(0.0)
+                )
+        else:
+            macro_df["High_Yield_Spread_Z"] = 0.0
+            macro_df["Yield_Curve_10Y2Y_Z"] = 0.0
+
+        # 3. Trend Velocity & Momentum
+        win_21 = getattr(config, "win_21d", 21)
+        win_63 = getattr(config, "win_63d", 63)
+
+        vel = macro_df["Macro_Trend"].diff(win_21)
+        macro_df["Macro_Trend_Vel_Z"] = (
+            (vel / macro_df["Macro_Trend"].rolling(win_63).std().replace(0, 1e-8))
+            .clip(-config.feature_zscore_clip, config.feature_zscore_clip)
+            .fillna(0.0)
+        )
+
+        # Scaled Momentum
+        momentum_raw = (
+            np.sign(macro_df["Macro_Trend"])
+            * np.sign(vel)
+            * np.abs(macro_df["Macro_Trend_Vel_Z"])
+        )
+        macro_df["Macro_Trend_Mom"] = pd.Series(
+            momentum_raw, index=macro_df.index
+        ).fillna(0.0)
+
+        # 4. VIX Extraction
+        macro_df["Macro_Vix_Z"] = 0.0
+        macro_df["Macro_Vix_Ratio"] = 1.0
+
+        if df_indices is not None:
+            idx_names = df_indices.index.get_level_values(0).unique()
+            if "^VIX" in idx_names:
+                v = (
+                    df_indices.xs("^VIX", level=0)["Adj Close"]
+                    .reindex(all_dates)
+                    .ffill()
+                )
+                macro_df["Macro_Vix_Z"] = (
+                    ((v - v.rolling(63).mean()) / v.rolling(63).std().replace(0, 1e-8))
+                    .clip(-config.feature_zscore_clip, config.feature_zscore_clip)
+                    .fillna(0.0)
+                )
+            if "^VIX" in idx_names and "^VIX3M" in idx_names:
+                v3 = (
+                    df_indices.xs("^VIX3M", level=0)["Adj Close"]
+                    .reindex(all_dates)
+                    .ffill()
+                )
+                macro_df["Macro_Vix_Ratio"] = (
+                    (v / v3)
+                    .fillna(1.0)
+                    .clip(-config.feature_ratio_clip, config.feature_ratio_clip)
+                )
+
+        macro_df.fillna(0.0, inplace=True)
+
+        # FINAL GUARD: Strictly return EXACTLY 11 columns to preserve the 33-Dim Space!
+        # Drops unscaled noise automatically.
+        final_11_cols = [
+            "Mkt_Ret",
+            "Mkt_Ret_Z",
+            "Macro_Trend",
+            "Macro_Trend_Z",
+            "High_Yield_Spread_Z",
+            "Yield_Curve_10Y2Y_Z",
+            "Macro_Trend_Vel_Z",
+            "Macro_Trend_Mom",
+            "Macro_Vix_Z",
+            "Macro_Vix_Ratio",
+            "Mkt_Vol_63d_Z",
+        ]
+        return macro_df[final_11_cols]
+
+
+class MicroFeaturePipeline:
+    @staticmethod
+    def process(
+        df_ohlcv: pd.DataFrame, macro_df: pd.DataFrame, config: TradingConfig
+    ) -> pd.DataFrame:
+        win_5 = getattr(config, "win_5d", 5)
+        win_21 = getattr(config, "win_21d", 21)
+        win_63 = getattr(config, "win_63d", 63)
+        atr_period = getattr(config, "atr_period", 14)
+        rsi_period = getattr(config, "rsi_period", 14)
+        range_pos_period = getattr(config, "range_pos_period", 20)
+
+        rets = TickerEngine.map_kernels(
+            df_ohlcv["Adj Close"], QuantUtils.compute_returns
+        )
+        autocorr_15 = TickerEngine.map_kernels(
+            rets, QuantUtils.calculate_autocorr, lag=1, window=15
+        )
+        mkt_ret_series = macro_df["Mkt_Ret"]
+
+        ir_63 = TickerEngine.map_kernels(
+            rets,
+            QuantUtils.calculate_rolling_ir,
+            benchmark_rets=mkt_ret_series,
+            window=win_63,
+        )
+        beta_63 = TickerEngine.map_kernels(
+            rets,
+            QuantUtils.calculate_rolling_beta,
+            benchmark_rets=mkt_ret_series,
+            window=win_63,
+        )
+
+        def get_ticker_vol(df_slice):
+            h, l, c = df_slice["Adj High"], df_slice["Adj Low"], df_slice["Adj Close"]
+            return pd.DataFrame(
+                {
+                    "TR_Raw": QuantUtils.calculate_tr(h, l, c),
+                    "ATR_Smooth": QuantUtils.calculate_atr(h, l, c, atr_period),
+                },
+                index=df_slice.index,
+            )
+
+        vol_bundle = TickerEngine.map_kernels(df_ohlcv, get_ticker_vol)
+        atr = vol_bundle["ATR_Smooth"]
+        natr = (atr / df_ohlcv["Adj Close"]).fillna(0)
+        trp = (vol_bundle["TR_Raw"] / df_ohlcv["Adj Close"]).fillna(0)
+
+        mom_21 = TickerEngine.map_kernels(
+            df_ohlcv["Adj Close"], lambda x: x.pct_change(win_21, fill_method=None)
+        )
+        consistency = TickerEngine.map_kernels(
+            rets, lambda x: (x > 0).astype(float).rolling(win_5).mean()
+        )
+        dd_21 = TickerEngine.map_kernels(
+            df_ohlcv["Adj Close"], lambda x: (x / x.rolling(win_21).max()) - 1.0
+        )
+
+        # FIX 1: THE RSI BOMB. Normalize 0-100 down to strictly [-1.0, 1.0].
+        rsi_raw = TickerEngine.map_kernels(
+            df_ohlcv["Adj Close"], QuantUtils.calculate_rsi, period=rsi_period
+        )
+        rsi_scaled = (rsi_raw - 50.0) / 50.0
+
+        def get_range_pos_kernel(df_slice):
+            rp = QuantUtils.calculate_range_pos(
+                df_slice["Adj High"],
+                df_slice["Adj Low"],
+                df_slice["Adj Close"],
+                window=range_pos_period,
+            )
+            return pd.DataFrame({"RP": rp})
+
+        range_pos_20 = TickerEngine.map_kernels(df_ohlcv, get_range_pos_kernel)["RP"]
+
+        def get_obv_kernel(df_slice):
+            v = df_slice["Volume"]
+            v_baseline = v.rolling(window=win_63, min_periods=1).mean().replace(0, 1e-8)
+            v_rel = v / v_baseline
+            obv_val = QuantUtils.calculate_obv_fast(df_slice["Adj Close"], v_rel)
+            return pd.DataFrame({"OBV": obv_val})
+
+        obv = TickerEngine.map_kernels(df_ohlcv, get_obv_kernel)["OBV"]
+        log_price = np.log(df_ohlcv["Adj Close"].replace(0, 1e-8))
+
+        slope_p = TickerEngine.map_kernels(
+            log_price, QuantUtils.calculate_rolling_slope_5d_fast
+        )
+        slope_v = TickerEngine.map_kernels(
+            obv, QuantUtils.calculate_rolling_slope_5d_fast
+        )
+        convexity = TickerEngine.map_kernels(
+            slope_p, QuantUtils.calculate_convexity_5d_fast
+        )
+
+        # FIX 2: THE OBV DEAD NODE. Provide temporal rolling Z-Scores to prevent lookahead bias
+        def temporal_zscore(series, window=win_63):
+            roll_mean = series.rolling(window, min_periods=10).mean()
+            roll_std = series.rolling(window, min_periods=10).std().replace(0, 1e-8)
+            return (series - roll_mean) / roll_std
+
+        slope_p_z = TickerEngine.map_kernels(slope_p, temporal_zscore, window=win_63)
+        slope_v_z = TickerEngine.map_kernels(slope_v, temporal_zscore, window=win_63)
+
+        return pd.DataFrame(
+            {
+                "ATR": atr,
+                "ATRP": natr,
+                "TRP": trp,
+                "RSI": rsi_scaled,  # Uses bounded RSI
+                "Mom_21": mom_21,
+                "Consistency": consistency,
+                "IR_63": ir_63,
+                "Beta_63": beta_63,
+                "DD_21": dd_21.fillna(0),
+                "AutoCorr_15": autocorr_15,
+                "Ret_1d": rets,
+                "Range_Pos_20": range_pos_20,
+                "Slope_P_5": slope_p,
+                "Slope_V_5": slope_v,
+                "Slope_P_5_Z": slope_p_z,  # Exported for Registry Blueprint
+                "Slope_V_5_Z": slope_v_z,  # Exported for Registry Blueprint
+                "Convexity": convexity,
+            }
+        )
+
+
+class QualityFilterPipeline:
+    @staticmethod
+    def process(df_ohlcv: pd.DataFrame, config: TradingConfig) -> pd.DataFrame:
+        quality_window = getattr(config, "quality_window", 21)
+        quality_min_periods = getattr(config, "quality_min_periods", 10)
+
+        quality_temp = pd.DataFrame(
+            {
+                "IsStale": np.where(
+                    (df_ohlcv["Volume"] == 0)
+                    | (df_ohlcv["Adj High"] == df_ohlcv["Adj Low"]),
+                    1,
+                    0,
+                ),
+                "DollarVolume": df_ohlcv["Adj Close"] * df_ohlcv["Volume"],
+            },
+            index=df_ohlcv.index,
+        )
+
+        quality_temp["HasSameVolume"] = TickerEngine.map_kernels(
+            df_ohlcv["Volume"], lambda x: (x.diff() == 0).astype(int)
+        )
+
+        def get_quality(slice_df):
+            return pd.DataFrame(
+                {
+                    "RollingStalePct": slice_df["IsStale"]
+                    .rolling(window=quality_window, min_periods=quality_min_periods)
+                    .mean(),
+                    "RollMedDollarVol": slice_df["DollarVolume"]
+                    .rolling(window=quality_window, min_periods=quality_min_periods)
+                    .median(),
+                    "RollingSameVolCount": slice_df["HasSameVolume"]
+                    .rolling(window=quality_window, min_periods=quality_min_periods)
+                    .sum(),
+                },
+                index=slice_df.index,
+            )
+
+        return TickerEngine.map_kernels(quality_temp, get_quality)
+
+
+def generate_features(
+    df_ohlcv: pd.DataFrame,
+    df_indices: Optional[pd.DataFrame] = None,
+    df_fed: Optional[pd.DataFrame] = None,
+    config: Optional[TradingConfig] = None,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    actual_config = config if config is not None else TradingConfig()
+    print(
+        f"[EXEC] Generating Decoupled Features (Benchmark: {actual_config.benchmark_ticker})..."
+    )
+
+    df_ohlcv = df_ohlcv.sort_index(level=["Ticker", "Date"])
+
+    macro_df = MacroFeaturePipeline.process(df_ohlcv, df_indices, df_fed, actual_config)
+    micro_df = MicroFeaturePipeline.process(df_ohlcv, macro_df, actual_config)
+    quality_df = QualityFilterPipeline.process(df_ohlcv, actual_config)
+
+    features_df = pd.concat([micro_df, quality_df], axis=1).sort_index()
+
+    print("[EXEC] Sanitizing features to prevent RL Environment crashes...")
+    features_df = features_df.replace([np.inf, -np.inf], np.nan)
+    features_df = features_df.groupby(level="Ticker").ffill()
+    features_df = features_df.fillna(0.0)
+
+    return features_df, macro_df
+
+################################################################################
+################################################################################
+### FILE [3] : environment.py
+### PATH   : ..\notebooks_RLVR_v2\rl_discovery\environment.py
+################################################################################
+################################################################################
+
+import pandas as pd
+import numpy as np
+from typing import cast
+from core.logic import AlphaLogic, SelectionLogic
+from core.settings import TradingConfig
+
+
+class DiscoveryEnv:
+    """STATEFUL: The 'Arena' for the Agent."""
+
+    def __init__(
+        self,
+        feature_cube: pd.DataFrame,
+        reward_matrix: pd.DataFrame,
+        calendar: pd.DatetimeIndex,
+        macro_df: pd.DataFrame,  # NEW: Required for Market Return tracking
+        config: TradingConfig | None = None,  # Simple union syntax
+    ):
+        self.cube = feature_cube
+        self.reward_matrix = reward_matrix
+        self.calendar = calendar
+        self.macro_df = macro_df
+        self.config = config or TradingConfig()
+        self.holding_period = self.config.holding_period
+        self.reset()
+
+    def reset(self, start_date=None):
+        if start_date:
+            idx = self.calendar.get_loc(start_date)
+            self.current_date_idx = cast(int, idx)
+        else:
+            self.current_date_idx = 0
+
+        # NEW: Track both Absolute Return & Alpha Outperformance
+        self.equity_curve = [1.0]
+        self.alpha_equity_curve = [1.0]
+        return self._get_observation()
+
+    def _get_observation(self):
+        date = self.calendar[self.current_date_idx]
+        try:
+            ensemble = self.cube.xs(date, level="Date")
+        except KeyError:
+            ensemble = pd.DataFrame()
+
+        return {"ensemble": ensemble, "date": date}
+
+    def step(self, action: np.ndarray):
+        date = self.calendar[self.current_date_idx]
+        obs_dict = self._get_observation()
+        ensemble = obs_dict["ensemble"]
+
+        # 1. Delegate Ticker Selection
+        selected_tickers, top_3, offset, width, max_s, min_s = (
+            SelectionLogic.apply_action(
+                ensemble,
+                action,
+                self.config.rank_max_offset,
+                self.config.rank_max_width,
+            )
+        )
+
+        # 2. Extract Raw Truth Reward
+        log_reward = AlphaLogic.calculate_veritable_reward(
+            self.reward_matrix, date, selected_tickers
+        )
+
+        # 3. Apply Slippage, Constraints, & Alpha Math
+        raw_sleeve_return = np.exp(log_reward) - 1.0
+        slippage_applied = 0.0
+
+        if len(selected_tickers) > 0:
+            slippage_applied = self.config.slippage_rate
+            raw_sleeve_return -= slippage_applied
+
+        mkt_return = (
+            self.macro_df.loc[date, "Mkt_Ret"] if date in self.macro_df.index else 0.0
+        )
+        alpha = raw_sleeve_return - mkt_return
+
+        # Penalize underperformance aggressively for the RL Agent
+        penalized_alpha = alpha * self.config.downside_penalty if alpha < 0 else alpha
+
+        # 4. Update Internal State curves
+        # Math scales it down by holding period logic per capital deployment
+        portfolio_impact = raw_sleeve_return / self.holding_period
+        alpha_impact = alpha / self.holding_period
+
+        self.equity_curve.append(self.equity_curve[-1] * (1.0 + portfolio_impact))
+        self.alpha_equity_curve.append(
+            self.alpha_equity_curve[-1] * (1.0 + alpha_impact)
+        )
+
+        self.current_date_idx += 1
+        done = self.current_date_idx >= (len(self.calendar) - self.holding_period - 1)
+
+        # 5. Temporal Alignment & BLOTTER Update
+        buy_date = self.calendar[self.current_date_idx - 1]
+        sell_date = self.calendar[self.current_date_idx - 1 + self.holding_period]
+
+        info = {
+            "date": date,
+            "buy_date": buy_date,
+            "sell_date": sell_date,
+            "tickers": selected_tickers,
+            "top_3": top_3,
+            "universe_size": len(ensemble),
+            "offset": offset,
+            "width": width,
+            "max_score": max_s,
+            "min_score": min_s,
+            # BLOTTER METRICS
+            "raw_log_reward": log_reward,
+            "actual_return": raw_sleeve_return,
+            "mkt_return": mkt_return,
+            "alpha": alpha,
+            "penalized_alpha": penalized_alpha,
+            "slippage_applied": slippage_applied,
+            # NEW: Passing pre-calculated impacts and curves
+            "portfolio_impact": portfolio_impact,
+            "alpha_impact": alpha_impact,
+            "agent_equity": self.equity_curve[-1],
+            "alpha_equity": self.alpha_equity_curve[-1],
+        }
+
+        # The RL Engine receives penalized_alpha to optimize
+        return self._get_observation(), penalized_alpha, done, info
+
+################################################################################
+################################################################################
+### FILE [4] : oracle.py
+### PATH   : ..\notebooks_RLVR_v2\rl_discovery\oracle.py
+################################################################################
+################################################################################
+
+import pandas as pd
+import numpy as np
+
+from typing import List, cast, Optional
+
+from core.contracts import DiscoveryResult, EngineInput
+from core.settings import TradingConfig
+from core.quant import QuantUtils
+from data_pipeline.screener import UniverseScreener
+from strategy.registry import get_strategy_registry
+
+
+class RLOracle:
+    """
+    Provides state observations (alpha matrices, context vectors)
+    and computes veritable rewards for the RL Agent.
+    """
+
+    def __init__(self, screener: UniverseScreener, config: TradingConfig):
+        self.screener = screener
+        self.config = config
+        self.reward_matrix = pd.DataFrame()
+
+    def precompute_reward_matrix(self, holding_period: int):
+        close_df = self.screener.df_close
+        self.reward_matrix = (
+            close_df.shift(-(holding_period + 1)) / close_df.shift(-1)
+        ) - 1.0
+        self.reward_matrix = self.reward_matrix.fillna(0.0)
+
+    def get_batch_reward(
+        self, decision_date: pd.Timestamp, tickers: List[str]
+    ) -> float:
+        if decision_date not in self.reward_matrix.index:
+            return 0.0
+        arithmetic_group_return = self.reward_matrix.loc[decision_date][tickers].mean()
+        return float(np.log1p(arithmetic_group_return))
+
+    def compute_context_vector(self, decision_date: pd.Timestamp) -> pd.Series:
+        macro_df = self.screener.macro_df
+        if macro_df is None or decision_date not in macro_df.index:
+            return pd.Series(
+                {
+                    "Context_Trend": 0.0,
+                    "Context_Vel_Z": 0.0,
+                    "Context_Vix_Z": 0.0,
+                    "Context_Vix_Ratio": 1.0,
+                }
+            )
+
+        # CAST HERE:
+        macro_row = cast(pd.Series, macro_df.loc[decision_date])
+
+        return pd.Series(
+            {
+                "Context_Trend": float(macro_row.get("Macro_Trend", 0.0)) * 10,
+                "Context_Vel_Z": float(macro_row.get("Macro_Trend_Vel_Z", 0.0)),
+                "Context_Vix_Z": float(macro_row.get("Macro_Vix_Z", 0.0)),
+                "Context_Vix_Ratio": float(macro_row.get("Macro_Vix_Ratio", 1.0)) - 1.0,
+            }
+        )
+
+    def compute_alpha_matrix(
+        self, decision_date: pd.Timestamp, lookback_period: int
+    ) -> pd.DataFrame:
+        mock_input = EngineInput(
+            mode="Discovery",
+            decision_date=decision_date,
+            lookback_period=lookback_period,
+            holding_period=1,
+            metric="All",
+            benchmark_ticker=self.config.benchmark_ticker,
+            quality_thresholds=self.config.thresholds,
+        )
+
+        try:
+            safe_start, safe_decision, _, _ = self.screener.validate_timeline(
+                mock_input
+            )
+        except ValueError as e:
+            print(f"Timeline Error for {decision_date.date()}: {e}")
+            return pd.DataFrame()
+
+        candidates = self.screener.filter_universe(
+            safe_decision, self.config.thresholds, audit_container={}
+        )
+        if not candidates:
+            return pd.DataFrame()
+
+        obs = self.screener.build_observation(safe_decision, candidates, safe_start)
+        alpha_results = {}
+        registry = get_strategy_registry(self.config)
+
+        for name, blueprint in registry.items():
+            try:
+                suffix = " (Z)" if blueprint.scaling_type == "Z-Score" else " (S)"
+                tagged_name = f"{name}{suffix}"
+                scores = blueprint.get_agent_view(obs, config=self.config)
+
+                if isinstance(scores, (pd.Series, pd.DataFrame)):
+                    alpha_results[tagged_name] = scores
+                else:
+                    alpha_results[tagged_name] = pd.Series(scores, index=candidates)
+            except Exception as e:
+                print(f"Warning: Strategy '{name}' failed: {e}")
+                alpha_results[f"{name} (Err)"] = pd.Series(np.nan, index=candidates)
+
+        alpha_matrix = pd.DataFrame(alpha_results)
+        alpha_matrix.index.name = "Ticker"
+        return alpha_matrix
+
+    def normalize_alpha_matrix(self, alpha_matrix: pd.DataFrame) -> pd.DataFrame:
+        if alpha_matrix.empty:
+            return alpha_matrix
+        normalized = alpha_matrix.apply(QuantUtils.zscore)
+        clip_val = self.config.feature_zscore_clip
+        return normalized.clip(-clip_val, clip_val).fillna(0.0)
+
+    def run_discovery_action(
+        self,
+        decision_date: pd.Timestamp,
+        lookback_period: int,
+        holding_period: int,
+        weights: np.ndarray,
+    ) -> Optional[DiscoveryResult]:
+        raw_matrix = self.compute_alpha_matrix(decision_date, lookback_period)
+        norm_matrix = self.normalize_alpha_matrix(raw_matrix)
+        if norm_matrix.empty:
+            return None
+
+        discovery_scores = norm_matrix.values @ weights
+        discovery_series = pd.Series(discovery_scores, index=norm_matrix.index)
+        top_tickers = (
+            discovery_series.sort_values(ascending=False).head(10).index.tolist()
+        )
+        veritable_reward = self.get_batch_reward(decision_date, top_tickers)
+
+        registry = get_strategy_registry(self.config)
+        return DiscoveryResult(
+            action_weights=dict(zip(list(registry.keys()), weights)),
+            selected_tickers=top_tickers,
+            veritable_reward=veritable_reward,
+            metric_values=discovery_series.loc[top_tickers],
+            raw_alpha_matrix=raw_matrix,
+        )
+
+################################################################################
+################################################################################
+### FILE [5] : trainer.py
+### PATH   : ..\notebooks_RLVR_v2\rl_discovery\trainer.py
+################################################################################
+################################################################################
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import numpy as np
+from .agent import AbsoluteZeroAgent
+
+
+class RolloutBuffer:
+    """
+    [DEEP MODULE] Stores sequential experiences and computes Generalized Advantage Estimation (GAE).
+    Pre-allocates tensors for memory efficiency.
+    """
+
+    def __init__(
+        self,
+        num_steps: int,
+        obs_dim: int = 33,
+        action_dim: int = 13,
+        device: torch.device = torch.device("cpu"),
+    ):
+        self.num_steps = num_steps
+        self.device = device
+
+        # Pre-allocate memory (Batch, Dim)
+        self.obs = torch.zeros((num_steps, obs_dim), dtype=torch.float32).to(device)
+        self.actions = torch.zeros((num_steps, action_dim), dtype=torch.float32).to(
+            device
+        )
+        self.logprobs = torch.zeros((num_steps,), dtype=torch.float32).to(device)
+        self.rewards = torch.zeros((num_steps,), dtype=torch.float32).to(device)
+        self.values = torch.zeros((num_steps,), dtype=torch.float32).to(device)
+        self.dones = torch.zeros((num_steps,), dtype=torch.float32).to(device)
+
+        self.step = 0
+
+    def add(
+        self,
+        obs: np.ndarray,
+        action: torch.Tensor,
+        logprob: torch.Tensor,
+        reward: float,
+        value: torch.Tensor,
+        done: bool,
+    ):
+        """[GUARD] Traps buffer overflow."""
+        if self.step >= self.num_steps:
+            raise IndexError(
+                "RolloutBuffer is full. Call compute_advantages() and reset."
+            )
+
+        self.obs[self.step] = torch.tensor(obs, dtype=torch.float32).to(self.device)
+        self.actions[self.step] = action
+        self.logprobs[self.step] = logprob
+        self.rewards[self.step] = reward
+        self.values[self.step] = value.flatten()
+        self.dones[self.step] = done
+        self.step += 1
+
+    def compute_advantages(
+        self,
+        next_value: torch.Tensor,
+        next_done: bool,
+        gamma: float = 0.99,
+        gae_lambda: float = 0.95,
+    ):
+        """
+        Calculates GAE.
+        Advantage = Return - Baseline (Value).
+        Positive Advantage = Action was better than expected.
+        """
+        self.advantages = torch.zeros_like(self.rewards).to(self.device)
+        lastgaelam = 0
+
+        for t in reversed(range(self.num_steps)):
+            if t == self.num_steps - 1:
+                nextnonterminal = 1.0 - int(next_done)
+                nextvalues = next_value
+            else:
+                nextnonterminal = 1.0 - self.dones[t + 1]
+                nextvalues = self.values[t + 1]
+
+            delta = (
+                self.rewards[t] + gamma * nextvalues * nextnonterminal - self.values[t]
+            )
+            self.advantages[t] = lastgaelam = (
+                delta + gamma * gae_lambda * nextnonterminal * lastgaelam
+            )
+
+        self.returns = self.advantages + self.values
+
+
+class PPOTrainer:
+    """
+    Executes the Clipped Surrogate Objective update over the Experience Buffer.
+    """
+
+    def __init__(
+        self,
+        agent: AbsoluteZeroAgent,
+        lr: float = 3e-4,
+        clip_coef: float = 0.2,
+        ent_coef: float = 0.01,
+        vf_coef: float = 0.5,
+        max_grad_norm: float = 0.5,
+    ):
+        self.agent = agent
+        self.optimizer = optim.Adam(self.agent.parameters(), lr=lr, eps=1e-5)
+
+        # Hyperparameters
+        self.clip_coef = clip_coef  # Prevents updating policy too much
+        self.ent_coef = ent_coef  # Encourages exploration
+        self.vf_coef = vf_coef  # Critic loss scaling
+        self.max_grad_norm = max_grad_norm
+
+    def update(
+        self, buffer: RolloutBuffer, update_epochs: int = 4, mini_batch_size: int = 64
+    ) -> dict:
+        """
+        Executes PPO update step and returns key diagnostic metrics.
+        """
+        b_obs = buffer.obs
+        b_actions = buffer.actions
+        b_logprobs = buffer.logprobs
+        b_advantages = buffer.advantages
+        b_returns = buffer.returns
+
+        # Batch normalization of advantages (critical for stable learning)
+        b_advantages = (b_advantages - b_advantages.mean()) / (
+            b_advantages.std() + 1e-8
+        )
+
+        buffer_size = buffer.num_steps
+        b_inds = np.arange(buffer_size)
+
+        # Metric storage
+        pg_losses = []
+        v_losses = []
+        entropy_losses = []
+        total_losses = []
+        clip_fractions = []
+        approx_kls = []
+
+        for epoch in range(update_epochs):
+            np.random.shuffle(b_inds)
+            for start in range(0, buffer_size, mini_batch_size):
+                end = start + mini_batch_size
+                mb_inds = b_inds[start:end]
+
+                # 1. Get new probabilities for the old actions using updated network
+                _, newlogprob, entropy, newvalue = self.agent.get_action_and_value(
+                    b_obs[mb_inds], b_actions[mb_inds]
+                )
+
+                # 2. Policy Loss (Clipped Surrogate)
+                logratio = newlogprob - b_logprobs[mb_inds]
+                ratio = logratio.exp()
+
+                # Approximate KL divergence estimate for stability checking [2]
+                with torch.no_grad():
+                    approx_kl = ((ratio - 1.0) - logratio).mean().item()
+                    approx_kls.append(approx_kl)
+
+                mb_advantages = b_advantages[mb_inds]
+                pg_loss1 = -mb_advantages * ratio
+                pg_loss2 = -mb_advantages * torch.clamp(
+                    ratio, 1.0 - self.clip_coef, 1.0 + self.clip_coef
+                )
+                pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+
+                # Calculate clip fraction
+                with torch.no_grad():
+                    clip_frac = (
+                        ((ratio - 1.0).abs() > self.clip_coef).float().mean().item()
+                    )
+                    clip_fractions.append(clip_frac)
+
+                # 3. Value Loss (MSE between prediction and actual return)
+                newvalue = newvalue.view(-1)
+                v_loss = 0.5 * ((newvalue - b_returns[mb_inds]) ** 2).mean()
+
+                # 4. Entropy Loss (Maximize entropy to encourage exploration)
+                entropy_loss = entropy.mean()
+
+                # 5. Total Loss
+                loss = pg_loss - self.ent_coef * entropy_loss + v_loss * self.vf_coef
+
+                # Save raw step losses
+                pg_losses.append(pg_loss.item())
+                v_losses.append(v_loss.item())
+                entropy_losses.append(entropy_loss.item())
+                total_losses.append(loss.item())
+
+                # 6. Backpropagation
+                self.optimizer.zero_grad()
+                loss.backward()
+                nn.utils.clip_grad_norm_(self.agent.parameters(), self.max_grad_norm)
+                self.optimizer.step()
+
+        # Compute Explained Variance of Value Predictions
+        y_pred = buffer.values.cpu().numpy()
+        y_true = b_returns.cpu().numpy()
+        var_y = np.var(y_true)
+        explained_var = (
+            np.nan if var_y == 0 else 1.0 - (np.var(y_true - y_pred) / var_y)
+        )
+
+        # Aggregate metrics over all update epochs and steps
+        diagnostics = {
+            "policy_loss": np.mean(pg_losses),
+            "value_loss": np.mean(v_losses),
+            "entropy": np.mean(entropy_losses),
+            "total_loss": np.mean(total_losses),
+            "approx_kl": np.mean(approx_kls),
+            "clip_fraction": np.mean(clip_fractions),
+            "explained_variance": float(explained_var),
+        }
+        return diagnostics
+
+################################################################################
+################################################################################
+### FILE [6] : validator.py
+### PATH   : ..\notebooks_RLVR_v2\rl_discovery\validator.py
+################################################################################
+################################################################################
+
+import torch
+import numpy as np
+import pandas as pd
+
+from typing import Dict, Any
+
+
+class AgentEvaluator:
+    """
+    Deterministic OOS Evaluator with Realistic Overlapping Math and Deep Trade Blotter.
+    """
+
+    @staticmethod
+    def evaluate(
+        agent,
+        env,
+        device=torch.device("cpu"),
+        detailed_log: bool = False,
+        metadata: dict | None = None,
+    ):
+        agent.eval()
+        obs, info = env.reset()
+
+        actual_returns_list = []  # NEW: Track actual financial returns for Sharpe
+        equity_curve = [1.0]
+        dates = [info.get("date", pd.Timestamp.min)]
+
+        trade_blotter = []
+        done = False
+
+        # Extract holding period dynamically from the underlying environment
+        holding_period = getattr(env.unwrapped.env, "holding_period", 5)
+
+        with torch.no_grad():
+            while not done:
+                obs_tensor = (
+                    torch.tensor(obs, dtype=torch.float32).unsqueeze(0).to(device)
+                )
+
+                action_mean = agent.actor_mean(obs_tensor)
+                action = action_mean.cpu().numpy()[0]
+                predicted_value = float(agent.get_value(obs_tensor).cpu().numpy()[0][0])
+
+                next_obs, reward, done, _, info = env.step(action)
+
+                # Fetch real financial return (ignoring RL penalties)
+                actual_return = info.get("actual_return", 0.0)
+
+                if detailed_log:
+                    trade_blotter.append(
+                        {
+                            "decision_date": (
+                                info.get("date").strftime("%Y-%m-%d")
+                                if info.get("date")
+                                else None
+                            ),
+                            "buy_date": (
+                                info.get("buy_date").strftime("%Y-%m-%d")
+                                if info.get("buy_date")
+                                else None
+                            ),
+                            "sell_date": (
+                                info.get("sell_date").strftime("%Y-%m-%d")
+                                if info.get("sell_date")
+                                else None
+                            ),
+                            "universe_size": info.get("universe_size"),
+                            "max_score": info.get("max_score"),
+                            "min_score": info.get("min_score"),
+                            "observation": obs.copy().tolist(),
+                            "raw_actions": action.copy().tolist(),
+                            "decoded_offset": info.get("offset"),
+                            "decoded_width": info.get("width"),
+                            "top_3_tickers": info.get("top_3"),
+                            "chosen_tickers": info.get("tickers"),
+                            "predicted_reward": predicted_value,
+                            "rl_reward_received": float(reward),  # Renamed for clarity
+                            "raw_log_reward": info.get("raw_log_reward"),
+                            "actual_return": actual_return,
+                            "mkt_return": info.get("mkt_return"),
+                            "alpha": info.get("alpha"),
+                            "penalized_alpha": info.get("penalized_alpha"),
+                            "slippage_applied": info.get("slippage_applied"),
+                            # NEW BLOTTER DATA
+                            "portfolio_impact": info.get("portfolio_impact", 0.0),
+                            "alpha_impact": info.get("alpha_impact", 0.0),
+                            "agent_equity": info.get("agent_equity", 1.0),
+                            "alpha_equity": info.get("alpha_equity", 1.0),
+                        }
+                    )
+
+                actual_returns_list.append(actual_return)
+
+                # REALISTIC OVERLAPPING EQUITY MATH (Using actual_return, NOT rl_reward)
+                portfolio_impact = actual_return / holding_period
+                equity_curve.append(equity_curve[-1] * (1.0 + portfolio_impact))
+
+                dates.append(info.get("date", pd.Timestamp.min))
+                obs = next_obs
+
+        agent.train()
+
+        # Calculate standard financial Sharpe (using actual returns, not penalized alpha)
+        returns = pd.Series(actual_returns_list)
+        annualization_factor = np.sqrt(252)
+        daily_portfolio_returns = returns / holding_period
+        std_dev = daily_portfolio_returns.std()
+
+        sharpe = (
+            ((daily_portfolio_returns.mean() / std_dev) * annualization_factor)
+            if std_dev > 1e-8
+            else 0.0
+        )
+
+        results = {
+            "total_return": equity_curve[-1] - 1.0,
+            "sharpe_ratio": float(sharpe),
+            "equity_curve": equity_curve,
+            "dates": dates,
+            "steps": len(actual_returns_list),
+        }
+
+        if detailed_log:
+            results["blotter"] = trade_blotter
+            results["metadata"] = metadata or {}
+
+        return results
+
+
+#
+
+################################################################################
+################################################################################
+### FILE [7] : registry.py
+### PATH   : ..\notebooks_RLVR_v2\strategy\registry.py
+################################################################################
+################################################################################
+
+from typing import Dict
+
+from core.quant import QuantUtils
+from core.contracts import MetricBlueprint
+from core.settings import TradingConfig
+
+
+def get_strategy_registry(config: TradingConfig) -> Dict[str, MetricBlueprint]:
+    S_PARAMS = config.strategy_params
+
+    return {
+        "Log Price Gain": MetricBlueprint(
+            name="Log Price Gain",
+            category="Returns",
+            regime="Trend",
+            description="Natural log return of lookback window.",
+            agent_hint="Primary momentum filter. Use Z-scores to identify 'Normal' vs 'Extreme' growth.",
+            intervention_trigger=f"LONG if Value > {S_PARAMS.standard_confidence}std & Autocorr > 0.15; FLAT if Value < -{S_PARAMS.standard_confidence}std or Convexity < 0",
+            scaling_type="Z-Score",
+            formula=lambda obs: QuantUtils.calculate_gain(obs.lookback_close),
+        ),
+        "Sharpe (TRP)": MetricBlueprint(
+            name="Sharpe (TRP)",
+            category="Risk-Adjusted",
+            regime="Efficiency",
+            description="Risk-adjusted efficiency of the Total Return Premium.",
+            agent_hint="The 'Quality' dial. High values suggest stable, institutional-led trends.",
+            intervention_trigger="SIZE = clip(Sharpe, 0, 3) / 2.0. If Sharpe < 0.5, reduce position by 50%.",
+            formula=lambda obs: QuantUtils.calc_sharpe_cross_section(
+                obs.lookback_returns, obs.trp  # Returns (DF) + TRP (Series)
+            ),
+        ),
+        "Momentum (21d)": MetricBlueprint(
+            name="Momentum (21d)",
+            category="Momentum",
+            regime="Trend",
+            description="Standard 1-month momentum factor.",
+            agent_hint=f"Use to rank assets. Avoid buying when Momentum is over-extended (>{S_PARAMS.extreme_confidence}std).",
+            intervention_trigger=f"CONFIRM LONG if 21d > 63d Mean; AVOID if Value > {S_PARAMS.extreme_confidence}std (Parabolic Risk).",
+            formula=lambda obs: obs.mom_21,
+        ),
+        "Info Ratio (63d)": MetricBlueprint(
+            name="Info Ratio (63d)",
+            category="Alpha",
+            regime="Trend Quality",
+            description="Alpha consistency over a quarterly window.",
+            agent_hint="The 'Gatekeeper'. If IR is low, the trend is likely noise/random walk.",
+            intervention_trigger="GATING: Only allow 'Trend' Pillar weight > 0.2 if Info Ratio > 0.5.",
+            formula=lambda obs: obs.ir_63,
+        ),
+        "Oversold (-RSI)": MetricBlueprint(
+            name="Oversold (-RSI)",
+            category="Mean Reversion",
+            regime="Contrarian",
+            description="Inverse RSI(14). Scaled between -1.0 and 1.0.",
+            agent_hint="Higher is more oversold. Look for the 'Hook' (Convexity > 0) to time entry.",
+            intervention_trigger=f"BUY if Value > {100-S_PARAMS.rsi_oversold} AND Convexity > 0.2; SELL/FLAT if Value < {100-S_PARAMS.rsi_overbought}.",
+            scaling_type="RSI",
+            formula=lambda obs: -obs.rsi,
+        ),
+        "Dip Buyer (-dd_21)": MetricBlueprint(
+            name="Dip Buyer (-dd_21)",
+            category="Mean Reversion",
+            regime="Contrarian",
+            description="Inverse 21-day drawdown. High = Deep pullback.",
+            agent_hint="Best used when the structural trend is still positive (Autocorr > 0.15).",
+            intervention_trigger=f"BUY DIP if Value > {S_PARAMS.strong_confidence}std AND Autocorr_15 > 0.2 (Structural Trend).",
+            formula=lambda obs: -obs.dd_21,
+        ),
+        "Range Position (20d)": MetricBlueprint(
+            name="Range Position (20d)",
+            category="Mean Reversion",
+            regime="Boundary",
+            description="Where price sits in 20-day High/Low range (0.0 to 1.0).",
+            agent_hint="The 'Decision Fork'. Breakout at 0.8+, Support at 0.2-.",
+            intervention_trigger=f"Value > {S_PARAMS.range_high}: LONG only if OBV > {S_PARAMS.standard_confidence}std; Value < {S_PARAMS.range_low}: LONG only if OBV < -{S_PARAMS.standard_confidence}std.",
+            formula=lambda obs: obs.range_pos_20,
+        ),
+        "Return Autocorr (15d)": MetricBlueprint(
+            name="Return Autocorr (15d)",
+            category="Regime",
+            regime="Market State",
+            description="Measures price memory (Persistence vs. Mean Reversion).",
+            agent_hint="THE MASTER SWITCH. Determines which other features to trust.",
+            intervention_trigger="Bias 'Trend' if > 0.15; Bias 'Reversion' if < -0.15; Else prioritize 'Cash'.",
+            scaling_type="None",
+            formula=lambda obs: obs.autocorr_15,
+        ),
+        "Low Volatility (-ATRP)": MetricBlueprint(
+            name="Low Volatility (-ATRP)",
+            category="Volatility",
+            regime="Risk Filter",
+            description="Inverse ATR Percentage. High = Quiet market.",
+            agent_hint="Standardized volatility. 0 = Market Average.",
+            intervention_trigger=f"RISK OFF if Value < -2.0std; BREAKOUT WATCH if Value > {S_PARAMS.strong_confidence}std.",
+            scaling_type="Z-Score",
+            formula=lambda obs: -obs.atrp,
+        ),
+        "OBV Divergence (5d)": MetricBlueprint(
+            name="OBV Divergence (5d)",
+            category="Volume/Fuel",
+            regime="Confirmation",
+            description="Temporally Z-scored gap between relative volume flow and price trend.",
+            agent_hint="Detects smart money accumulation/distribution.",
+            intervention_trigger=f"INVALIDATE Longs if Price Trend (+) but Divergence < -{S_PARAMS.standard_confidence}std.",
+            scaling_type="Z-Score",
+            # FIX: Use pre-calculated temporal Z-Scores to avoid the Cross-Sectional Dead Node bug!
+            formula=lambda obs: obs.slope_v_5_z - obs.slope_p_5_z,
+        ),
+        "Convexity": MetricBlueprint(
+            name="Convexity",
+            category="Physics",
+            regime="Acceleration",
+            description="Second derivative of price. Curvature of the trend.",
+            agent_hint="The 'Golden Exit'. Trend is healthy when > 0, exhausting when < 0.",
+            intervention_trigger=f"EXIT LONG if Value < {S_PARAMS.convexity_exit} (Deceleration). FRONT-RUN THE REVERSAL.",
+            scaling_type="Z-Score",
+            formula=lambda obs: obs.convexity,
+        ),
+    }
