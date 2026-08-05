@@ -19,6 +19,7 @@ class MockDiscoveryEnv:
         return {
             "date": pd.Timestamp("2024-01-01"),
             "ensemble": pd.DataFrame(np.random.randn(2, 12)),
+            "macro_row": pd.Series(np.zeros(11)),  # <-- FIXED: Added mock macro row
         }
 
     def step(self, action):
@@ -27,7 +28,12 @@ class MockDiscoveryEnv:
         # Give a small positive reward
         reward = 0.01
         info = {"date": pd.Timestamp("2024-01-01") + pd.Timedelta(days=self.step_count)}
-        obs = {"date": info["date"], "ensemble": pd.DataFrame(np.random.randn(2, 12))}
+
+        obs = {
+            "date": info["date"],
+            "ensemble": pd.DataFrame(np.random.randn(2, 12)),
+            "macro_row": pd.Series(np.zeros(11)),  # <-- FIXED: Added mock macro row
+        }
         return obs, reward, done, info
 
 

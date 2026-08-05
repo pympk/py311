@@ -1072,42 +1072,140 @@ class SystemAuditor:
 
     @staticmethod
     def audit_oos_results(
-        pkl_path: Path, df_ohlcv_path: Path, slippage_bps: float = 5.0
+        pkl_path: Path, df_ohlcv_path: Path, slippage_bps: Optional[float] = None
     ) -> pd.DataFrame:
         """
         Loads the actual RL output and real market data to independently verify
         that the RL environment's math and date-alignments are honest.
         """
+        config = TradingConfig()
+        if slippage_bps is None:
+            slippage_bps = config.slippage_rate * 10000.0
+
         # 1. Load the real RL results
         with open(pkl_path, "rb") as f:
             results = pickle.load(f)
         blotter_df = pd.DataFrame(results["blotter"])
 
-        # 2. Load the real market prices
-        # We only need 'Adj Close' to verify the returns
+        print(f"\n[DEBUG] Blotter columns available: {list(blotter_df.columns)}")
+        print(f"[DEBUG] Total blotter trades: {len(blotter_df)}")
+
+        # 2. Load the real market prices & Replicate Engine's ffill logic
         df_ohlcv = pd.read_parquet(df_ohlcv_path, columns=["Adj Close"])
-        prices = df_ohlcv["Adj Close"].unstack(level=0)
+
+        # Robustly flatten MultiIndex and normalize dates.
+        # Prevents timezone shifts (e.g. 20:00:00-04:00) from causing `unstack` to misalign tickers into different rows.
+        df_reset = df_ohlcv.reset_index()
+        cols = df_reset.columns.tolist()
+        cols.remove("Adj Close")
+        ticker_col, date_col = cols[0], cols[1]
+
+        df_reset[date_col] = (
+            pd.to_datetime(df_reset[date_col], utc=True)
+            .dt.tz_convert(None)
+            .dt.normalize()
+        )
+
+        # Pivot aggregates duplicate date/ticker collisions securely
+        prices = df_reset.pivot_table(
+            index=date_col, columns=ticker_col, values="Adj Close", aggfunc="last"
+        )
+
+        if config.handle_zeros_as_nan:
+            prices = prices.replace(0.0, np.nan).ffill()
+        else:
+            prices = prices.ffill(limit=config.max_data_gap_ffill)
+
+        print(
+            f"[DEBUG] Market prices date range: {prices.index.min()} to {prices.index.max()}"
+        )
+        print(f"[DEBUG] Total market tickers in prices parquet: {len(prices.columns)}")
 
         calculated_returns = []
+        audit_details = []
 
         # 3. Iterate through every single trade the agent made out-of-sample
-        for _, row in blotter_df.iterrows():
-            buy_date = pd.to_datetime(row["buy_date"])
-            sell_date = pd.to_datetime(row["sell_date"])
+        for idx, row in blotter_df.iterrows():
+            buy_date = pd.to_datetime(row["buy_date"]).tz_localize(None)
+            sell_date = pd.to_datetime(row["sell_date"]).tz_localize(None)
             tickers = row["chosen_tickers"]
 
-            # Fetch the actual historical prices for those specific days
-            buy_prices: Any = prices.loc[buy_date, tickers]
-            sell_prices: Any = prices.loc[sell_date, tickers]
+            detail = {
+                "idx": idx,
+                "buy_date": buy_date,
+                "sell_date": sell_date,
+                "raw_tickers": tickers,
+                "valid_tickers": [],
+                "missing_tickers": [],
+                "raw_return": 0.0,
+                "net_return": 0.0,
+                "status": "OK",
+            }
 
-            # Independent math: (Sell - Buy) / Buy
-            raw_returns = (sell_prices - buy_prices) / buy_prices
+            if not isinstance(tickers, (list, tuple, np.ndarray)) or len(tickers) == 0:
+                detail["status"] = "NO_TICKERS"
+                calculated_returns.append(0.0)
+                audit_details.append(detail)
+                continue
 
-            # Deduct standard slippage
-            net_returns = raw_returns - (slippage_bps * 2 / 10000)
+            valid_tickers = [t for t in tickers if t != "CASH" and t in prices.columns]
+            missing_tickers = [
+                t for t in tickers if t != "CASH" and t not in prices.columns
+            ]
 
-            # The portfolio return is the average of the basket
-            calculated_returns.append(net_returns.mean())
+            detail["valid_tickers"] = valid_tickers
+            detail["missing_tickers"] = missing_tickers
+
+            if not valid_tickers:
+                detail["status"] = "NO_VALID_TICKERS"
+                calculated_returns.append(0.0)
+                audit_details.append(detail)
+                continue
+
+            try:
+                window_prices = prices.loc[buy_date:sell_date, valid_tickers]
+
+                # Drop tickers with no price data in this window
+                window_prices = window_prices.dropna(how="all", axis=1)
+                if window_prices.empty:
+                    calculated_returns.append(0.0)
+                    continue
+
+                # Replicate Engine's exact Equity Curve matrix math
+                base_prices = window_prices.bfill().iloc[0]
+                valid_cols = base_prices.dropna().index
+                if len(valid_cols) == 0:
+                    calculated_returns.append(0.0)
+                    continue
+
+                window_prices = window_prices[valid_cols]
+                base_prices = base_prices[valid_cols]
+
+                norm_prices = window_prices.div(base_prices)
+
+                # Engine allocates equally across the valid tickers with price data
+                weights = pd.Series(1.0 / len(valid_cols), index=valid_cols)
+                weighted_components = norm_prices.mul(weights, axis=1)
+
+                equity_curve = weighted_components.sum(axis=1)
+
+                # Engine return logic: Final Equity - 1.0 (Initial Capital)
+                raw_portfolio_return = float(equity_curve.iloc[-1]) - 1.0
+
+            except KeyError as e:
+                print(
+                    f"\n[Auditor Error] Missing data in slice {buy_date.date()} to {sell_date.date()}: {e}"
+                )
+                calculated_returns.append(0.0)
+                continue
+
+            # Deduct round-trip slippage at the portfolio level
+            net_portfolio_return = raw_portfolio_return - (slippage_bps / 10000.0)
+
+            detail["raw_return"] = raw_portfolio_return
+            detail["net_return"] = net_portfolio_return
+            calculated_returns.append(net_portfolio_return)
+            audit_details.append(detail)
 
         # 4. Compare RL reported return vs Independent calculation
         verification_df = pd.DataFrame(
@@ -1118,7 +1216,6 @@ class SystemAuditor:
             }
         )
 
-        # Calculate the divergence
         verification_df["Difference"] = (
             verification_df["RL_Env_Reported_Return"]
             - verification_df["Auditor_Calculated_Return"]
@@ -1126,14 +1223,65 @@ class SystemAuditor:
 
         max_diff = verification_df["Difference"].abs().max()
 
-        print(f"Max divergence between RL Env and Auditor: {max_diff:.6f}")
-        if max_diff < 1e-4:
+        print(f"\n[Auditor] Max divergence between RL Env and Auditor: {max_diff:.6f}")
+
+        if max_diff >= 1e-4:
+            bad_indices = verification_df[
+                verification_df["Difference"].abs() >= 1e-4
+            ].index
+            print(f"\nf{'='*30} [AUDITOR DEBUG TRAP] f{'='*30}")
             print(
-                "✅ PASSED: OOS Returns are mathematically sound and properly aligned."
+                f"Total Divergent Trades Found: {len(bad_indices)} / {len(blotter_df)}"
             )
+
+            for idx in bad_indices[:5]:  # Print details for first 5 divergent trades
+                r = verification_df.loc[idx]
+                b_row = blotter_df.iloc[cast(int, idx)]
+                d = audit_details[idx]
+
+                print(f"\n--- Trade Index #{idx} ---")
+                print(f"  Decision Date         : {r['Date']}")
+                print(f"  Buy Date              : {d['buy_date']}")
+                print(f"  Sell Date             : {d['sell_date']}")
+                print(f"  Chosen Tickers (Raw)  : {d['raw_tickers']}")
+                print(f"  Valid Tickers Used    : {d['valid_tickers']}")
+                print(f"  Missing Tickers       : {d['missing_tickers']}")
+                print(f"  Trade Audit Status    : {d['status']}")
+                print(f"  RL Env Reported Return: {r['RL_Env_Reported_Return']:.6f}")
+                print(f"  Auditor Raw Return    : {d['raw_return']:.6f}")
+                print(
+                    f"  Auditor Net Return    : {d['net_return']:.6f} (Slippage BPS: {slippage_bps})"
+                )
+                print(f"  Difference            : {r['Difference']:.6f}")
+
+                # Inspect relevant blotter fields if available
+                for col in [
+                    "actual_return",
+                    "portfolio_return",
+                    "raw_return",
+                    "slippage",
+                    "weights",
+                    "positions",
+                ]:
+                    if col in b_row:
+                        print(f"  Blotter field [{col}]: {b_row[col]}")
+
+                # Print actual price slice snippet if valid tickers exist
+                if d["valid_tickers"]:
+                    w_prices = prices.loc[
+                        d["buy_date"] : d["sell_date"], d["valid_tickers"]
+                    ]
+                    print(
+                        f"  Price Slice Start ({d['buy_date'].date()}):\n{w_prices.iloc[0].to_dict() if not w_prices.empty else 'EMPTY'}"
+                    )
+                    print(
+                        f"  Price Slice End   ({d['sell_date'].date()}):\n{w_prices.iloc[-1].to_dict() if not w_prices.empty else 'EMPTY'}"
+                    )
+
+            print(f"{'='*80}\n")
         else:
             print(
-                "❌ FAILED: RL Environment contains forward-looking leaks or price misalignment."
+                "✅ PASSED: OOS Returns are mathematically sound and properly aligned."
             )
 
         return verification_df

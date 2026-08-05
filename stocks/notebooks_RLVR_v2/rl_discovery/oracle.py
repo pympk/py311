@@ -22,11 +22,17 @@ class RLOracle:
         self.reward_matrix = pd.DataFrame()
 
     def precompute_reward_matrix(self, holding_period: int):
-        close_df = self.screener.df_close
+        if self.config.handle_zeros_as_nan:
+            close_df = self.screener.df_close.replace(0.0, np.nan).ffill()
+        else:
+            close_df = self.screener.df_close.ffill(
+                limit=self.config.max_data_gap_ffill
+            )
+
         self.reward_matrix = (
             close_df.shift(-(holding_period + 1)) / close_df.shift(-1)
         ) - 1.0
-        self.reward_matrix = self.reward_matrix.fillna(0.0)
+        self.reward_matrix = self.reward_matrix.replace([np.inf, -np.inf], np.nan)
 
     def get_batch_reward(
         self, decision_date: pd.Timestamp, tickers: List[str]

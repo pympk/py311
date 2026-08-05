@@ -809,7 +809,7 @@ class ReportGenerator:
             df_report = pd.DataFrame(rows).set_index("Metric")
 
             # --- STYLE - from old code exactly ---
-            styler = df_report.style.format("{:+.4f}", na_rep="N/A")
+            styler = df_report.style.format("{:+.6f}", na_rep="N/A")
 
             def row_logic(row):
                 if "Delta" in row.name:

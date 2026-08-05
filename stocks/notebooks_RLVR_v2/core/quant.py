@@ -120,7 +120,11 @@ class QuantUtils:
         vol_arr = vol_vector.to_numpy(dtype=float)  # Shape: (Tickers,)
 
         # 2. Fast C-level math
-        avg_ret = np.nanmean(ret_arr, axis=0)
+        # --- FIX: Suppress the RuntimeWarning for columns that are entirely NaN ---
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=RuntimeWarning)
+            avg_ret = np.nanmean(ret_arr, axis=0)
+
         avg_vol = np.maximum(vol_arr, 1e-8)
 
         # 3. Calculate and clean infinites/NaNs natively in NumPy
@@ -216,15 +220,35 @@ class QuantUtils:
         trp_matrix: pd.DataFrame,
         weights: pd.Series,
     ) -> Tuple[pd.Series, pd.Series, pd.Series, pd.Series]:
-        norm_prices = prices.div(prices.bfill().iloc[0])
-        weighted_components = norm_prices.mul(weights, axis=1)
+        valid_prices = prices.dropna(how="all", axis=1)
+        if valid_prices.empty:
+            empty_s = pd.Series(0.0, index=prices.index)
+            return empty_s, empty_s, empty_s, empty_s
+
+        base_prices = valid_prices.bfill().iloc[0]
+        valid_cols = base_prices.dropna().index
+        if len(valid_cols) == 0:
+            empty_s = pd.Series(0.0, index=prices.index)
+            return empty_s, empty_s, empty_s, empty_s
+
+        valid_prices = valid_prices[valid_cols]
+        base_prices = base_prices[valid_cols]
+
+        valid_weights = weights.reindex(valid_cols)
+        valid_weights = valid_weights / valid_weights.sum()
+
+        norm_prices = valid_prices.div(base_prices)
+        weighted_components = norm_prices.mul(valid_weights, axis=1)
         equity_curve = weighted_components.sum(axis=1)
 
         returns_WITH_BOUNDARY_NAN = QuantUtils.compute_returns(equity_curve)
         current_weights = weighted_components.div(equity_curve, axis=0)
 
-        portfolio_atrp = (current_weights * atrp_matrix).sum(axis=1, min_count=1)
-        portfolio_trp = (current_weights * trp_matrix).sum(axis=1, min_count=1)
+        sub_atrp = atrp_matrix.reindex(columns=valid_cols)
+        sub_trp = trp_matrix.reindex(columns=valid_cols)
+
+        portfolio_atrp = (current_weights * sub_atrp).sum(axis=1, min_count=1)
+        portfolio_trp = (current_weights * sub_trp).sum(axis=1, min_count=1)
 
         return equity_curve, returns_WITH_BOUNDARY_NAN, portfolio_atrp, portfolio_trp
 

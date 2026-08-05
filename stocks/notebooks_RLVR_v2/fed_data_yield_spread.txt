@@ -1,0 +1,97 @@
+==============================================================================
+# MERGED NOTEBOOKS CONVERSION
+# Total notebooks: 1
+# ==============================================================================
+
+##############################################################################
+## NOTEBOOK: fed_data_yield_spread.ipynb
+## PATH: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\fed_data_yield_spread.ipynb
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 1  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+from fredapi import Fred
+import pandas as pd
+from datetime import datetime
+
+# Load API key from .env file
+env_path = r"C:\Users\ping\Files_win10\python\py311\.env\my_api_key.env"
+api_key = None
+
+with open(env_path, "r") as f:
+    for line in f:
+        line = line.strip()
+        if line and not line.startswith("#"):
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")  # Remove surrounding quotes
+            if key == "Fred":
+                api_key = value
+                break
+
+if not api_key:
+    raise ValueError("API key 'Fred' not found in .env file")
+
+fred = Fred(api_key=api_key)
+
+tickers = ["BAMLH0A0HYM2", "T10Y2Y"]
+start_date = datetime(1970, 1, 1)
+end_date = datetime.now()
+
+# Fetch each series
+series_dict = {}
+for ticker in tickers:
+    series_dict[ticker] = fred.get_series(
+        ticker, observation_start=start_date, observation_end=end_date
+    )
+
+df = pd.DataFrame(series_dict)
+df.columns = ["High_Yield_Spread", "Yield_Curve_10Y2Y"]
+
+# Drop rows where BOTH are missing
+df_clean = df.dropna(how="all")
+
+print(f"Data successfully downloaded.")
+print(
+    f"Yield Curve (T10Y2Y) starts: {df_clean['Yield_Curve_10Y2Y'].first_valid_index().date()}"
+)
+print(
+    f"High Yield Spread (BAMLH0A0HYM2) starts: {df_clean['High_Yield_Spread'].first_valid_index().date()}"
+)
+
+# # Save to CSV and Parquet to path_cur_dir
+# path_cur_dir = r"C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\output\High_Yield_Spread_T10Y2Y_Spread"
+# df_clean.to_csv(path_cur_dir + ".csv")
+# df_clean.to_parquet(path_cur_dir + ".parquet", engine="pyarrow")
+# print(f"\nSaved to '{path_cur_dir}.csv'")
+# print(f"Saved to '{path_cur_dir}.parquet'")
+
+
+# Save to CSV and Parquet to path_parent_data_dir
+path_parent_data_dir = r"C:\Users\ping\Files_win10\python\py311\stocks\data\High_Yield_Spread_T10Y2Y_Spread"
+df_clean.to_csv(path_parent_data_dir + ".csv")
+df_clean.to_parquet(path_parent_data_dir + ".parquet", engine="pyarrow")
+print(f"Saved to '{path_parent_data_dir}.csv'")
+print(f"Saved to '{path_parent_data_dir}.parquet'")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 2  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+df_clean.tail()
+```
+
+##############################################################################
+## END OF: fed_data_yield_spread.ipynb
+##############################################################################
+
+
+==============================================================================
+# END OF MERGED FILE
+==============================================================================

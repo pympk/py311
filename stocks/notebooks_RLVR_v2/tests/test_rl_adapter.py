@@ -50,6 +50,7 @@ class MockDiscoveryEnv:
         return {
             "date": pd.Timestamp("2024-01-01"),
             "ensemble": pd.DataFrame(np.random.randn(2, 12)),
+            "macro_row": pd.Series(np.zeros(11)),  # <-- FIXED: Added mock macro row
         }
 
     def step(self, action):
@@ -57,6 +58,7 @@ class MockDiscoveryEnv:
             {
                 "date": pd.Timestamp("2024-01-02"),
                 "ensemble": pd.DataFrame(np.random.randn(2, 12)),
+                "macro_row": pd.Series(np.zeros(11)),  # <-- FIXED: Added mock macro row
             },
             0.05,
             False,

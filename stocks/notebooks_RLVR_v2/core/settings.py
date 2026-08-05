@@ -79,11 +79,17 @@ class TradingConfig:
 
     # TRAINING & SIMULATION PARAMETERS
     holding_period: int = 5
-    rank_max_offset: int = 500
+    # ---> NEW: Replaced rank_max_offset with percentile
+    rank_max_offset_percentile: float = (
+        1.0  # 1.0 = 100% of the daily universe, 0.8 = 80%
+    )
+
     rank_max_width: int = 10
 
     # NEW: INSTITUTIONAL RL PARAMETERS
     slippage_rate: float = 0.0010  # 10 bps round-trip slippage
 
     # downside_penalty: float = 2.0  # 2x penalty on underperformance (Alpha < 0)
-    downside_penalty: float = 1.0  # 1x penalty on underperformance (Alpha < 0)
+    downside_penalty: float = (
+        1.0  # 1 is no penalty, at 1.5, -0.002 becomes -0.003, penalize 50% more for underperformance (Alpha < 0)
+    )

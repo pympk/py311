@@ -11,11 +11,16 @@ from core.logic import SelectionLogic
 # PATHS & CONFIGURATION
 # =====================================================================
 
-PKL_FILENAME = "oos_results_ent_0.01_pen_1.0_lr_0.0003.pkl"
-PKL_PATH = OUTPUT_DIR / PKL_FILENAME
+# Find any available oos_results .pkl file in OUTPUT_DIR
+pkl_files = sorted(list(OUTPUT_DIR.glob("oos_results_*.pkl")))
+if not pkl_files:
+    pkl_files = sorted(list(OUTPUT_DIR.glob("*.pkl")))
+
+PKL_PATH = pkl_files[0] if pkl_files else None
+PKL_FILENAME = PKL_PATH.name if PKL_PATH else None
 PARQUET_PATH = LOCAL_DATA_DIR / CacheConfig.get_filename()
 
-FILES_EXIST = PKL_PATH.exists() and PARQUET_PATH.exists()
+FILES_EXIST = PKL_PATH is not None and PKL_PATH.exists() and PARQUET_PATH.exists()
 
 # Define the target dates discovered in Notebook 03 to keep the test fast
 TARGET_DATES = ["2022-04-07", "2026-07-09"]
@@ -38,6 +43,7 @@ def system_artifacts():
         pytest.skip(f"Missing real data files. Need {PKL_FILENAME} and cache parquet.")
 
     # 1. Load Blotter
+    assert PKL_PATH is not None, "PKL_PATH cannot be None when loading artifacts."
     with open(PKL_PATH, "rb") as f:
         results = pickle.load(f)
 
@@ -144,7 +150,8 @@ def test_system_logic_replay(system_artifacts, trading_config):
         selected, top_3, offset, width, max_s, min_s = SelectionLogic.apply_action(
             ensemble=ensemble,
             action=raw_actions,
-            rank_max_offset=trading_config.rank_max_offset,
+            # ---> FIXED: Update to percentile
+            rank_max_offset_percentile=trading_config.rank_max_offset_percentile,
             rank_max_width=trading_config.rank_max_width,
         )
 

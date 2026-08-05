@@ -96,11 +96,25 @@ class UniverseScreener:
                     thresholds.min_liquidity_percentile
                 ),
             )
+        # NEW: Ensure ticker is not halted/delisted TODAY (price is valid and not NaN)
+        valid_price_mask = pd.Series(True, index=day_features.index)
+        if not self.df_close.empty and date_ts in self.df_close.index:
+            prices_today = self.df_close.loc[date_ts]
+            valid_price_mask = prices_today.notna() & (prices_today > 0)
+            valid_price_mask = valid_price_mask.reindex(day_features.index).fillna(
+                False
+            )
 
         mask = (
             (day_features["RollMedDollarVol"] >= vol_cutoff)
             & (day_features["RollingStalePct"] <= thresholds.max_stale_pct)
             & (day_features["RollingSameVolCount"] <= thresholds.max_same_vol_count)
+            # NEW: Immediate death sensors
+            & (
+                day_features["RecentStaleDays"] < 3
+            )  # Kick out if stale for 3 of the last 5 days
+            & (day_features["IsZeroPrice"] == 0)  # Kick out if price is 0.00 today
+            & valid_price_mask
         )
 
         if audit_container is not None:
@@ -157,7 +171,7 @@ class UniverseScreener:
 
             return MarketObservation(
                 lookback_close=lookback_close,
-                lookback_returns=lookback_close.ffill().pct_change(),
+                lookback_returns=lookback_close.ffill().pct_change(fill_method=None),
                 atrp=obs_atrp,
                 trp=obs_trp,
                 # Use square brackets for guaranteed columns.

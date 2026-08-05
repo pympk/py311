@@ -4,6 +4,7 @@ from pathlib import Path
 
 from core.auditor import SystemAuditor
 from core.paths import GLOBAL_PROCESSED_DIR, OUTPUT_DIR
+from core.settings import TradingConfig
 
 
 def test_real_oos_returns_integration():
@@ -31,13 +32,19 @@ def test_real_oos_returns_integration():
 
     print(f"\n[Auditor] Auditing latest RL run: {latest_pkl.name}")
 
+    trading_config = TradingConfig()
+    slippage_bps = trading_config.slippage_rate * 10_000.0
+
     # 3. Run the Auditor
     verification_df = SystemAuditor.audit_oos_results(
-        pkl_path=latest_pkl, df_ohlcv_path=market_data_path, slippage_bps=5.0
+        pkl_path=latest_pkl, df_ohlcv_path=market_data_path, slippage_bps=slippage_bps
     )
 
     # 4. Assert the maximum divergence is negligible (less than 1 basis point)
     max_diff = verification_df["Difference"].abs().max()
+
+    print(f"verification_df:\n{verification_df}\n")
+    print(f"max_diff:\n{max_diff}\n")
 
     assert max_diff < 1e-4, (
         f"❌ FAILED: RL Environment contains forward-looking leaks or price misalignment! "

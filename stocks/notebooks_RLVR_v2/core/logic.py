@@ -16,15 +16,14 @@ class AlphaLogic:
         if not tickers or date not in reward_matrix.index:
             return 0.0
 
-        # Arithmetic Mean of the group
-        # 1. Pull the row for the date (Returns a Series)
         row = reward_matrix.loc[date]
+        valid_returns = row.reindex(tickers).dropna()
+        if valid_returns.empty:
+            return 0.0
 
-        # 2. Filter for specific tickers and calculate mean
-        # .reindex is safer for type checkers than double-indexing
-        arith_mean = row.reindex(tickers).mean()
+        # .to_numpy() guarantees a single scalar float from .mean()
+        arith_mean = float(valid_returns.to_numpy().mean())
 
-        # Transform to Log for the Agent's additive math
         return float(np.log1p(arith_mean))
 
     @staticmethod
@@ -35,8 +34,8 @@ class AlphaLogic:
             .replace("(", "")
             .replace(")", "")
             .replace("-", "")
-            .replace(",", "")  # Added to handle "Alpha, 63d"
-            .replace("__", "_")  # Clean up double underscores
+            .replace(",", "")
+            .replace("__", "_")
             for c in columns
         ]
 
@@ -48,7 +47,8 @@ class SelectionLogic:
     def apply_action(
         ensemble: pd.DataFrame,
         action: np.ndarray,
-        rank_max_offset: int = TradingConfig.rank_max_offset,
+        # ---> FIXED: Pulling directly from TradingConfig class attributes
+        rank_max_offset_percentile: float = TradingConfig.rank_max_offset_percentile,
         rank_max_width: int = TradingConfig.rank_max_width,
     ) -> tuple:
         """Vectorized Matrix Multiplication + Sorting."""
@@ -59,10 +59,16 @@ class SelectionLogic:
         # Automatically handles any feature count by slicing off the last 2 rank dimensions
         weights = action[:-2]
 
-        # Interpolate width from [0, rank_max_width] instead of [1, max]
-        # This mathematically allows the agent to buy 0 stocks and retreat to cash
-        offset = int(np.interp(action[-2], [-1, 1], [0, rank_max_offset]))
+        # ---> NEW: DYNAMIC OFFSET <---
+        universe_size = len(ensemble)
+        # Offset is bounded by a percentage of today's available universe
+        max_allowed_offset = int(universe_size * rank_max_offset_percentile)
+
+        # Interpolate width from [0, rank_max_width]
         width = int(np.interp(action[-1], [-1, 1], [0, rank_max_width]))
+
+        # Interpolate offset from [0, max_allowed_offset]
+        offset = int(np.interp(action[-2], [-1, 1], [0, max_allowed_offset]))
 
         # ---> THE FIX: Clean the NaNs before math <---
         # In a Z-score space, 0.0 is exactly neutral (market average)
@@ -77,6 +83,3 @@ class SelectionLogic:
         selected = sorted_tickers.index[offset : offset + width].tolist()
 
         return selected, top_3, offset, width, float(scores.max()), float(scores.min())
-
-
-#

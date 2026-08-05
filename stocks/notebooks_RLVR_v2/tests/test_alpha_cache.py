@@ -53,6 +53,8 @@ def test_data():
     features_df["RollMedDollarVol"] = 500000.0
     features_df["RollingStalePct"] = 0.01
     features_df["RollingSameVolCount"] = 0.0
+    features_df["RecentStaleDays"] = 0.0
+    features_df["IsZeroPrice"] = 0
 
     # Columns required by UniverseScreener.build_observation
     features_df["ATRP"] = 0.02

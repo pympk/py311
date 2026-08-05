@@ -37,6 +37,24 @@ def engine_data(audit_data):
     df_atrp_wide = features_df["ATRP"].unstack(level=0)
     df_trp_wide = features_df["TRP"].unstack(level=0)
 
+    ######################
+    ######################
+    # ---> ADDED: Test-specific universe alignment <---
+    # Ensure we only test on tickers that exist in BOTH features and prices
+    common_tickers = df_close_wide.columns.intersection(
+        features_df.index.get_level_values("Ticker").unique()
+    )
+    df_close_wide = df_close_wide[common_tickers]
+
+    # Filter features_df to only include the common tickers
+    idx = pd.IndexSlice
+    features_df = features_df.loc[idx[common_tickers, :], :]
+    df_atrp_wide = df_atrp_wide[common_tickers]
+    df_trp_wide = df_trp_wide[common_tickers]
+    # ------------------------------------------------
+    ######################
+    ######################
+
     # 2. Terminal Fills ONLY.
     df_close_wide = df_close_wide.fillna(config.nan_price_replacement)
     df_atrp_wide = df_atrp_wide.fillna(0.0)

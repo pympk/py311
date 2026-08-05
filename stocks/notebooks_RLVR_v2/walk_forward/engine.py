@@ -73,10 +73,17 @@ class AlphaEngine:
         self.df_trp = self.df_trp.reindex(index=common_idx, columns=common_cols)
 
         if self.config.handle_zeros_as_nan:
-            self.df_close = self.df_close.replace(0, np.nan)
+            # Absolute zeroes mean the stock is halted, delisted, or bought out.
+            # We forward-fill infinitely so RL rewards calculate 0% return instead of -100%.
+            self.df_close = self.df_close.replace(0, np.nan).ffill()
+        else:
+            # Standard gap filling
+            self.df_close = self.df_close.ffill(limit=self.config.max_data_gap_ffill)
 
-        self.df_close = self.df_close.ffill(limit=self.config.max_data_gap_ffill)
-        self.df_close = self.df_close.fillna(self.config.nan_price_replacement)
+        # NOTE: Be extremely careful using fillna(0.0) on prices.
+        # Pre-IPO NaNs should remain NaN so math properly ignores them.
+        # self.df_close = self.df_close.fillna(self.config.nan_price_replacement)
+
         self.df_close.index = pd.to_datetime(self.df_close.index)
 
         if master_ticker not in self.df_close.columns:

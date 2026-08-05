@@ -4,7 +4,7 @@ import gymnasium as gym
 from typing import Dict, Any, Tuple
 
 
-# ---> NEW: Running Observation Scaler # <---
+# ---> Running Observation Scaler # <---
 class ObservationScaler:
     def __init__(self, shape=(33,), clip_max=5.0):
         # Dynamically accepts the incoming shape tuple (e.g. 35)
@@ -28,7 +28,7 @@ class ObservationScaler:
         # Z-score standardization
         scaled_x = (x - self.mean) / std
 
-        # ---> NEW: Inverse Hyperbolic Sine (asinh) Transformation
+        # Inverse Hyperbolic Sine (asinh) Transformation
         # Acts linearly near 0, but logarithmically for large outliers.
         # A 10-sigma outlier becomes ~3.0, keeping the NN safe while preserving direction.
         return np.arcsinh(scaled_x)
@@ -66,8 +66,6 @@ class ObservationAdapter:
         # 3. Assemble and Cast
         # MENTOR NOTE: We MUST cast to np.float32. PyTorch defaults to float32.
         # If we pass Pandas' default float64, PyTorch will throw a runtime type mismatch error.
-
-        # obs = np.concatenate([strat_mean, strat_std, macro_vals]).astype(np.float32)
         obs = np.concatenate(
             [np.asarray(strat_mean), np.asarray(strat_std), np.asarray(macro_vals)]
         ).astype(np.float32)
@@ -109,7 +107,7 @@ class RLVRGymEnv(gym.Env):
         super().reset(seed=seed)
         obs_dict = self.env.reset()
 
-        # ---> NEW: Scale the observation
+        # Scale the observation
         raw_obs = self._build_obs(obs_dict)
         scaled_obs = self.scaler.transform(raw_obs, update=self.is_training)
         return scaled_obs, {}
@@ -120,25 +118,25 @@ class RLVRGymEnv(gym.Env):
         # MENTOR NOTE: CleanRL uses the step signature (obs, reward, terminated, truncated, info)
         obs_dict, reward, done, info = self.env.step(action)
 
-        # ---> NEW: Scale the observation # <---
+        # Scale the observation
         raw_obs = self._build_obs(obs_dict)
         scaled_obs = self.scaler.transform(raw_obs, update=self.is_training)
         return scaled_obs, float(reward), done, False, info
 
     def _build_obs(self, obs_dict: Dict[str, Any]) -> np.ndarray:
-        date = obs_dict["date"]
         ensemble = obs_dict["ensemble"]
 
-        # Robust fetch of the Macro row
-        if date in self.macro_df.index:
-            macro_row = self.macro_df.loc[date]
+        # Robust Fetch: Prefer pre-cached macro_row, safely fallback for Mock environments
+        if "macro_row" in obs_dict:
+            macro_row = obs_dict["macro_row"]
         else:
-            macro_row = pd.Series(0.0, index=self.macro_df.columns)
+            date = obs_dict["date"]
+            if date in self.macro_df.index:
+                macro_row = self.macro_df.loc[date]
+            else:
+                macro_row = pd.Series(0.0, index=self.macro_df.columns)
 
         # Pass self.num_features dynamically to avoid static fallback of zeros
         return ObservationAdapter.process(
             ensemble, macro_row, expected_strats=self.num_features
         )
-
-
-#

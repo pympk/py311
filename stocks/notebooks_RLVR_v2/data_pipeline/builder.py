@@ -290,8 +290,8 @@ class MicroFeaturePipeline:
 class QualityFilterPipeline:
     @staticmethod
     def process(df_ohlcv: pd.DataFrame, config: TradingConfig) -> pd.DataFrame:
-        quality_window = getattr(config, "quality_window", 21)
-        quality_min_periods = getattr(config, "quality_min_periods", 10)
+        quality_window = getattr(config, "quality_window", 252)
+        quality_min_periods = getattr(config, "quality_min_periods", 126)
 
         quality_temp = pd.DataFrame(
             {
@@ -301,6 +301,9 @@ class QualityFilterPipeline:
                     1,
                     0,
                 ),
+                "IsZeroPrice": np.where(
+                    df_ohlcv["Adj Close"] <= 1e-4, 1, 0
+                ),  # Catch absolute 0s
                 "DollarVolume": df_ohlcv["Adj Close"] * df_ohlcv["Volume"],
             },
             index=df_ohlcv.index,
@@ -322,6 +325,11 @@ class QualityFilterPipeline:
                     "RollingSameVolCount": slice_df["HasSameVolume"]
                     .rolling(window=quality_window, min_periods=quality_min_periods)
                     .sum(),
+                    # NEW: Short-term kill switches
+                    "RecentStaleDays": slice_df["IsStale"]
+                    .rolling(window=5, min_periods=1)
+                    .sum(),
+                    "IsZeroPrice": slice_df["IsZeroPrice"],
                 },
                 index=slice_df.index,
             )
