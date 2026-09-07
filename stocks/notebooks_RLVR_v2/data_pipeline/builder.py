@@ -71,23 +71,38 @@ class MacroFeaturePipeline:
             macro_df["Macro_Trend_Z"] = 0.0
             macro_df["Mkt_Vol_63d_Z"] = 0.0
 
-        # 2. FED Data Integration
-        if df_fed is not None:
-            fed_data = (
-                df_fed.reindex(all_dates).ffill().bfill().infer_objects(copy=False)
+        # 2. Macro Spreads Integration (Auto-detect df_indices or df_fed)
+        spread_source = None
+        for cand in [df_indices, df_fed]:
+            if cand is not None and "Yield_Curve_10Y2Y" in cand.columns:
+                spread_source = cand.copy()
+                break
+
+        if spread_source is not None:
+            if "Date" in spread_source.columns:
+                spread_source["Date"] = pd.to_datetime(spread_source["Date"])
+                spread_source = spread_source.set_index("Date")
+            spread_data = (
+                spread_source.reindex(all_dates).ffill().infer_objects(copy=False)
             )
-            for col in ["High_Yield_Spread", "Yield_Curve_10Y2Y"]:
-                roll_mean = fed_data[col].rolling(252, min_periods=60).mean()
-                roll_std = (
-                    fed_data[col].rolling(252, min_periods=60).std().replace(0, 1e-8)
-                )
-                macro_df[f"{col}_Z"] = (
-                    ((fed_data[col] - roll_mean) / roll_std)
-                    .clip(-config.feature_zscore_clip, config.feature_zscore_clip)
-                    .fillna(0.0)
-                )
+
+            if "Yield_Curve_10Y2Y" in spread_data.columns:
+                series = spread_data["Yield_Curve_10Y2Y"]
+                roll_mean = series.rolling(252, min_periods=60).mean()
+                roll_std = series.rolling(252, min_periods=60).std()
+
+                valid_mask = (roll_std > 1e-4) & roll_mean.notna() & series.notna()
+                z_score = pd.Series(0.0, index=all_dates)
+                z_score[valid_mask] = (
+                    series[valid_mask] - roll_mean[valid_mask]
+                ) / roll_std[valid_mask]
+
+                macro_df["Yield_Curve_10Y2Y_Z"] = z_score.clip(
+                    -config.feature_zscore_clip, config.feature_zscore_clip
+                ).fillna(0.0)
+            else:
+                macro_df["Yield_Curve_10Y2Y_Z"] = 0.0
         else:
-            macro_df["High_Yield_Spread_Z"] = 0.0
             macro_df["Yield_Curve_10Y2Y_Z"] = 0.0
 
         # 3. Trend Velocity & Momentum
@@ -101,7 +116,6 @@ class MacroFeaturePipeline:
             .fillna(0.0)
         )
 
-        # Scaled Momentum
         momentum_raw = (
             np.sign(macro_df["Macro_Trend"])
             * np.sign(vel)
@@ -111,15 +125,22 @@ class MacroFeaturePipeline:
             momentum_raw, index=macro_df.index
         ).fillna(0.0)
 
-        # 4. VIX Extraction
+        # 4. VIX Extraction (Auto-detect df_indices or df_fed)
         macro_df["Macro_Vix_Z"] = 0.0
         macro_df["Macro_Vix_Ratio"] = 1.0
 
-        if df_indices is not None:
-            idx_names = df_indices.index.get_level_values(0).unique()
+        vix_source = None
+        for cand in [df_fed, df_indices]:
+            if cand is not None and isinstance(cand.index, pd.MultiIndex):
+                if "^VIX" in cand.index.get_level_values(0):
+                    vix_source = cand
+                    break
+
+        if vix_source is not None:
+            idx_names = vix_source.index.get_level_values(0).unique()
             if "^VIX" in idx_names:
                 v = (
-                    df_indices.xs("^VIX", level=0)["Adj Close"]
+                    vix_source.xs("^VIX", level=0)["Adj Close"]
                     .reindex(all_dates)
                     .ffill()
                 )
@@ -130,7 +151,7 @@ class MacroFeaturePipeline:
                 )
             if "^VIX" in idx_names and "^VIX3M" in idx_names:
                 v3 = (
-                    df_indices.xs("^VIX3M", level=0)["Adj Close"]
+                    vix_source.xs("^VIX3M", level=0)["Adj Close"]
                     .reindex(all_dates)
                     .ffill()
                 )
@@ -142,14 +163,12 @@ class MacroFeaturePipeline:
 
         macro_df.fillna(0.0, inplace=True)
 
-        # FINAL GUARD: Strictly return EXACTLY 11 columns to preserve the 33-Dim Space!
-        # Drops unscaled noise automatically.
-        final_11_cols = [
+        # FINAL GUARD: Strictly return 10 clean, stationary macro features
+        final_10_cols = [
             "Mkt_Ret",
             "Mkt_Ret_Z",
             "Macro_Trend",
             "Macro_Trend_Z",
-            "High_Yield_Spread_Z",
             "Yield_Curve_10Y2Y_Z",
             "Macro_Trend_Vel_Z",
             "Macro_Trend_Mom",
@@ -157,7 +176,7 @@ class MacroFeaturePipeline:
             "Macro_Vix_Ratio",
             "Mkt_Vol_63d_Z",
         ]
-        return macro_df[final_11_cols]
+        return macro_df[final_10_cols]
 
 
 class MicroFeaturePipeline:

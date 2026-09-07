@@ -1,5 +1,4 @@
 import os
-
 from dataclasses import dataclass, field
 
 
@@ -52,7 +51,20 @@ class TradingConfig:
     # DATA SANITIZER
     handle_zeros_as_nan: bool = True
     max_data_gap_ffill: int = 1
-    nan_price_replacement: float = 0.0
+
+    # ------------------------------------------------------------------------
+    # RULE: SYSTEM-WIDE NaN & ZERO HANDLING POLICY
+    # ------------------------------------------------------------------------
+    # 1. Prices (Open, High, Low, Close) MUST remain NaN if the asset did not
+    #    trade (e.g., Pre-IPO, Halted, Delisted).
+    # 2. NEVER fill missing prices with 0.0. This causes division-by-zero,
+    #    infinite returns, and breaks pipeline mathematics.
+    # 3. Features (like ATRP, TRP, RSI) can be filled with 0.0 where appropriate
+    #    to allow cross-sectional math to proceed without dropping the row.
+    # 4. Use .bfill() in portfolio simulation (QuantUtils) only to align newly
+    #    IPO'd stocks mid-period against the initial capital allocation.
+    # ------------------------------------------------------------------------
+    nan_price_replacement: float = 0.0  # DEPRECATED/UNSAFE: DO NOT USE FOR PRICES
 
     # STRATEGY & MATH
     annual_period: int = 252
@@ -77,19 +89,54 @@ class TradingConfig:
     strategy_params: StrategyParams = field(default_factory=StrategyParams)
     thresholds: QualityThresholds = field(default_factory=QualityThresholds)
 
-    # TRAINING & SIMULATION PARAMETERS
+    # TRAINING & SIMULATION PARAMETERS (Strategic Pivot Calibrated)
     holding_period: int = 5
-    # ---> NEW: Replaced rank_max_offset with percentile
-    rank_max_offset_percentile: float = (
-        1.0  # 1.0 = 100% of the daily universe, 0.8 = 80%
-    )
-
+    rank_max_offset_percentile: float = 1.0
     rank_max_width: int = 10
-
-    # NEW: INSTITUTIONAL RL PARAMETERS
-    slippage_rate: float = 0.0010  # 10 bps round-trip slippage
-
-    # downside_penalty: float = 2.0  # 2x penalty on underperformance (Alpha < 0)
-    downside_penalty: float = (
-        1.0  # 1 is no penalty, at 1.5, -0.002 becomes -0.003, penalize 50% more for underperformance (Alpha < 0)
+    min_basket_width: int = 5  # Diversify: 5 to 10 stocks dampens idiosyncratic drag
+    max_cash_pct: float = 0.0  # 100% Gross Equity Exposure (Zero Cash)
+    min_active_tilt: float = (
+        0.20  # Flexibility: Allows up to 80% benchmark beta shelter
     )
+
+    # ENVIRONMENT CONTROLS
+    randomize_start: bool = False
+    episode_steps: int = 0
+
+    # INSTITUTIONAL RL REWARD PARAMETERS
+    slippage_rate: float = 0.0010  # 10 bps round-trip slippage
+    loss_aversion_penalty: float = 0.0  # 0.0 = Linear spread
+    upside_alpha_mult: float = 1.0  # 1.0 = Strict linear spread (NO convex gambling)
+
+    # GAE & PPO HYPERPARAMETERS
+    gamma: float = 0.90
+    gae_lambda: float = 0.95
+    learning_rate: float = 2.0e-4
+    critic_learning_rate: float = 8.0e-4
+
+    # ENTROPY ANNEALING SCHEDULE
+    entropy_coef: float = 0.0050
+    entropy_coef_start: float = 0.0050  # Broader exploration
+    entropy_coef_end: float = 0.0005  # Controlled convergence
+
+    # PPO BATCHING & LOSS COEFFICIENTS
+    clip_coef: float = 0.2
+    vf_coef: float = 0.5
+    max_grad_norm: float = 0.5
+    ppo_epochs: int = 4
+    num_steps: int = 512  # 512 steps * 8 envs = 4,096 timesteps per epoch
+    num_envs: int = 8
+    mini_batch_size: int = 256
+
+    @property
+    def dynamic_gamma(self) -> float:
+        """
+        Returns self.gamma (0.98) to prevent accidental override
+        to legacy overlapping horizon values.
+        """
+        return self.gamma
+
+    @property
+    def benchmark(self) -> str:
+        """Dynamic alias for benchmark_ticker conforming to TradingConfig domain model."""
+        return self.benchmark_ticker

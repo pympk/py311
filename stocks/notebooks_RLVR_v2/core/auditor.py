@@ -3,7 +3,7 @@ import numpy as np
 import pickle
 
 from pathlib import Path
-from typing import Optional, Dict, Any, cast
+from typing import Optional, Dict, Any, cast, List
 
 from core.quant import QuantUtils
 from core.result import TaskResult
@@ -1075,10 +1075,15 @@ class SystemAuditor:
         pkl_path: Path, df_ohlcv_path: Path, slippage_bps: Optional[float] = None
     ) -> pd.DataFrame:
         """
-        Loads the actual RL output and real market data to independently verify
-        that the RL environment's math and date-alignments are honest.
+        Loads actual RL output and real market data to independently verify
+        that the Mark-to-Market rolling FIFO sleeves with T+1 Next-Day Close execution,
+        1/H ramp-up partitioning, and Tri-Asset weights are strictly mathematical and leakage-free.
         """
+        from collections import deque
+
         config = TradingConfig()
+        benchmark = config.benchmark_ticker
+        hp = config.holding_period
         if slippage_bps is None:
             slippage_bps = config.slippage_rate * 10000.0
 
@@ -1090,11 +1095,9 @@ class SystemAuditor:
         print(f"\n[DEBUG] Blotter columns available: {list(blotter_df.columns)}")
         print(f"[DEBUG] Total blotter trades: {len(blotter_df)}")
 
-        # 2. Load the real market prices & Replicate Engine's ffill logic
+        # 2. Load the real market prices & compute 1-day simple returns
         df_ohlcv = pd.read_parquet(df_ohlcv_path, columns=["Adj Close"])
 
-        # Robustly flatten MultiIndex and normalize dates.
-        # Prevents timezone shifts (e.g. 20:00:00-04:00) from causing `unstack` to misalign tickers into different rows.
         df_reset = df_ohlcv.reset_index()
         cols = df_reset.columns.tolist()
         cols.remove("Adj Close")
@@ -1106,7 +1109,6 @@ class SystemAuditor:
             .dt.normalize()
         )
 
-        # Pivot aggregates duplicate date/ticker collisions securely
         prices = df_reset.pivot_table(
             index=date_col, columns=ticker_col, values="Adj Close", aggfunc="last"
         )
@@ -1116,102 +1118,122 @@ class SystemAuditor:
         else:
             prices = prices.ffill(limit=config.max_data_gap_ffill)
 
-        print(
-            f"[DEBUG] Market prices date range: {prices.index.min()} to {prices.index.max()}"
-        )
-        print(f"[DEBUG] Total market tickers in prices parquet: {len(prices.columns)}")
+        daily_returns = QuantUtils.build_forward_return_matrix(prices, horizon=1)
 
         calculated_returns = []
         audit_details = []
 
-        # 3. Iterate through every single trade the agent made out-of-sample
+        # Independent T+1 FIFO State Machine
+        active_sleeves: deque = deque(maxlen=hp)
+        pending_sleeve: Optional[List[str]] = None
+
+        # 3. Iterate through every daily MTM step
         for idx, row in blotter_df.iterrows():
-            buy_date = pd.to_datetime(row["buy_date"]).tz_localize(None)
-            sell_date = pd.to_datetime(row["sell_date"]).tz_localize(None)
-            tickers = row["chosen_tickers"]
+            raw_date = row["decision_date"] if "decision_date" in row else row["date"]
+            ts = pd.Timestamp(raw_date)
+            decision_date = ts.tz_localize(None) if ts.tzinfo is not None else ts
+            selected_tickers = list(row["tickers"])
 
-            detail = {
-                "idx": idx,
-                "buy_date": buy_date,
-                "sell_date": sell_date,
-                "raw_tickers": tickers,
-                "valid_tickers": [],
-                "missing_tickers": [],
-                "raw_return": 0.0,
-                "net_return": 0.0,
-                "status": "OK",
-            }
+            # A. State Transition: Pending sleeve from prior decision executes NOW
+            executing_sleeve = pending_sleeve
+            if executing_sleeve is not None:
+                active_sleeves.append(executing_sleeve)
+                pending_sleeve = None
 
-            if not isinstance(tickers, (list, tuple, np.ndarray)) or len(tickers) == 0:
-                detail["status"] = "NO_TICKERS"
-                calculated_returns.append(0.0)
-                audit_details.append(detail)
-                continue
-
-            valid_tickers = [t for t in tickers if t != "CASH" and t in prices.columns]
-            missing_tickers = [
-                t for t in tickers if t != "CASH" and t not in prices.columns
-            ]
-
-            detail["valid_tickers"] = valid_tickers
-            detail["missing_tickers"] = missing_tickers
-
-            if not valid_tickers:
-                detail["status"] = "NO_VALID_TICKERS"
-                calculated_returns.append(0.0)
-                audit_details.append(detail)
-                continue
-
-            try:
-                window_prices = prices.loc[buy_date:sell_date, valid_tickers]
-
-                # Drop tickers with no price data in this window
-                window_prices = window_prices.dropna(how="all", axis=1)
-                if window_prices.empty:
-                    calculated_returns.append(0.0)
-                    continue
-
-                # Replicate Engine's exact Equity Curve matrix math
-                base_prices = window_prices.bfill().iloc[0]
-                valid_cols = base_prices.dropna().index
-                if len(valid_cols) == 0:
-                    calculated_returns.append(0.0)
-                    continue
-
-                window_prices = window_prices[valid_cols]
-                base_prices = base_prices[valid_cols]
-
-                norm_prices = window_prices.div(base_prices)
-
-                # Engine allocates equally across the valid tickers with price data
-                weights = pd.Series(1.0 / len(valid_cols), index=valid_cols)
-                weighted_components = norm_prices.mul(weights, axis=1)
-
-                equity_curve = weighted_components.sum(axis=1)
-
-                # Engine return logic: Final Equity - 1.0 (Initial Capital)
-                raw_portfolio_return = float(equity_curve.iloc[-1]) - 1.0
-
-            except KeyError as e:
-                print(
-                    f"\n[Auditor Error] Missing data in slice {buy_date.date()} to {sell_date.date()}: {e}"
+            # B. Benchmark 1-Day Return
+            if (
+                benchmark in daily_returns.columns
+                and decision_date in daily_returns.index
+            ):
+                bm_val = daily_returns.loc[decision_date, benchmark]
+                if isinstance(bm_val, (pd.Series, np.ndarray)):
+                    bm_num = float(
+                        bm_val.iloc[0]
+                        if isinstance(bm_val, pd.Series)
+                        else bm_val.ravel()[0]
+                    )
+                else:
+                    bm_num = float(cast(Any, bm_val))
+                raw_benchmark_return = (
+                    bm_num if np.isfinite(bm_num) else float(row["bm_daily_simple_ret"])
                 )
-                calculated_returns.append(0.0)
-                continue
+            else:
+                raw_benchmark_return = float(row["bm_daily_simple_ret"])
 
-            # Deduct round-trip slippage at the portfolio level
-            net_portfolio_return = raw_portfolio_return - (slippage_bps / 10000.0)
+            # C. Realized Return across Active Sleeves with 1/H Constant Partitioning
+            num_active = len(active_sleeves)
+            if num_active > 0 and decision_date in daily_returns.index:
+                day_series = daily_returns.loc[decision_date]
+                sleeve_returns = []
+                for sleeve in active_sleeves:
+                    valid_t = [t for t in sleeve if t in daily_returns.columns]
+                    if valid_t:
+                        rets = day_series.reindex(valid_t).dropna()
+                        sleeve_returns.append(
+                            float(rets.to_numpy().mean()) if not rets.empty else 0.0
+                        )
+                    else:
+                        sleeve_returns.append(0.0)
 
-            detail["raw_return"] = raw_portfolio_return
-            detail["net_return"] = net_portfolio_return
+                active_sum = float(np.sum(sleeve_returns))
+                unfilled_count = hp - num_active
+                raw_stock_return = (
+                    active_sum + (unfilled_count * raw_benchmark_return)
+                ) / hp
+            else:
+                raw_stock_return = raw_benchmark_return
+
+            # D. Tri-Asset Weights
+            w_active = float(row["weight_active"])
+            w_benchmark = float(row["weight_benchmark"])
+            w_cash = float(row["weight_cash"])
+            cash_return = float(row.get("cash_daily_simple_ret", 0.0))
+
+            # E. Gross Daily Portfolio Return
+            raw_portfolio_return = (
+                (w_active * raw_stock_return)
+                + (w_benchmark * raw_benchmark_return)
+                + (w_cash * cash_return)
+            )
+
+            # F. Amortized Daily Slippage
+            slippage_applied = (
+                float(((slippage_bps / 10000.0) / hp) * w_active)
+                if executing_sleeve is not None
+                and len(executing_sleeve) > 0
+                and w_active > 0.0
+                else 0.0
+            )
+            net_portfolio_return = raw_portfolio_return - slippage_applied
+
+            # G. Advance pending order
+            pending_sleeve = selected_tickers
+
             calculated_returns.append(net_portfolio_return)
-            audit_details.append(detail)
+            audit_details.append(
+                {
+                    "idx": idx,
+                    "date": decision_date,
+                    "raw_tickers": selected_tickers,
+                    "raw_stock_return": raw_stock_return,
+                    "raw_benchmark_return": raw_benchmark_return,
+                    "w_active": w_active,
+                    "w_benchmark": w_benchmark,
+                    "w_cash": w_cash,
+                    "net_return": net_portfolio_return,
+                }
+            )
 
         # 4. Compare RL reported return vs Independent calculation
+        date_series = (
+            blotter_df["decision_date"]
+            if "decision_date" in blotter_df.columns
+            else blotter_df["date"]
+        )
         verification_df = pd.DataFrame(
             {
-                "Date": pd.to_datetime(blotter_df["decision_date"]),
-                "RL_Env_Reported_Return": blotter_df["actual_return"],
+                "Date": pd.to_datetime(date_series),
+                "RL_Env_Reported_Return": blotter_df["net_daily_simple_ret"],
                 "Auditor_Calculated_Return": calculated_returns,
             }
         )
@@ -1222,61 +1244,29 @@ class SystemAuditor:
         )
 
         max_diff = verification_df["Difference"].abs().max()
-
         print(f"\n[Auditor] Max divergence between RL Env and Auditor: {max_diff:.6f}")
 
         if max_diff >= 1e-4:
             bad_indices = verification_df[
                 verification_df["Difference"].abs() >= 1e-4
             ].index
-            print(f"\nf{'='*30} [AUDITOR DEBUG TRAP] f{'='*30}")
+            print(f"\n{'='*30} [AUDITOR DEBUG TRAP] {'='*30}")
             print(
                 f"Total Divergent Trades Found: {len(bad_indices)} / {len(blotter_df)}"
             )
 
-            for idx in bad_indices[:5]:  # Print details for first 5 divergent trades
-                r = verification_df.loc[idx]
-                b_row = blotter_df.iloc[cast(int, idx)]
-                d = audit_details[idx]
-
-                print(f"\n--- Trade Index #{idx} ---")
+            for bad_idx in bad_indices[:5]:
+                r = verification_df.loc[bad_idx]
+                d = audit_details[bad_idx]
+                print(f"\n--- Trade Index #{bad_idx} ---")
                 print(f"  Decision Date         : {r['Date']}")
-                print(f"  Buy Date              : {d['buy_date']}")
-                print(f"  Sell Date             : {d['sell_date']}")
-                print(f"  Chosen Tickers (Raw)  : {d['raw_tickers']}")
-                print(f"  Valid Tickers Used    : {d['valid_tickers']}")
-                print(f"  Missing Tickers       : {d['missing_tickers']}")
-                print(f"  Trade Audit Status    : {d['status']}")
+                print(f"  Chosen Tickers        : {d['raw_tickers']}")
+                print(f"  Active Weight         : {d['w_active']:.4f}")
+                print(f"  Benchmark Weight      : {d['w_benchmark']:.4f}")
+                print(f"  Cash Weight           : {d['w_cash']:.4f}")
                 print(f"  RL Env Reported Return: {r['RL_Env_Reported_Return']:.6f}")
-                print(f"  Auditor Raw Return    : {d['raw_return']:.6f}")
-                print(
-                    f"  Auditor Net Return    : {d['net_return']:.6f} (Slippage BPS: {slippage_bps})"
-                )
+                print(f"  Auditor Net Return    : {d['net_return']:.6f}")
                 print(f"  Difference            : {r['Difference']:.6f}")
-
-                # Inspect relevant blotter fields if available
-                for col in [
-                    "actual_return",
-                    "portfolio_return",
-                    "raw_return",
-                    "slippage",
-                    "weights",
-                    "positions",
-                ]:
-                    if col in b_row:
-                        print(f"  Blotter field [{col}]: {b_row[col]}")
-
-                # Print actual price slice snippet if valid tickers exist
-                if d["valid_tickers"]:
-                    w_prices = prices.loc[
-                        d["buy_date"] : d["sell_date"], d["valid_tickers"]
-                    ]
-                    print(
-                        f"  Price Slice Start ({d['buy_date'].date()}):\n{w_prices.iloc[0].to_dict() if not w_prices.empty else 'EMPTY'}"
-                    )
-                    print(
-                        f"  Price Slice End   ({d['sell_date'].date()}):\n{w_prices.iloc[-1].to_dict() if not w_prices.empty else 'EMPTY'}"
-                    )
 
             print(f"{'='*80}\n")
         else:

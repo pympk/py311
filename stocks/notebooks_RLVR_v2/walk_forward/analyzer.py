@@ -20,7 +20,7 @@ from strategy.registry import get_strategy_registry
 
 
 class TraceId(IntEnum):
-    """Single source of truth for trace indices. Add new traces here."""
+    """Single source of truth for trace indices."""
 
     # Row 1: Price Action (0-50)
     TICKERS_START = 0
@@ -28,13 +28,12 @@ class TraceId(IntEnum):
     BENCHMARK = 50
     PORTFOLIO = 51
 
-    # Row 2-4: Macro Indicators
+    # Row 2-5: Macro Indicators
     TREND = 52
     TREND_VELOCITY = 53
     VIX_ZSCORE = 54
-    HY_SPREAD_Z = 55  # New
-    YIELD_CURVE_Z = 56  # New
-    TOTAL_TRACES = 57  # Updated
+    YIELD_CURVE_Z = 55
+    TOTAL_TRACES = 56
 
 
 # ============================================================================
@@ -123,7 +122,6 @@ class MacroVisualizer:
             if not mask.any():
                 continue
 
-            # Find contiguous regions
             diff = mask.astype(int).diff().fillna(0)
             starts = macro_slice.index[diff == 1]
             ends = macro_slice.index[diff == -1]
@@ -137,8 +135,8 @@ class MacroVisualizer:
                 shapes.append(
                     dict(
                         type="rect",
-                        x0=s,
-                        x1=e,
+                        x0=pd.to_datetime(s).strftime("%Y-%m-%d"),
+                        x1=pd.to_datetime(e).strftime("%Y-%m-%d"),
                         y0=-3,
                         y1=5,
                         xref="x",
@@ -161,17 +159,14 @@ class MacroVisualizer:
                 TraceId.TREND,
                 TraceId.TREND_VELOCITY,
                 TraceId.VIX_ZSCORE,
-                TraceId.HY_SPREAD_Z,
                 TraceId.YIELD_CURVE_Z,
             ]:
-                # Cast the trace to go.Scatter (or go.BaseTraceType) to satisfy Pylance
                 trace = cast(go.Scatter, fig.data[tid])
                 trace.visible = False
 
             return None
 
-        # 1. Update Existing Traces
-        # Instead of calling fig.data[...].update() directly:
+        # 1. Update Existing Macro Traces
         cast(go.Scatter, fig.data[TraceId.TREND]).update(
             x=macro_slice.index, y=macro_slice["Macro_Trend"], visible=True
         )
@@ -181,38 +176,31 @@ class MacroVisualizer:
         cast(go.Scatter, fig.data[TraceId.VIX_ZSCORE]).update(
             x=macro_slice.index, y=macro_slice["Macro_Vix_Z"], visible=True
         )
-        cast(go.Scatter, fig.data[TraceId.HY_SPREAD_Z]).update(
-            x=macro_slice.index, y=macro_slice["High_Yield_Spread_Z"], visible=True
-        )
-        cast(go.Scatter, fig.data[TraceId.YIELD_CURVE_Z]).update(
-            x=macro_slice.index, y=macro_slice["Yield_Curve_10Y2Y_Z"], visible=True
-        )
 
-        # 2. Extract Ratios for the Title
-        # Get ratio at decision date (using .asof for safety)
-        # Use an assertion or check
-        if res.macro_df is None:
-            return None  # Or handle error
+        # Row 5: Yield Curve (10Y-2Y Spread Z-Score)
+        if "Yield_Curve_10Y2Y_Z" in macro_slice.columns:
+            cast(go.Scatter, fig.data[TraceId.YIELD_CURVE_Z]).update(
+                x=macro_slice.index,
+                y=macro_slice["Yield_Curve_10Y2Y_Z"],
+                visible=True,
+            )
+        else:
+            cast(go.Scatter, fig.data[TraceId.YIELD_CURVE_Z]).update(visible=False)
 
-        # Now Pylance knows res.macro_df is a DataFrame
-        decision_ratio = res.macro_df["Macro_Vix_Ratio"].asof(res.decision_date)
+        # 2. Extract Ratios for Volatility Subplot Title
+        if res.macro_df is None or "Macro_Vix_Ratio" not in res.macro_df.columns:
+            return None
 
-        # Get ratio at the end of the holding period (last point in slice)
-        end_ratio = macro_slice["Macro_Vix_Ratio"].iloc[-1]
-
-        # 3. Detect current regime based on end ratio
-        regime = self.detect_regime(end_ratio)
-
-        # 4. Update the Title with the new formatting
-        # Now Pylance knows res.macro_df is a DataFrame
         raw_decision_ratio = res.macro_df["Macro_Vix_Ratio"].asof(res.decision_date)
-
-        # Use cast instead of float() so Pylance stops worrying it might be a Series
         decision_ratio = (
             cast(float, raw_decision_ratio) if raw_decision_ratio is not None else 0.0
         )
+        end_ratio = float(macro_slice["Macro_Vix_Ratio"].iloc[-1])
 
-        # RESTORED CALL: Update the subplot title
+        # 3. Detect Volatility Regime
+        regime = self.detect_regime(end_ratio)
+
+        # 4. Update the Subplot Title
         self._update_volatility_title(fig, regime, decision_ratio, end_ratio)
 
         return self.create_shading_shapes(macro_slice)
@@ -224,24 +212,14 @@ class MacroVisualizer:
         dec_ratio: float,
         end_ratio: float,
     ) -> None:
-        """
-        Updated title formatting to match standard Plotly subplot titles.
-        Uses <sup> to mimic the styling of 'Market Momentum' and 'Market Regime' panes.
-        """
-        # Primary Title line (Matches font weight/size of other panes)
         title = (
             f"Volatility Regime: {regime.label} | "
             f"VIX Ratio: {dec_ratio:.2f} (Dec) -> {end_ratio:.2f} (End)"
         )
-
-        # Subtitle line (Matches the styling of row 2 and 3 titles)
         subtitle = "Line: Intensity (Z-Score) | Background: Structure (Ratio < 1.0 = Healthy, > 1.0 = Crisis)"
 
         for ann in fig.layout.annotations:  # type: ignore
-            # Find the specific annotation for this subplot
             if "Volatility Regime" in ann.text or "VIX Ratio" in ann.text:
-                # <sup> is the standard way Plotly handles the smaller subtitle text
-                # removing <b> and custom <span> ensures it inherits global font settings
                 ann.text = f"{title}<br><sup>{subtitle}</sup>"
 
 
@@ -261,34 +239,17 @@ class ChartController:
     def _create_figure(self) -> go.FigureWidget:
         fig = go.FigureWidget(
             make_subplots(
-                rows=4,
+                rows=5,
                 cols=1,
-                row_heights=[0.6, 0.15, 0.12, 0.13],
+                row_heights=[0.55, 0.12, 0.11, 0.11, 0.11],
                 shared_xaxes=True,
-                vertical_spacing=0.08,
-                subplot_titles=(
-                    "Event-Driven Walk-Forward Analysis",
-                    "Market Regime (200d MA Deviation)<br><sup>Percentage deviation of benchmark price from its 200-day moving average</sup>",
-                    "Market Momentum (21d Z-Score)<br><sup>Standardized 21-day change in Market Regime, using 63-day rolling volatility</sup>",
-                    "Volatility Regime (VIX Z-Score)<br><sup>Standardized VIX index relative to its recent 63-day behavior</sup>",
-                ),
-                specs=[[{"secondary_y": False}]] * 4,
-            )
-        )
-
-        fig = go.FigureWidget(
-            make_subplots(
-                rows=5,  # Updated
-                cols=1,
-                row_heights=[0.55, 0.12, 0.11, 0.11, 0.11],  # Rebalanced
-                shared_xaxes=True,
-                vertical_spacing=0.05,  # Tightened slightly
+                vertical_spacing=0.05,
                 subplot_titles=(
                     "Event-Driven Walk-Forward Analysis",
                     "Market Regime (200d MA Deviation)",
                     "Market Momentum (21d Z-Score)",
                     "Volatility Regime (VIX Z-Score)",
-                    "Credit & Rates (Z-Score)",  # New Title
+                    "Rates Regime (Yield Curve 10Y-2Y Z-Score)",
                 ),
                 specs=[[{"secondary_y": False}]] * 5,
             )
@@ -374,17 +335,10 @@ class ChartController:
             col=1,
         )
 
-        # Row 5: Credit & Rates
+        # Row 5: Rates Regime (Yield Curve 10Y-2Y)
         fig.add_trace(
             go.Scatter(
-                name="HY Spread Z", line=dict(color="#FF4500", width=1.5), visible=False
-            ),
-            row=5,
-            col=1,
-        )
-        fig.add_trace(
-            go.Scatter(
-                name="Yield Curve Z",
+                name="Yield Curve 10Y-2Y (Z)",
                 line=dict(color="#1E90FF", width=1.5),
                 visible=False,
             ),
@@ -397,9 +351,7 @@ class ChartController:
         fig.update_yaxes(title_text="Trend", tickformat=".0%", row=2, col=1)
         fig.update_yaxes(title_text="Trend Vel (Z)", tickformat=".1f", row=3, col=1)
         fig.update_yaxes(title_text="VIX (Z)", row=4, col=1)
-
-        # Axis labels update
-        fig.update_yaxes(title_text="Credit/Rates (Z)", row=5, col=1)
+        fig.update_yaxes(title_text="10Y2Y (Z)", row=5, col=1)
 
         # Hide x-axis for rows 1-4, show for row 5
         for r in [1, 2, 3, 4]:
@@ -407,45 +359,27 @@ class ChartController:
         fig.update_xaxes(showticklabels=True, row=5, col=1)
 
     def _init_reference_lines(self, fig: go.FigureWidget) -> None:
-        # Static horizontal lines defined declaratively
         lines = [
-            (0, "dot", "gray", 2),  # y2
-            (0, "dot", "gray", 3),  # y3
-            (2, "dash", "red", 3),  # y3
-            (-2, "dash", "green", 3),  # y3
-            (2, "dash", "red", 4),  # y4
-            (-1.5, "dash", "green", 4),  # y4
-            (0, "dot", "gray", 5),  # Add zero-line to new row 5
+            (0, "dot", "gray", 2),
+            (0, "dot", "gray", 3),
+            (2, "dash", "red", 3),
+            (-2, "dash", "green", 3),
+            (2, "dash", "red", 4),
+            (-1.5, "dash", "green", 4),
+            (0, "dot", "gray", 5),
         ]
 
         for y, dash, color, yaxis in lines:
             fig.add_hline(y=y, line_dash=dash, line_color=color, row=yaxis, col=1)  # type: ignore
 
-    def update(self, res: "EngineOutput", inputs: "EngineInput") -> None:
-        with self.fig.batch_update():
-            # Update price panel (delegated)
-            self._price_updater.update(self.fig, res, inputs)
-
-            # Update macro panel (delegated)
-            regime_shapes = self.macro_viz.update(self.fig, res, inputs)
-
-            # Event lines (decision, entry)
-            event_shapes = self._create_event_shapes(res)
-
-            # Combine all visual elements
-            all_shapes = event_shapes
-            if regime_shapes:
-                all_shapes = all_shapes + regime_shapes
-
-            # Use update_layout instead of direct assignment
-            self.fig.update_layout(shapes=all_shapes)
-
     def _create_event_shapes(self, res: "EngineOutput") -> list[dict]:
+        dec_str = pd.to_datetime(res.decision_date).strftime("%Y-%m-%d")
+        buy_str = pd.to_datetime(res.buy_date).strftime("%Y-%m-%d")
         return [
             dict(
                 type="line",
-                x0=res.decision_date,
-                x1=res.decision_date,
+                x0=dec_str,
+                x1=dec_str,
                 y0=0,
                 y1=1,
                 xref="x",
@@ -454,8 +388,8 @@ class ChartController:
             ),
             dict(
                 type="line",
-                x0=res.buy_date,
-                x1=res.buy_date,
+                x0=buy_str,
+                x1=buy_str,
                 y0=0,
                 y1=1,
                 xref="x",
@@ -463,6 +397,24 @@ class ChartController:
                 line=dict(color="blue", width=2, dash="dot"),
             ),
         ]
+
+    def update(self, res: "EngineOutput", inputs: "EngineInput") -> None:
+        with self.fig.batch_update():
+            # Update price panel
+            self._price_updater.update(self.fig, res, inputs)
+
+            # Update macro panel
+            regime_shapes = self.macro_viz.update(self.fig, res, inputs)
+
+            # Event lines (decision, entry)
+            event_shapes = self._create_event_shapes(res)
+
+            # Combine all visual elements
+            all_shapes = list(event_shapes)
+            if regime_shapes:
+                all_shapes.extend(regime_shapes)
+
+            self.fig.layout.shapes = tuple(all_shapes)
 
 
 class PricePanelUpdater:
@@ -478,12 +430,9 @@ class PricePanelUpdater:
         # Update visible tickers
         for i in range(self.MAX_TICKERS):
             trace_idx = TraceId.TICKERS_START + i
-
-            # 1. Cast to a variable
             trace = cast(go.Scatter, fig.data[trace_idx])
 
             if i < len(cols):
-                # 2. Use that variable 'trace' here (NOT fig.data)
                 trace.update(
                     x=res.normalized_plot_data.index,
                     y=res.normalized_plot_data[cols[i]],
@@ -491,11 +440,9 @@ class PricePanelUpdater:
                     visible=True,
                 )
             else:
-                # 3. Use that variable 'trace' here
                 trace.visible = False
 
         # Benchmark
-        # Cast to 'bm_trace'
         bm_trace = cast(go.Scatter, fig.data[TraceId.BENCHMARK])
         if not res.benchmark_series.empty:
             bm_trace.update(
@@ -508,7 +455,6 @@ class PricePanelUpdater:
             bm_trace.visible = False
 
         # Portfolio
-        # Cast to 'pf_trace'
         pf_trace = cast(go.Scatter, fig.data[TraceId.PORTFOLIO])
         if not res.portfolio_series.empty:
             pf_trace.update(
@@ -529,7 +475,6 @@ class PricePanelUpdater:
 class WalkForwardUI:
     """Knows nothing about data. Just widgets and layout."""
 
-    # 1. Update type hint from dict to TradingConfig
     def __init__(
         self, initial_date: pd.Timestamp, settings: TradingConfig, initial_inputs=None
     ):
@@ -538,13 +483,12 @@ class WalkForwardUI:
         self._wire_events()
 
     def _build_widgets(self, initial_date: pd.Timestamp, inputs=None) -> None:
-        # Helper to get value from inputs or fallback to default
         def get_val(attr, default):
             return (
                 getattr(inputs, attr) if (inputs and hasattr(inputs, attr)) else default
             )
 
-        # Timeline
+        # Timeline (holding_period defaults dynamically from TradingConfig)
         self.w_lookback = widgets.IntText(
             value=get_val("lookback_period", 189),
             description="Lookback (Days):",
@@ -558,13 +502,12 @@ class WalkForwardUI:
             style={"description_width": "initial"},
         )
         self.w_holding = widgets.IntText(
-            value=get_val("holding_period", 5),
+            value=get_val("holding_period", self.settings.holding_period),
             description="Holding (Days):",
             layout=widgets.Layout(width="200px"),
             style={"description_width": "initial"},
         )
 
-        # 2. Generate the registry dynamically from settings
         registry = get_strategy_registry(self.settings)
 
         # Strategy
@@ -576,7 +519,6 @@ class WalkForwardUI:
             style={"description_width": "initial"},
         )
         self.w_strategy = widgets.Dropdown(
-            # 3. Use the dynamic registry keys
             options=list(registry.keys()),
             value=get_val("metric", "Sharpe (TRP)"),
             description="Strategy:",
@@ -584,7 +526,6 @@ class WalkForwardUI:
             layout=widgets.Layout(width="220px"),
         )
         self.w_benchmark = widgets.Text(
-            # FIX: Changed self.settings["benchmark_ticker"] to self.settings.benchmark_ticker
             value=get_val("benchmark_ticker", self.settings.benchmark_ticker),
             description="Benchmark:",
             placeholder="Enter Ticker",
@@ -607,7 +548,7 @@ class WalkForwardUI:
         )
         self.w_rank_range = widgets.HBox([self.w_rank_start, self.w_rank_end])
 
-        # Manual Tickers (joining list to string for the textarea)
+        # Manual Tickers
         manual_str = ""
         if inputs and hasattr(inputs, "manual_tickers") and inputs.manual_tickers:
             manual_str = ", ".join(inputs.manual_tickers)
@@ -620,7 +561,6 @@ class WalkForwardUI:
             style={"description_width": "initial"},
         )
 
-        # Display logic: show textarea only if in manual mode
         self.w_manual_list.layout.display = (
             "block" if self.w_mode.value == "Manual List" else "none"
         )
@@ -714,7 +654,7 @@ class WalkForwardUI:
 
 
 class ReportGenerator:
-    """Generates the metrics table and audit logs - using proven old code."""
+    """Generates the metrics table and audit logs."""
 
     def generate(
         self,
@@ -726,7 +666,6 @@ class ReportGenerator:
         output.layout = widgets.Layout(margin="10px 0px 20px 0px")
 
         with output:
-            # Header (Success Message) - from old code
             mode_str = (
                 f"CASCADE (Subset of {len(universe_subset)})"
                 if universe_subset
@@ -738,7 +677,6 @@ class ReportGenerator:
                 )
             )
 
-            # Audit Logic - from old code
             if (
                 inputs.mode == "Ranking"
                 and res.debug_data
@@ -758,12 +696,10 @@ class ReportGenerator:
                     print(f"   Pool Size: {audit.get('tickers_passed')} survivors")
                 print("-" * 70)
 
-            # Timeline - from old code
             print(
                 f"Timeline: [{res.start_date.date()}] -> Decision: {res.decision_date.date()} -> Entry: {res.buy_date.date()} -> End: {res.holding_end_date.date()}"
             )
 
-            # Tickers - from old code
             print(f"Selected Tickers ({len(res.tickers)}):")
             if res.tickers:
                 for i in range(0, len(res.tickers), 10):
@@ -772,7 +708,6 @@ class ReportGenerator:
                 print("None")
             print("")
 
-            # --- DATA PREP (Metrics Table) - from old code ---
             m = res.perf_metrics
             rows = []
             for label, key in [
@@ -793,22 +728,17 @@ class ReportGenerator:
                     "Lookback": m.get(f"lookback_b_{key}"),
                     "Holding": m.get(f"holding_b_{key}"),
                 }
-                # This is the line causing your specific error:
                 d_row: dict[str, Any] = {"Metric": f"== {label} Delta"}
 
                 for col in ["Full", "Lookback", "Holding"]:
-                    # Now Pylance will allow assigning a number here
                     d_row[col] = (p_row[col] or 0) - (b_row[col] or 0)
 
-                # --- ADD THESE THREE LINES ---
                 rows.append(p_row)
                 rows.append(b_row)
                 rows.append(d_row)
-                # -----------------------------
 
             df_report = pd.DataFrame(rows).set_index("Metric")
 
-            # --- STYLE - from old code exactly ---
             styler = df_report.style.format("{:+.6f}", na_rep="N/A")
 
             def row_logic(row):
@@ -873,14 +803,13 @@ class ReportGenerator:
 
 class WalkForwardAnalyzer:
     """
-    Thin orchestrator. No longer knows how to build charts, create widgets,
-    or format tables. Just wires components together and handles the run loop.
+    Thin orchestrator. Wires components together and manages simulation execution.
     """
 
     def __init__(
         self,
         engine,
-        inputs: EngineInput | None = None,  # Tells Pylance: "EngineInput OR None"
+        inputs: Optional[EngineInput] = None,
         universe_subset=None,
         filter_pack=None,
         default_settings=None,
@@ -890,17 +819,13 @@ class WalkForwardAnalyzer:
         self.filter_pack = filter_pack or FilterPack()
         self.settings = default_settings or TradingConfig()
 
-        # Prioritize date: inputs > filter_pack > default
         initial_date = (
             (inputs.decision_date if inputs else None)
             or self.filter_pack.decision_date
             or pd.to_datetime("2026-12-10")
         )
 
-        # 1. Initialize UI (Assuming WalkForwardUI can accept an 'inputs' object)
-        # If WalkForwardUI doesn't take 'inputs', you'll need to add a 'set_inputs' method to it.
         self.ui = WalkForwardUI(initial_date, self.settings, initial_inputs=inputs)
-
         self.chart = ChartController()
         self.reporter = ReportGenerator()
         self.last_run: Optional["EngineOutput"] = None
@@ -924,7 +849,6 @@ class WalkForwardAnalyzer:
             self._update_filter_pack(result)
             self.chart.update(result, inputs)
 
-            # Render report to output area
             with self.ui.output_area:
                 display(self.reporter.generate(result, inputs, self.universe_subset))
 
@@ -954,7 +878,7 @@ class WalkForwardAnalyzer:
         )
 
     def _update_filter_pack(self, res: "EngineOutput") -> None:
-        """Still mutates filter_pack (legacy requirement), but isolated."""
+        """Mutates filter_pack with survivors and decision date."""
         self.filter_pack.decision_date = res.decision_date
         self.filter_pack.selected_tickers = res.tickers
 
@@ -969,30 +893,29 @@ class WalkForwardAnalyzer:
                 ].index.tolist()
 
     def show(self):
-        """Returns the composed UI."""
-        container = self.ui.layout(self.chart.fig)
-        self._on_run(None)  # Auto-run
-        return container
+        """Returns the composed UI with fully populated initial state."""
+        self._on_run(
+            None
+        )  # Pre-run to render traces, shapes, and report tables immediately
+        return self.ui.layout(self.chart.fig)
 
 
-# Factory function (kept for API compatibility)
+# Factory function
 def create_walk_forward_analyzer(
     engine,
-    # inputs: EngineInput,
-    inputs: EngineInput | None = None,  # Adding '| None = None' makes it optional
+    inputs: Optional[EngineInput] = None,
     universe_subset=None,
     filter_pack=None,
 ):
     """Factory function that initializes the analyzer with specific EngineInput settings."""
     pack = filter_pack or FilterPack()
 
-    # If inputs were provided, ensure the filter_pack reflects the starting date
     if inputs and inputs.decision_date:
         pack.decision_date = inputs.decision_date
 
     analyzer = WalkForwardAnalyzer(
         engine,
-        inputs=inputs,  # New argument
+        inputs=inputs,
         universe_subset=universe_subset,
         filter_pack=pack,
     )
@@ -1009,7 +932,6 @@ def run_headless_simulation(engine, inputs: EngineInput) -> pd.DataFrame:
         print(f"[CRITICAL] Engine Error: {result.error_msg}")
         return pd.DataFrame()
 
-    # 1. Extract and Print Metadata (Matches the Screenshot Audit)
     meta = HeadlessReporter.get_metadata(result)
 
     print("-" * 70)
@@ -1018,14 +940,9 @@ def run_headless_simulation(engine, inputs: EngineInput) -> pd.DataFrame:
         f"Entry: {meta['entry']} -> End: {meta['end']}"
     )
 
-    # Chunk tickers into groups of 10
     tickers = meta["tickers"]
     rows = [", ".join(tickers[i : i + 10]) for i in range(0, len(tickers), 10)]
     print(f"Selected Tickers ({meta['ticker_count']}):\n" + "\n".join(rows))
     print("-" * 70)
 
-    # 2. Return Table
     return HeadlessReporter.get_metrics_table(result)
-
-
-#

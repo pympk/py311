@@ -62,6 +62,16 @@ class QuantUtils:
 
         return float(np.log(last_val / first_val))
 
+    @overload
+    @staticmethod
+    def calculate_sharpe(data: pd.Series, periods: Optional[int] = None) -> float: ...
+
+    @overload
+    @staticmethod
+    def calculate_sharpe(
+        data: pd.DataFrame, periods: Optional[int] = None
+    ) -> pd.Series: ...
+
     @staticmethod
     def calculate_sharpe(
         data: Union[pd.Series, pd.DataFrame],
@@ -75,22 +85,17 @@ class QuantUtils:
         if periods is None:
             periods = 252
 
-        # CASE 1: Data is a DataFrame (Result is a Series)
         if isinstance(data, pd.DataFrame):
-            mu = data.mean()  # Result: pd.Series
-            std = data.std()  # Result: pd.Series
+            mu = data.mean()
+            std = data.std()
             res = (mu / np.maximum(std, 1e-8)) * np.sqrt(periods)
-
-            # Clean and cast to Series for Pylance
             cleaned = res.replace([np.inf, -np.inf], np.nan).fillna(0.0)
             return cast(pd.Series, cleaned)
 
-        # CASE 2: Data is a Series (Result is a float)
         elif isinstance(data, pd.Series):
-            mu = float(data.mean())  # Result: float
-            std = float(data.std())  # Result: float
+            mu = float(data.mean())
+            std = float(data.std())
             res = (mu / max(std, 1e-8)) * np.sqrt(periods)
-
             return res if np.isfinite(res) else 0.0
 
         else:
@@ -385,50 +390,117 @@ class QuantUtils:
     def calculate_convexity_5d_fast(slope_series: pd.Series) -> pd.Series:
         return slope_series.diff(2).fillna(0)
 
-    # --- OVERLOAD 1: If input is a Series, output is a Series ---
     @overload
     @staticmethod
-    def zscore(data: pd.Series) -> pd.Series: ...  # <--- Literally three dots
+    def zscore(data: pd.Series) -> pd.Series: ...
 
-    # --- OVERLOAD 2: If input is a DataFrame, output is a DataFrame ---
     @overload
     @staticmethod
-    def zscore(data: pd.DataFrame) -> pd.DataFrame: ...  # <--- Literally three dots
-
-    # --- THE ACTUAL IMPLEMENTATION ---
-    # This is the only one with real code.
-    # Note: No @overload decorator here.
+    def zscore(data: pd.DataFrame) -> pd.DataFrame: ...
 
     @staticmethod
     def zscore(data: Union[pd.Series, pd.DataFrame]) -> Union[pd.Series, pd.DataFrame]:
         if data.empty:
             return data
 
-        # CASE 1: Data is a DataFrame
         if isinstance(data, pd.DataFrame):
-            m = data.mean()  # Result: pd.Series
-            s = data.std()  # Result: pd.Series
-
-            # FIX 1: Use Pandas .where() instead of np.where() to keep it a Series.
-            # FIX 2: Use s.notna() to fix the strikethrough.
+            m = data.mean()
+            s = data.std()
             denom = s.where((s != 0) & s.notna(), 1.0)
-
             res = (data - m) / denom
             return cast(pd.DataFrame, res)
 
-        # CASE 2: Data is a Series
         elif isinstance(data, pd.Series):
-            m = float(data.mean())  # Result: float
-            s = float(data.std())  # Result: float
-
-            # Simple scalar logic (no NumPy arrays needed)
+            m = float(data.mean())
+            s = float(data.std())
             denom = s if (s != 0 and not np.isnan(s)) else 1.0
-
             res = (data - m) / denom
             return cast(pd.Series, res)
 
         else:
             raise TypeError("Input must be a pandas Series or DataFrame.")
+
+    @staticmethod
+    def build_forward_return_matrix(
+        df_close: pd.DataFrame, horizon: int = 1
+    ) -> pd.DataFrame:
+        """Computes forward simple returns: R_{t -> t+h} = (P_{t+h} - P_t) / P_t
+
+        Tagged with strict temporal metadata to prevent accidental ingestion of
+        backward returns.
+        """
+        fwd_ret = df_close.pct_change(horizon, fill_method=None).shift(-horizon)
+        if "CASH" not in fwd_ret.columns:
+            fwd_ret["CASH"] = 0.0
+        fwd_ret.attrs["temporal_alignment"] = f"forward_{horizon}d"
+        fwd_ret.attrs["is_forward_looking"] = True
+        return fwd_ret
+
+    # -------------------------------------------------------------------------
+    # PURE NUMPY MTM & ALPHA KERNELS (STATELESS)
+    # -------------------------------------------------------------------------
+    @staticmethod
+    def calculate_equal_weight_return(ret_array: np.ndarray) -> float:
+        """Pure C-level NumPy mean return for a 1D array of asset returns."""
+        if ret_array.size == 0:
+            return 0.0
+        finite_mask = np.isfinite(ret_array)
+        if not np.any(finite_mask):
+            return 0.0
+        return float(np.mean(ret_array[finite_mask]))
+
+    @staticmethod
+    def calculate_tri_asset_portfolio_return(
+        gross_stock_ret: float,
+        bm_ret: float,
+        cash_ret: float,
+        w_active: float,
+        w_benchmark: float,
+        w_cash: float,
+        slippage_loss: float = 0.0,
+    ) -> Tuple[float, float]:
+        """Calculates (gross_daily_ret, net_daily_ret) using linear dot product."""
+        gross = w_active * gross_stock_ret + w_benchmark * bm_ret + w_cash * cash_ret
+        net = gross - slippage_loss
+        return float(gross), float(net)
+
+    @staticmethod
+    def calculate_shaped_alpha_reward(
+        alpha_ret: float,
+        upside_mult: float = 1.0,
+        loss_penalty: float = 0.0,
+    ) -> float:
+        """Pure mathematical reward shaping for RL policy optimization.
+
+        NEVER to be compounded as an equity curve.
+        """
+        if not np.isfinite(alpha_ret):
+            return 0.0
+        if alpha_ret > 0.0:
+            return float(alpha_ret * max(1.0, upside_mult))
+        elif alpha_ret < 0.0:
+            return float(alpha_ret * (1.0 + max(0.0, loss_penalty)))
+        return 0.0
+
+    @staticmethod
+    def step_compounding_curves(
+        prev_portfolio_equity: float,
+        prev_benchmark_equity: float,
+        net_daily_ret: float,
+        bm_daily_ret: float,
+    ) -> Tuple[float, float, float]:
+        """Calculates next step (portfolio_equity, benchmark_equity, alpha_multiplier).
+
+        Alpha Multiplier is strictly V_p(t) / V_bm(t) (Base 1.0).
+        """
+        new_p_equity = prev_portfolio_equity * (1.0 + net_daily_ret)
+        new_bm_equity = prev_benchmark_equity * (1.0 + bm_daily_ret)
+        alpha_multiplier = new_p_equity / max(new_bm_equity, 1e-8)
+        return (
+            float(new_p_equity),
+            float(new_bm_equity),
+            float(alpha_multiplier),
+        )
 
 
 class TickerEngine:

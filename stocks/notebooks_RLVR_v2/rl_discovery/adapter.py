@@ -1,83 +1,91 @@
+from typing import Any, Dict, Optional, Tuple, Union
+import gymnasium as gym
 import numpy as np
 import pandas as pd
-import gymnasium as gym
-from typing import Dict, Any, Tuple
 
 
-# ---> Running Observation Scaler # <---
 class ObservationScaler:
-    def __init__(self, shape=(33,), clip_max=5.0):
-        # Dynamically accepts the incoming shape tuple (e.g. 35)
+    def __init__(self, shape: Tuple[int, ...] = (46,), clip_max: float = 5.0):
         self.mean = np.zeros(shape, dtype=np.float32)
         self.var = np.ones(shape, dtype=np.float32)
         self.count = 1e-4
 
     def transform(self, x: np.ndarray, update: bool = True) -> np.ndarray:
         if update:
-            # Welford's online algorithm to update mean and variance on the fly
             self.count += 1
             delta = x - self.mean
             self.mean += delta / self.count
             delta2 = x - self.mean
             self.var += delta * delta2
 
-        # Calculate standard deviation safely
         variance = self.var / self.count
         std = np.sqrt(variance) + 1e-8
-
-        # Z-score standardization
         scaled_x = (x - self.mean) / std
-
-        # Inverse Hyperbolic Sine (asinh) Transformation
-        # Acts linearly near 0, but logarithmically for large outliers.
-        # A 10-sigma outlier becomes ~3.0, keeping the NN safe while preserving direction.
         return np.arcsinh(scaled_x)
 
-    def load_state(self, other_scaler):
-        """Syncs knowledge from the training environment to validation/test environments"""
-        self.mean = other_scaler.mean.copy()
-        self.var = other_scaler.var.copy()
-        self.count = other_scaler.count
+    def load_state(
+        self, other_scaler: Union[Dict[str, Any], "ObservationScaler"]
+    ) -> None:
+        if isinstance(other_scaler, dict):
+            self.mean = other_scaler["mean"].copy()
+            self.var = other_scaler["var"].copy()
+            self.count = other_scaler["count"]
+        else:
+            self.mean = other_scaler.mean.copy()
+            self.var = other_scaler.var.copy()
+            self.count = other_scaler.count
 
 
 class ObservationAdapter:
     """
-    [DEEP MODULE] Translates Pandas DataFrames into RL-safe PyTorch-compatible tensors.
-    Hides all NaN handling, type casting, and scaling logic from the RL algorithm.
+    Translates DataFrames and Series into RL-safe PyTorch-compatible tensors.
     """
 
     @staticmethod
     def process(
-        ensemble: pd.DataFrame, macro_row: pd.Series, expected_strats: int
+        ensemble: pd.DataFrame,
+        macro_row: pd.Series,
+        expected_strats: int,
+        bm_row: Optional[Union[pd.Series, np.ndarray]] = None,
     ) -> np.ndarray:
-        # 1. Micro/Strategy Cross-Sectional Stats (Dynamic Match check)
+        # 1. Micro/Strategy Cross-Sectional Stats
         if not ensemble.empty and ensemble.shape[1] == expected_strats:
-            # We use ddof=0 to avoid NaN if there is only 1 ticker
-            strat_mean = ensemble.mean(axis=0).fillna(0.0).values
-            strat_std = ensemble.std(axis=0, ddof=0).fillna(0.0).values
+            strat_mean = ensemble.mean(axis=0).fillna(0.0).to_numpy()
+            strat_std = ensemble.std(axis=0, ddof=0).fillna(0.0).to_numpy()
         else:
-            # Edge Case: Universe is completely empty today, or shape mismatch
-            strat_mean = np.zeros(expected_strats)
-            strat_std = np.zeros(expected_strats)
+            strat_mean = np.zeros(expected_strats, dtype=np.float32)
+            strat_std = np.zeros(expected_strats, dtype=np.float32)
 
-        # 2. Macro Context
-        macro_vals = macro_row.fillna(0.0).values
+        # 2. Benchmark Strategy Vector Alignment
+        if bm_row is not None:
+            if isinstance(bm_row, pd.Series):
+                bm_vals = bm_row.fillna(0.0).to_numpy()
+            else:
+                bm_vals = np.asarray(bm_row)
+            if len(bm_vals) != expected_strats:
+                bm_vals = np.zeros(expected_strats, dtype=np.float32)
+        else:
+            bm_vals = np.zeros(expected_strats, dtype=np.float32)
 
-        # 3. Assemble and Cast
-        # MENTOR NOTE: We MUST cast to np.float32. PyTorch defaults to float32.
-        # If we pass Pandas' default float64, PyTorch will throw a runtime type mismatch error.
+        # 3. Macro Context
+        macro_vals = macro_row.fillna(0.0).to_numpy()
+
+        # 4. Assemble and Cast (Mean [N], Std [N], Benchmark [N], Macro [M])
         obs = np.concatenate(
-            [np.asarray(strat_mean), np.asarray(strat_std), np.asarray(macro_vals)]
+            [
+                np.asarray(strat_mean, dtype=np.float32),
+                np.asarray(strat_std, dtype=np.float32),
+                np.asarray(bm_vals, dtype=np.float32),
+                np.asarray(macro_vals, dtype=np.float32),
+            ]
         ).astype(np.float32)
 
-        # Guardrail: Prevent Neural Network explosion from rogue Infs
-        obs = np.nan_to_num(obs, nan=0.0, posinf=0.0, neginf=0.0)
-        return obs
+        return np.nan_to_num(obs, nan=0.0, posinf=0.0, neginf=0.0)
 
 
 class RLVRGymEnv(gym.Env):
     """
-    [WRAPPER] Bridges the Absolute Zero engine with Standard RL libraries.
+    Gym wrapper for DiscoveryEnv.
     """
 
     def __init__(self, discovery_env, macro_df: pd.DataFrame):
@@ -85,48 +93,39 @@ class RLVRGymEnv(gym.Env):
         self.env = discovery_env
         self.macro_df = macro_df
 
-        # ---> DYNAMIC SPACE DETECTION <---
-        self.num_features = self.env.cube.shape[1]  # Resolves to 12
-        self.num_macro = len(self.macro_df.columns)  # Resolves to 11
-        self.obs_dim = 2 * self.num_features + self.num_macro  # 12*2 + 11 = 35
+        self.num_features = self.env.cube.shape[1]
+        self.num_macro = len(self.macro_df.columns)
+        self.obs_dim = 3 * self.num_features + self.num_macro
 
-        # Define dynamically scaled spaces
         self.action_space = gym.spaces.Box(
-            low=-1.0, high=1.0, shape=(self.num_features + 2,), dtype=np.float32
+            low=-1.0, high=1.0, shape=(self.num_features + 4,), dtype=np.float32
         )
-
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.obs_dim,), dtype=np.float32
         )
 
-        # Initialize the scaler matching the exact observation dimension (35)
         self.scaler = ObservationScaler(shape=(self.obs_dim,))
         self.is_training = True
 
     def reset(self, seed=None, options=None) -> Tuple[np.ndarray, Dict[str, Any]]:
         super().reset(seed=seed)
-        obs_dict = self.env.reset()
-
-        # Scale the observation
+        obs_dict = self.env.reset(seed=seed)
         raw_obs = self._build_obs(obs_dict)
         scaled_obs = self.scaler.transform(raw_obs, update=self.is_training)
-        return scaled_obs, {}
+        info = {"date": obs_dict.get("date", pd.Timestamp.min)}
+        return scaled_obs, info
 
     def step(
         self, action: np.ndarray
     ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
-        # MENTOR NOTE: CleanRL uses the step signature (obs, reward, terminated, truncated, info)
-        obs_dict, reward, done, info = self.env.step(action)
-
-        # Scale the observation
+        obs_dict, reward, terminated, truncated, info = self.env.step(action)
         raw_obs = self._build_obs(obs_dict)
         scaled_obs = self.scaler.transform(raw_obs, update=self.is_training)
-        return scaled_obs, float(reward), done, False, info
+        return scaled_obs, float(reward), terminated, truncated, info
 
     def _build_obs(self, obs_dict: Dict[str, Any]) -> np.ndarray:
         ensemble = obs_dict["ensemble"]
 
-        # Robust Fetch: Prefer pre-cached macro_row, safely fallback for Mock environments
         if "macro_row" in obs_dict:
             macro_row = obs_dict["macro_row"]
         else:
@@ -136,7 +135,11 @@ class RLVRGymEnv(gym.Env):
             else:
                 macro_row = pd.Series(0.0, index=self.macro_df.columns)
 
-        # Pass self.num_features dynamically to avoid static fallback of zeros
+        bm_row = obs_dict.get("bm_row", None)
+
         return ObservationAdapter.process(
-            ensemble, macro_row, expected_strats=self.num_features
+            ensemble=ensemble,
+            macro_row=macro_row,
+            expected_strats=self.num_features,
+            bm_row=bm_row,
         )

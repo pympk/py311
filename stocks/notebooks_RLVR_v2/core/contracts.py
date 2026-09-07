@@ -5,6 +5,7 @@ import logging
 from typing import List, Dict, Any, Optional, Callable
 
 from core.settings import TradingConfig, QualityThresholds
+from core.accounting import MTMStepResult
 from dataclasses import dataclass, field
 
 # Set up logging if not already configured
@@ -119,6 +120,56 @@ class DiscoveryResult:
     veritable_reward: float
     metric_values: pd.Series
     raw_alpha_matrix: pd.DataFrame  # Added for your manual verification
+
+
+@dataclass(frozen=True)
+class BlotterRecord:
+    """
+    Standardized Mark-To-Market (MTM) Blotter Record.
+    Directly aligns with MTMStepResult accounting metrics alongside execution
+    timeline, selection metadata, and policy telemetry.
+    """
+
+    # --- Timeline ---
+    date: pd.Timestamp
+    decision_date: pd.Timestamp
+    buy_date: pd.Timestamp
+    sell_date: pd.Timestamp
+
+    # --- Selection & Controls ---
+    tickers: List[str]
+    top_3: List[str]
+    universe_size: int
+    offset: int
+    width: int
+
+    # --- Tri-Asset Portfolio Allocation Weights ---
+    weight_active: float
+    weight_benchmark: float
+    weight_cash: float
+    equity_exposure: float
+    active_tilt: float
+    max_score: float
+    min_score: float
+
+    # --- Simple Returns (Daily Slices & Portfolio Impact) ---
+    gross_stock_daily_simple_ret: float
+    bm_daily_simple_ret: float
+    cash_daily_simple_ret: float
+    slippage_daily_simple_loss: float
+    gross_daily_simple_ret: float
+    net_daily_simple_ret: float
+    alpha_daily_simple_ret: float
+    penalized_alpha_daily_simple_ret: float
+
+    # --- Log Returns & Policy Optimization Rewards ---
+    raw_stock_daily_log_ret: float
+    net_daily_log_ret: float
+    penalized_alpha_daily_log_reward: float
+
+    # --- Compounding Equity Tracking (Base 1.0) ---
+    agent_equity: float
+    alpha_equity: float
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,207 @@
+==============================================================================
+# MERGED NOTEBOOKS CONVERSION
+# Total notebooks: 1
+# ==============================================================================
+
+##############################################################################
+## NOTEBOOK: 02_pre_launch_v1.ipynb
+## PATH: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\02_pre_launch_v1.ipynb
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 1  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+# 02_pre_launch.ipynb
+
+
+
+ ### 📦 Pre-Flight Environment Sanity, Safe Archiver & Pipeline Reset
+
+ - Archives previous run outputs (`output/` and `Grid_sweep.csv`) with timestamps.
+
+ - Verifies data cache integrity (`AlphaCache` parquet and macro tables).
+
+ - Resets clean directories for fresh training runs.
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 2  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 1: Platform & Environment Initialization
+import os
+import sys
+from pathlib import Path
+
+RUNNING_IN_COLAB = "google.colab" in sys.modules
+
+if RUNNING_IN_COLAB:
+    from google.colab import drive  # type: ignore
+
+    drive.mount("/content/drive")
+    rl_root = Path(
+        "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2"
+    )
+else:
+    rl_root_default = Path(
+        r"C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2"
+    )
+    rl_root = rl_root_default if rl_root_default.exists() else Path.cwd()
+
+if not rl_root.exists():
+    raise FileNotFoundError(f"❌ Project root does not exist: {rl_root}")
+
+if str(rl_root) not in sys.path:
+    sys.path.append(str(rl_root))
+
+os.chdir(rl_root)
+print(
+    f"✅ Environment initialized on {'Google Colab' if RUNNING_IN_COLAB else 'Local Workstation'}"
+)
+print(f"📂 Project Root Directory: {rl_root}")
+```
+
+# --- Output ---
+# [stdout]
+Drive already mounted at /content/drive; to attempt to forcibly remount, call drive.mount("/content/drive", force_remount=True).
+✅ Environment initialized on Google Colab
+📂 Project Root Directory: /content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 3  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 2: Safe Archiving & Clean Directory Reset
+import shutil
+from datetime import datetime
+from core.paths import OUTPUT_DIR, LOCAL_DATA_DIR
+
+print("\n" + "=" * 65)
+print("📦 SAFE RUN ARCHIVER & DIRECTORY INITIALIZER")
+print("=" * 65)
+
+model_dir = OUTPUT_DIR / "model_checkpoints"
+has_prior_checkpoints = model_dir.exists() and any(model_dir.glob("*.pt"))
+master_csv = rl_root / "Grid_sweep.csv"
+
+if has_prior_checkpoints or master_csv.exists():
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    archive_dir = rl_root / f"output_archive_{timestamp}"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+
+    if OUTPUT_DIR.exists():
+        shutil.move(str(OUTPUT_DIR), str(archive_dir / "output"))
+        print(f"📦 Archived previous output directory to:\n   {archive_dir / 'output'}")
+
+    if master_csv.exists():
+        shutil.copy2(
+            str(master_csv), str(archive_dir / f"Grid_sweep_backup_{timestamp}.csv")
+        )
+        print(f"📄 Backed up Grid_sweep.csv to:\n   {archive_dir}")
+else:
+    print("ℹ️ No previous run checkpoints found requiring archiving.")
+
+# Create clean output directory hierarchy
+model_dir.mkdir(parents=True, exist_ok=True)
+print(f"\n✨ Clean checkpoint directory ready:\n   {model_dir}")
+print("=" * 65)
+```
+
+# --- Output ---
+# [stdout]
+
+=================================================================
+📦 SAFE RUN ARCHIVER & DIRECTORY INITIALIZER
+=================================================================
+ℹ️ No previous run checkpoints found requiring archiving.
+
+✨ Clean checkpoint directory ready:
+   /content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2/output/model_checkpoints
+=================================================================
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 4  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 3: Data Cache Verification & Pre-Flight Checks
+from core.settings import CacheConfig, TradingConfig
+from data_pipeline.loader import load_processed_data
+
+config = TradingConfig()
+cache_file = LOCAL_DATA_DIR / CacheConfig.get_filename()
+
+print("\n" + "=" * 65)
+print("🔍 PRE-FLIGHT DATA & CACHE VERIFICATION")
+print("=" * 65)
+
+if not cache_file.exists():
+    raise FileNotFoundError(
+        f"❌ AlphaCache file missing: {cache_file}\n"
+        f"   Please run Notebook 01 to generate the feature cache."
+    )
+
+print(
+    f"✅ AlphaCache found: {cache_file.name} ({cache_file.stat().st_size / (1024*1024):.2f} MB)"
+)
+
+df_ohlcv, macro_df, features_df = load_processed_data()
+print(
+    f"✅ Master OHLCV Loaded: {df_ohlcv.shape[0]:,} rows | {len(df_ohlcv.index.get_level_values(0).unique()):,} tickers"
+)
+print(
+    f"✅ Macro Table Loaded : {macro_df.shape[0]:,} dates | {macro_df.shape[1]} features"
+)
+print(
+    f"🏛️ Dynamic Benchmark : {config.benchmark_ticker} | Calendar: {config.calendar_ticker}"
+)
+print(f"⏱️ Holding Period (H): {config.holding_period} days")
+print("=" * 65)
+```
+
+# --- Output ---
+# [stdout]
+
+=================================================================
+🔍 PRE-FLIGHT DATA & CACHE VERIFICATION
+=================================================================
+✅ AlphaCache found: alpha_cache_41d_1998.parquet (476.42 MB)
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 5  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 4: Hardware & Runtime Diagnostics
+import multiprocessing
+import psutil
+import torch
+
+ram_gb = psutil.virtual_memory().total / (1024**3)
+cpu_cores = multiprocessing.cpu_count()
+gpu_available = torch.cuda.is_available()
+gpu_name = torch.cuda.get_device_name(0) if gpu_available else "None (CPU)"
+
+print("\n" + "=" * 65)
+print("⚙️ SYSTEM DIAGNOSTIC REPORT")
+print("=" * 65)
+print(f"🖥️ CPU Cores Available : {cpu_cores}")
+print(f"💾 Total System RAM     : {ram_gb:.2f} GB")
+print(
+    f"🚀 PyTorch Device       : {'CUDA (' + gpu_name + ')' if gpu_available else 'CPU'}"
+)
+print("=" * 65)
+print("🎯 Pre-launch verified! Ready to execute Notebook 02 for training.")
+```
+
+##############################################################################
+## END OF: 02_pre_launch_v1.ipynb
+##############################################################################
+
+
+==============================================================================
+# END OF MERGED FILE
+==============================================================================

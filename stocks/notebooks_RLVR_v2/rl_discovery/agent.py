@@ -2,13 +2,11 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.distributions.normal import Normal
+from typing import Optional
 
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
-    """
-    Orthogonal Initialization.
-    Maintains variance of activations across layers to prevent vanishing/exploding gradients.
-    """
+    """Orthogonal Initialization for variance stabilization."""
     torch.nn.init.orthogonal_(layer.weight, std)
     torch.nn.init.constant_(layer.bias, bias_const)
     return layer
@@ -17,81 +15,70 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 class AbsoluteZeroAgent(nn.Module):
     """
     Continuous Action Actor-Critic Network for PPO.
-    Upgraded with Layer Normalization and wider capacity [256, 256].
+    Equipped with LayerNorm, bounded logstd exploration floor, and linear mean projection.
     """
 
-    def __init__(self, obs_dim: int = 33, action_dim: int = 13, hidden_size: int = 256):
+    def __init__(
+        self,
+        obs_dim: int = 46,
+        action_dim: int = 16,
+        hidden_size: int = 256,
+        initial_logstd: float = -0.5,
+    ):
         super().__init__()
 
-        # ---------------------------------------------------------------------
-        # HELPER: Construct a normalized hidden block
-        # Pattern: Linear -> LayerNorm -> Activation
-        # ---------------------------------------------------------------------
         def make_hidden_block(in_features, out_features):
             return nn.Sequential(
                 layer_init(nn.Linear(in_features, out_features)),
-                nn.LayerNorm(out_features),  # Stabilizes financial variance
-                nn.Tanh(),  # Tanh is standard/stable for PPO
+                nn.LayerNorm(out_features),
+                nn.Tanh(),
             )
 
-        # ---------------------------------------------------------------------
-        # CRITIC: Independent Network
-        # Estimates the expected veritable reward (Value) of the current state.
-        # ---------------------------------------------------------------------
+        # CRITIC Network (State-Value Estimation)
         self.critic = nn.Sequential(
             make_hidden_block(obs_dim, hidden_size),
             make_hidden_block(hidden_size, hidden_size),
-            # Final Value layer uses std=1.0
             layer_init(nn.Linear(hidden_size, 1), std=1.0),
         )
 
-        # ---------------------------------------------------------------------
-        # ACTOR: Independent Network
-        # Decides what action to take (Policy Mean).
-        # ---------------------------------------------------------------------
+        # ACTOR Network (Linear projection without squashing saturation)
         self.actor_mean = nn.Sequential(
             make_hidden_block(obs_dim, hidden_size),
             make_hidden_block(hidden_size, hidden_size),
-            # Final Action layer uses std=0.01 to ensure initial actions are ~0
             layer_init(nn.Linear(hidden_size, action_dim), std=0.01),
         )
 
-        # ---------------------------------------------------------------------
-        # EXPLORATION NOISE (Entropy)
-        # State-Independent log standard deviation.
-        # Initialized to 0, so exp(0) = 1.0 standard deviation.
-        # ---------------------------------------------------------------------
-        self.actor_logstd = nn.Parameter(torch.zeros(1, action_dim))
+        # EXPLORATION NOISE: State-independent parameter with safety clamping in forward
+        self.actor_logstd = nn.Parameter(
+            torch.full((1, action_dim), float(initial_logstd), dtype=torch.float32)
+        )
 
-    def get_value(self, x):
-        """Used during rollout to calculate advantages."""
+    def get_value(self, x: torch.Tensor) -> torch.Tensor:
+        """Estimates V(s) during rollout and evaluation."""
         return self.critic(x)
 
-    def get_action_and_value(self, x, action=None):
+    def get_action_and_value(
+        self, x: torch.Tensor, action: Optional[torch.Tensor] = None
+    ):
         """
-        Calculates the policy distribution, samples an action, and calculates its probability.
+        Computes Gaussian action distribution with bounded logstd.
         """
-        # 1. Get Action Mean from the Actor network
-        action_mean = self.actor_mean(x)  # (batch, action_dim)
+        raw_mean = self.actor_mean(x)
+        # Smoothly bound policy mean to [-1.0, 1.0]
+        action_mean = torch.tanh(raw_mean)
 
-        # 2. Get Action StdDev from the independent parameter
-        action_logstd = self.actor_logstd.expand_as(action_mean)  # (batch, action_dim)
-        action_std = torch.exp(action_logstd)  # (batch, action_dim)
+        # Enforce entropy floor: logstd in [-2.0, 0.2] -> std in [0.135, 1.22]
+        clamped_logstd = torch.clamp(self.actor_logstd, min=-2.0, max=0.2)
+        action_std = torch.exp(clamped_logstd.expand_as(action_mean))
 
-        # 3. Create a Normal distribution for our continuous dimensions
-        probs = Normal(action_mean, action_std)  # Independent Gaussians
+        probs = Normal(action_mean, action_std)
 
-        # 4. If we aren't evaluating an old action, sample a new one
         if action is None:
             action = probs.sample()
 
-        # PPO requires the log probability of the action and the entropy (for the exploration bonus)
-        # .sum(1) collapses the dimension probabilities into a single scalar per batch item
         return (
-            action,  # the sampled (or provided) action
-            probs.log_prob(action).sum(
-                1
-            ),  # log-probability of that action, summed over dims
-            probs.entropy().sum(1),  # entropy of the distribution, summed over dims
-            self.critic(x),  # state-value estimate
+            action,
+            probs.log_prob(action).sum(1),
+            probs.entropy().sum(1),
+            self.critic(x),
         )

@@ -62,6 +62,8 @@ pyarrow = "^24.0.0"
 fredapi = "^0.5.2"
 openpyxl = "^3.1.5"
 yt-dlp = "^2026.6.9"
+graphviz = "^0.21"
+torchsummary = "^1.5.1"
 
 [build-system]
 requires = ["poetry-core"]

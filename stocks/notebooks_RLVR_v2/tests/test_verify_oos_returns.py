@@ -1,9 +1,8 @@
 import pytest
-
 from pathlib import Path
 
 from core.auditor import SystemAuditor
-from core.paths import GLOBAL_PROCESSED_DIR, OUTPUT_DIR
+from core.paths import LOCAL_DATA_DIR, OUTPUT_DIR
 from core.settings import TradingConfig
 
 
@@ -13,7 +12,7 @@ def test_real_oos_returns_integration():
     audits it against the actual market parquet data to ensure 0% math leakage.
     """
     # 1. Verify market data exists
-    market_data_path = GLOBAL_PROCESSED_DIR / "df_ohlcv.parquet"
+    market_data_path = LOCAL_DATA_DIR / "df_ohlcv.parquet"
     if not market_data_path.exists():
         pytest.skip(
             f"Market data not found at {market_data_path}. Skipping integration test."
@@ -21,9 +20,11 @@ def test_real_oos_returns_integration():
 
     # 2. Find the most recent OOS pickle file in the output directory
     if not OUTPUT_DIR.exists():
-        pytest.skip("Output directory does not exist yet. Run training notebook first.")
+        pytest.skip(
+            "Output directory does not exist yet. Run evaluation notebook first."
+        )
 
-    pkl_files = list(OUTPUT_DIR.glob("oos_results_*.pkl"))
+    pkl_files = list(OUTPUT_DIR.glob("results_*.pkl"))
     if not pkl_files:
         pytest.skip("No OOS results pickle files found in output directory.")
 
@@ -43,12 +44,11 @@ def test_real_oos_returns_integration():
     # 4. Assert the maximum divergence is negligible (less than 1 basis point)
     max_diff = verification_df["Difference"].abs().max()
 
-    print(f"verification_df:\n{verification_df}\n")
-    print(f"max_diff:\n{max_diff}\n")
+    print(f"\nMax Absolute Divergence: {max_diff:.8f}")
 
     assert max_diff < 1e-4, (
         f"❌ FAILED: RL Environment contains forward-looking leaks or price misalignment! "
         f"Max divergence was {max_diff:.6f}"
     )
 
-    print(f"✅ PASSED: Integration math verified. Max divergence: {max_diff:.6f}")
+    print(f"✅ PASSED: Integration math verified. Max divergence: {max_diff:.8f}")

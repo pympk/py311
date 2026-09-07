@@ -50,7 +50,7 @@ def test_agent_gradient_flow():
     [GUARD] Ensures the loss can backpropagate through the network.
     """
     agent = AbsoluteZeroAgent()
-    mock_obs = torch.randn(1, 33)
+    mock_obs = torch.randn(1, 46)
 
     action, log_prob, _, value = agent.get_action_and_value(mock_obs)
 

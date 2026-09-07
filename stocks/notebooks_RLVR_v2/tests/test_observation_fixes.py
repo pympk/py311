@@ -48,7 +48,7 @@ def test_rsi_bomb_scaling(fake_ohlcv_data):
 
 
 def test_macro_dimension_strictness(fake_ohlcv_data):
-    """Proves the Macro Pipeline drops raw noise and returns EXACTLY 11 columns."""
+    """Proves the Macro Pipeline drops raw noise and returns EXACTLY 10 columns."""
     config = TradingConfig(benchmark_ticker="SPY")
 
     macro_df = MacroFeaturePipeline.process(
@@ -56,11 +56,14 @@ def test_macro_dimension_strictness(fake_ohlcv_data):
     )
 
     assert (
-        macro_df.shape[1] == 11
-    ), f"Macro dimensions shattered! Expected 11, got {macro_df.shape[1]}"
+        macro_df.shape[1] == 10
+    ), f"Macro dimensions shattered! Expected 10, got {macro_df.shape[1]}"
     assert (
         "High_Yield_Spread" not in macro_df.columns
     ), "Raw, unscaled macro noise leaked into features!"
+    assert (
+        "High_Yield_Spread_Z" not in macro_df.columns
+    ), "High_Yield_Spread_Z was not properly removed!"
 
 
 def test_slope_dead_node_fix():
