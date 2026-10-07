@@ -1,0 +1,437 @@
+00_RLVR_data_process_v8.ipynb
+01_RLVR_Part1_AlphaCache_v6.ipynb
+02_RLVR_Part2_WalkForward_v1.ipynb
+03a_RLVR_Auto_Analysis_v24.ipynb
+03a_RLVR_Auto_Analysis_v24.py
+    def calculate_blotter_metrics
+03b_RLVR_Manual_Analysis_v22.ipynb
+03b_RLVR_Manual_Analysis_v22.py
+    def audit_regime_slice
+03c_RLVR_Transaction_Math_Verification.ipynb
+03c_RLVR_Transaction_Math_Verification.py
+    def generate_audit_row
+AI_CONTEXT.md
+core\accounting.py
+    class MTMStepResult
+    class MTMPortfolioEngine
+        def __init__
+        def reset
+        def extract_sleeve_return_array
+        def calculate_sleeve_simple_ret
+        def step
+core\auditor.py
+    class SystemAuditor
+        def verify_math_integrity
+        def verify_ranking_integrity
+        def verify_vol_alignment_integrity
+        def verify_feature_engineering_integrity
+        def verify_macro_engine
+        def verify_analyzer_short
+        def verify_analyzer_long
+        def audit_feature_engineering_integrity
+        def audit_oos_results
+core\contracts.py
+    class MarketObservation
+    class ProcessedDataBundle
+    class FilterPack
+        def __repr__
+    class EngineInput
+    class EngineOutput
+    class SelectionResult
+    class DiscoveryResult
+    class BlotterRecord
+    class MetricBlueprint
+        def __call__
+core\logic.py
+    class AlphaLogic
+        def calculate_veritable_reward
+        def slugify_columns
+    class SelectionLogic
+        def apply_action
+core\paths.py
+    def find_notebooks_root
+core\quant.py
+    class QuantUtils
+        def compute_returns
+        def compute_returns
+        def compute_returns
+        def calculate_gain
+        def calculate_gain
+        def calculate_gain
+        def calculate_sharpe
+        def calculate_sharpe
+        def calculate_sharpe
+        def calc_sharpe_cross_section
+        def calc_sharpe_multivariate_aligned
+        def calc_sharpe_univariate
+        def compute_portfolio_stats
+        def calculate_rsi
+        def calculate_tr
+        def calculate_atr
+        def calculate_rolling_beta
+        def calculate_rolling_ir
+        def calculate_information_ratio
+        def calculate_rolling_sharpe
+        def calculate_autocorr
+        def calculate_range_pos
+        def calculate_momentum
+        def calculate_rolling_ivol
+        def zscore
+        def zscore
+        def zscore
+        def build_forward_return_matrix
+        def calculate_equal_weight_return
+        def calculate_tri_asset_portfolio_return
+        def calculate_shaped_alpha_reward
+        def step_compounding_curves
+        def calculate_momentum_skip
+        def calculate_downside_semideviation
+        def calculate_trend_quality
+        def compute_composite_fitness
+    class TickerEngine
+        def map_kernels
+core\result.py
+    class TaskResult
+    class HeadlessReporter
+        def get_metadata
+        def get_metrics_table
+core\settings.py
+    class CacheConfig
+        def get_filename
+    class StrategyParams
+    class QualityThresholds
+    def find_checkpoint_path
+    def extract_run_hyperparameters
+    class TradingConfig
+        def dynamic_gamma
+        def benchmark
+        def benchmark
+        def from_artifact
+data_pipeline\builder.py
+    class MacroFeaturePipeline
+        def process
+    class MicroFeaturePipeline
+        def process
+    class QualityFilterPipeline
+        def process
+    def generate_features
+data_pipeline\cache.py
+    class AlphaCache
+        def __init__
+        def compute_alpha_ensemble
+        def build
+        def get_vision
+    class CheckpointAlphaCache
+        def build
+data_pipeline\loader.py
+    def load_raw_global_data
+    def load_processed_data
+data_pipeline\screener.py
+    class UniverseScreener
+        def __init__
+        def validate_timeline
+        def filter_universe
+        def build_observation
+rl_discovery\adapter.py
+    class ObservationScaler
+        def __init__
+        def transform
+        def load_state
+    class ObservationAdapter
+        def process
+    class RLVRGymEnv
+        def __init__
+        def reset
+        def step
+        def _build_obs
+    def make_stratified_train_envs
+    def make_eval_env
+rl_discovery\agent.py
+    def layer_init
+    class AbsoluteZeroAgent
+        def __init__
+        def forward
+        def get_deterministic_action
+        def get_value
+        def get_distribution
+        def _compute_censored_log_prob
+        def get_action_and_value
+    class CommitteeAgent
+        def __init__
+        def constituent_agents
+        def forward
+        def get_deterministic_action
+        def get_value
+        def eval
+        def train
+rl_discovery\environment.py
+    class DiscoveryEnv
+        def __init__
+        def _audit_temporal_integrity
+        def active_sleeves
+        def equity_curve
+        def alpha_equity_curve
+        def reset
+        def _get_observation
+        def step
+rl_discovery\oracle.py
+    class RLOracle
+        def __init__
+        def precompute_reward_matrix
+        def get_batch_reward
+        def compute_context_vector
+        def compute_alpha_matrix
+        def normalize_alpha_matrix
+        def run_discovery_action
+rl_discovery\trainer.py
+    class RolloutBuffer
+        def __init__
+        def add
+        def compute_advantages
+    class PPOTrainer
+        def __init__
+        def update
+        def update_schedules
+rl_discovery\validator.py
+    class AgentEvaluator
+        def evaluate
+run_walk_forward.py
+    def set_seed
+    def train_single_seed_chunk
+    def stitch_continuous_blotters
+    def synthesize_ex_post_blend
+    def compute_institutional_metrics
+    def run_walk_forward_pipeline
+strategy\registry.py
+    def get_strategy_registry
+tests\test_accounting_provenance.py
+    def blotter_df
+    def trading_config
+    def test_temporal_sanity
+    def test_action_dimensionality
+    def test_intra_row_arithmetic
+    def test_first_row_state_initialization
+    def test_cumulative_equity_provenance
+    def test_cumulative_alpha_equity_provenance
+tests\test_action_and_macro_parity.py
+    def test_actor_mean_is_tanh_bounded
+    def test_actor_logstd_initialization
+    def test_selection_logic_l2_normalization_and_clipping
+    def test_macro_df_high_yield_spread_bounds
+tests\test_alpha_cache.py
+    def mock_config
+    def test_data
+    def screener
+    def mock_strategy_registry
+    def test_compute_alpha_ensemble
+    def test_alpha_cache_build_and_vision
+    def test_alpha_cache_out_of_bounds_lookback
+    def test_alpha_cache_empty_universe
+    def test_alpha_cache_get_vision_missing_date
+tests\test_audit_pipeline.py
+    def audit_data
+    def engine_data
+    def test_audit_rsi_atrp_parity
+    def test_audit_momentum_drawdown_parity
+    def get_mapped_value
+    def test_audit_portfolio_drift_weights
+    def test_audit_cross_sectional_blueprints
+tests\test_blotter_invariants.py
+    def gen_blotters
+    def test_temporal_alignment_and_monotonicity
+    def test_linear_return_blending_invariant
+    def test_benchmark_return_identity_invariant
+    def test_geometric_alpha_ratio_invariant
+    def test_diversification_ratio_superiority
+    def test_gross_exposure_and_zero_cash_mandate
+tests\test_cash_allocation.py
+    def mock_config
+    def mock_ensemble
+    def mock_environment_setup
+    def test_zero_cash_forces_full_equity_exposure
+    def test_bounded_cash_interpolation
+    def test_legacy_cash_backward_compatibility
+    def test_environment_step_zero_cash_guarantee
+    def test_environment_step_bounded_cash_allocation
+tests\test_core_satellite_engine.py
+    def core_satellite_fixture
+    def test_pure_active_alpha_basket
+    def test_pure_benchmark_beta_shelter
+    def test_pure_risk_off_cash_in_market_crash
+    def test_balanced_core_satellite_split
+    def test_asymmetric_loss_aversion_penalty
+    def test_observation_tensor_dimension_and_benchmark_alignment
+    def test_agent_forward_pass_46_to_16
+    def test_rollout_buffer_allocation_46_to_16
+tests\test_corporate_actions.py
+    def mock_config
+    def bld_mock_ohlcv
+    def test_pipeline_detects_delisting
+    def test_screener_rejects_delisted_ticker
+    def test_engine_ffills_delisted_prices
+    def test_portfolio_math_with_bad_and_dead_tickers
+tests\test_data_process.py
+    class MockThresholds
+    class MockConfig
+    def dummy_ohlcv
+    def test_cell3_logic
+tests\test_features.py
+    def test_feature_engineering_wilders_atr
+tests\test_gen17_blotter_verification.py
+    def gen17_blotters
+    def _calc_metrics
+    def test_temporal_continuity_and_alignment
+    def test_ex_post_linear_blend_provenance
+    def test_geometric_alpha_ratio_invariant
+    def test_diversification_ratio_superiority
+    def test_jensens_inequality_dilution_penalty
+    def test_forensic_metric_snapshot_parity
+tests\test_mtm_engine.py
+    def mock_mtm_setup
+    def test_fifo_queue_capacity_and_eviction
+    def test_step_zero_warmup_and_net_slippage_e2e
+    def test_slippage_is_deducted_from_equity_curve
+    def test_zero_tracking_error_on_pure_benchmark_selection
+    def test_empty_basket_safe_handling
+    class MockActorCritic
+        def __init__
+        def forward
+        def get_deterministic_action
+        def actor_mean
+        def get_value
+    def test_validator_evaluator_sharpe_accuracy
+tests\test_mtm_invariants.py
+    def test_tripwire_t_plus_one_execution_lag
+    def test_tripwire_constant_one_over_h_sleeve_allocation
+    def test_tripwire_gae_truncation_bootstrapping
+tests\test_observation_fixes.py
+    def fake_ohlcv_data
+    def test_rsi_bomb_scaling
+    def test_macro_dimension_strictness
+    def test_intermediate_factor_blueprints
+tests\test_quant.py
+    def test_compute_returns_boundary_integrity
+    def test_ranking_integrity_sharpe_vol
+    def test_volatility_alignment_temporal_coupling
+    def test_sharpe_alignment
+    def test_calculate_information_ratio
+    def test_compute_composite_fitness
+tests\test_rl_adapter.py
+    def test_observation_adapter_integrity
+    class MockDiscoveryEnv
+        def __init__
+        def reset
+        def step
+    def test_gym_wrapper_compliance
+tests\test_rl_agent.py
+    def test_agent_tensor_shapes
+    def test_agent_gradient_flow
+tests\test_rl_metrics.py
+    def dummy_environment_data
+    def test_selection_logic_zero_width
+    def test_environment_alpha_and_slippage
+    def test_selection_logic_dynamic_boundaries
+    def test_environment_downside_penalty_and_cash
+    def test_environment_dynamic_cash_scaling
+    def test_environment_benchmark_allocation
+    def test_selection_logic_factor_variance_equalization
+tests\test_rl_trainer.py
+    def test_buffer_advantage_calculation
+    def test_ppo_trainer_update
+tests\test_rl_validator.py
+    class MockDiscoveryEnv
+        def __init__
+        def reset
+        def step
+    def test_evaluator_deterministic_execution
+tests\test_scoring_provenance.py
+    def system_artifacts
+    def trading_config
+    def test_bare_metal_provenance
+    def test_system_logic_replay
+tests\test_splits.py
+    def sample_dates
+    def test_standard_splits
+    def test_debug_mode_fallback
+    def test_scarcity_mode_fallback
+    def test_purge_gap_leakage_protection
+    def test_filtering_mismatched_dates
+tests\test_temporal_leakage_and_execution.py
+    def test_mtm_staggered_sleeve_forward_execution
+    def test_forward_return_matrix_builder
+    def test_discovery_env_backward_return_tripwire
+tests\test_verify_oos_returns.py
+    def test_real_oos_returns_integration
+tests\test_walk_forward.py
+    def agent_dims
+    def mock_buffer
+    def test_stratified_sampling_partitions_equally
+    def test_stratified_sampling_validation_guards
+    def test_analytical_gaussian_kl_identity_and_divergence
+    def test_anchor_gradient_isolation_and_flow
+    def test_diagnostics_logging_zero_when_no_anchor
+    def test_make_stratified_train_envs_bounds_and_structure
+    def test_make_eval_env_unbounded_contract
+    def test_continuous_blotter_stitching_and_geometric_equity
+walk_forward\analyzer.py
+    class TraceId
+    class ChartRenderer
+        def update
+    class ReportRenderer
+        def render
+    class VolatilityRegime
+        def contains
+    class MacroVisualizer
+        def extract_macro_slice
+        def detect_regime
+        def create_shading_shapes
+        def update
+        def _update_volatility_title
+    class ChartController
+        def __init__
+        def _create_figure
+        def _init_traces
+        def _init_reference_lines
+        def _create_event_shapes
+        def update
+    class PricePanelUpdater
+        def update
+    class WalkForwardUI
+        def __init__
+        def _build_widgets
+        def _wire_events
+        def _on_mode_change
+        def get_input_values
+        def layout
+        def set_loading
+        def show_error
+        def clear_output
+    class ReportGenerator
+        def generate
+    class WalkForwardAnalyzer
+        def __init__
+        def _on_run
+        def _create_engine_input
+        def _update_filter_pack
+        def show
+    def create_walk_forward_analyzer
+    def run_headless_simulation
+walk_forward\engine.py
+    class AlphaEngine
+        def __init__
+        def _prepare_data
+        def _execute_strategy
+        def _rank_and_slice
+        def _select_tickers
+        def _get_debug_components
+        def _get_normalized_plot_data
+        def _error_result
+        def _build_engine_output
+        def run
+        def shutdown
+        def _prepare_initial_weights
+walk_forward\performance.py
+    def _prepare_initial_weights
+    def calculate_buy_and_hold_performance
+    class PerformanceCalculator
+        def calculate_period_metrics

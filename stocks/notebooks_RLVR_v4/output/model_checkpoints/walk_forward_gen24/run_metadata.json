@@ -1,0 +1,289 @@
+{
+  "generation": 24,
+  "timestamp_utc": "2026-10-01T02:06:30.867053+00:00",
+  "verdict": "REFUTED",
+  "seeds": [
+    42,
+    101,
+    777
+  ],
+  "environment": {
+    "python_version": "3.13.15 (main, Aug  6 2026, 11:06:22) [GCC 13.3.0]",
+    "platform": "linux",
+    "torch_version": "2.11.0+cpu",
+    "cuda_available": false,
+    "device": "cpu",
+    "device_name": "CPU",
+    "cudnn_deterministic": true,
+    "torch_num_threads": 1,
+    "omp_num_threads": "1",
+    "mkl_num_threads": "1"
+  },
+  "data_lineage": {
+    "cache_file": "alpha_cache_41d_2015.parquet",
+    "cache_file_size_bytes": 265768247,
+    "cache_file_mtime_utc": "2026-09-30T23:42:11+00:00",
+    "cache_config": {
+      "lookback": 41,
+      "start_date": "2015-01-01",
+      "end_date": "2030-01-01"
+    },
+    "obs_dim": 46,
+    "action_dim": 16,
+    "universe_size": 12,
+    "calendar_start": "2015-01-02",
+    "calendar_end": "2026-09-25",
+    "total_trading_sessions": 2950
+  },
+  "chunk_specs": [
+    {
+      "chunk_id": 0,
+      "name": "Chunk_0_Base_Pretraining",
+      "train_start": "2016-01-04",
+      "train_end": "2022-03-24",
+      "hist_cutoff_date": null,
+      "deploy_start": "2022-03-25",
+      "deploy_end": "2023-03-24",
+      "is_base": true,
+      "epochs": 90,
+      "warmup_epochs": 25,
+      "min_epochs": 70,
+      "patience": 30,
+      "lr": 0.0002,
+      "critic_lr": 0.0008,
+      "kl_anchor_coef": 0.0,
+      "stratified_sampling": false
+    },
+    {
+      "chunk_id": 1,
+      "name": "Chunk_1_FineTune_Y1",
+      "train_start": "2016-01-04",
+      "train_end": "2023-03-24",
+      "hist_cutoff_date": "2022-03-24",
+      "deploy_start": "2023-03-25",
+      "deploy_end": "2024-03-24",
+      "is_base": false,
+      "epochs": 15,
+      "warmup_epochs": 0,
+      "min_epochs": 15,
+      "patience": 15,
+      "lr": 2e-05,
+      "critic_lr": 8e-05,
+      "kl_anchor_coef": 0.05,
+      "stratified_sampling": true
+    },
+    {
+      "chunk_id": 2,
+      "name": "Chunk_2_FineTune_Y2",
+      "train_start": "2016-01-04",
+      "train_end": "2024-03-24",
+      "hist_cutoff_date": "2023-03-24",
+      "deploy_start": "2024-03-25",
+      "deploy_end": "2025-03-24",
+      "is_base": false,
+      "epochs": 15,
+      "warmup_epochs": 0,
+      "min_epochs": 15,
+      "patience": 15,
+      "lr": 2e-05,
+      "critic_lr": 8e-05,
+      "kl_anchor_coef": 0.05,
+      "stratified_sampling": true
+    },
+    {
+      "chunk_id": 3,
+      "name": "Chunk_3_FineTune_Y3",
+      "train_start": "2016-01-04",
+      "train_end": "2025-03-24",
+      "hist_cutoff_date": "2024-03-24",
+      "deploy_start": "2025-03-25",
+      "deploy_end": "2026-03-24",
+      "is_base": false,
+      "epochs": 15,
+      "warmup_epochs": 0,
+      "min_epochs": 15,
+      "patience": 15,
+      "lr": 2e-05,
+      "critic_lr": 8e-05,
+      "kl_anchor_coef": 0.05,
+      "stratified_sampling": true
+    },
+    {
+      "chunk_id": 4,
+      "name": "Chunk_4_FineTune_Y4",
+      "train_start": "2016-01-04",
+      "train_end": "2026-03-24",
+      "hist_cutoff_date": "2025-03-24",
+      "deploy_start": "2026-03-25",
+      "deploy_end": null,
+      "is_base": false,
+      "epochs": 15,
+      "warmup_epochs": 0,
+      "min_epochs": 15,
+      "patience": 15,
+      "lr": 2e-05,
+      "critic_lr": 8e-05,
+      "kl_anchor_coef": 0.05,
+      "stratified_sampling": true
+    }
+  ],
+  "trading_config": {
+    "benchmark_ticker": "SPY",
+    "calendar_ticker": "SPY",
+    "handle_zeros_as_nan": true,
+    "max_data_gap_ffill": 1,
+    "nan_price_replacement": 0.0,
+    "annual_period": 252,
+    "atr_period": 14,
+    "rsi_period": 14,
+    "range_pos_period": 20,
+    "win_5d": 5,
+    "win_21d": 21,
+    "win_63d": 63,
+    "win_126d": 126,
+    "win_252d": 252,
+    "feature_zscore_clip": 4.0,
+    "feature_ratio_clip": 10.0,
+    "quality_window": 252,
+    "quality_min_periods": 126,
+    "strategy_params": {
+      "standard_confidence": 1.0,
+      "strong_confidence": 1.5,
+      "extreme_confidence": 2.5,
+      "rsi_overbought": 70,
+      "rsi_oversold": 30,
+      "range_high": 0.8,
+      "range_low": 0.2
+    },
+    "thresholds": {
+      "min_median_dollar_volume": 1000000,
+      "min_liquidity_percentile": 0.4,
+      "max_stale_pct": 0.05,
+      "max_same_vol_count": 10
+    },
+    "holding_period": 5,
+    "rank_max_offset_percentile": 1.0,
+    "rank_max_width": 10,
+    "min_basket_width": 5,
+    "max_cash_pct": 0.0,
+    "min_active_tilt": 0.2,
+    "randomize_start": false,
+    "episode_steps": 0,
+    "slippage_rate": 0.001,
+    "loss_aversion_penalty": 0.0,
+    "upside_alpha_mult": 1.0,
+    "gamma": 0.9,
+    "gae_lambda": 0.95,
+    "learning_rate": 0.0002,
+    "critic_learning_rate": 0.0008,
+    "entropy_coef": 0.005,
+    "entropy_coef_start": 0.005,
+    "entropy_coef_end": 0.0005,
+    "clip_coef": 0.2,
+    "vf_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "ppo_epochs": 4,
+    "num_steps": 512,
+    "num_envs": 8,
+    "mini_batch_size": 256,
+    "benchmark": "SPY",
+    "dynamic_gamma": 0.9
+  },
+  "institutional_scorecard": {
+    "gate_1_sharpe_ge_0_85": {
+      "pass": false,
+      "value": 0.731094639111752
+    },
+    "gate_2_excess_ge_5pct": {
+      "pass": true,
+      "value": 0.28635230389707655
+    },
+    "gate_3_div_ratio_ge_1_05": {
+      "pass": false,
+      "value": 1.0396020524214102
+    },
+    "gate_4_sharpe_expansion": {
+      "pass": true,
+      "blend_sharpe": 0.731094639111752,
+      "constituent_avg_sharpe": 0.7246852040974652,
+      "delta_sharpe": 0.006409435014286813
+    },
+    "gate_5_beta_ge_0_95": {
+      "pass": true,
+      "value": 1.3222321400728978
+    }
+  },
+  "blend_metrics": {
+    "total_return": 1.0400072385907286,
+    "bm_total_return": 0.7536549346936521,
+    "excess_return": 0.28635230389707655,
+    "sharpe_ratio": 0.731094639111752,
+    "sortino_ratio": 0.5178204932154239,
+    "information_ratio": 0.3580602380607726,
+    "max_drawdown": -0.2589626322808068,
+    "beta": 1.3222321400728978,
+    "sessions": 1120
+  },
+  "constituent_metrics": {
+    "42": {
+      "total_return": 0.8429793196227588,
+      "bm_total_return": 0.7536549346936521,
+      "excess_return": 0.08932438492910677,
+      "sharpe_ratio": 0.5684444907355648,
+      "sortino_ratio": 0.32801983330313095,
+      "information_ratio": 0.23201543458920215,
+      "max_drawdown": -0.31076609074566197,
+      "beta": 1.5507949748443417,
+      "sessions": 1120
+    },
+    "101": {
+      "total_return": 1.1341631535389096,
+      "bm_total_return": 0.7536549346936521,
+      "excess_return": 0.38050821884525754,
+      "sharpe_ratio": 0.8615104026492058,
+      "sortino_ratio": 0.685602393516374,
+      "information_ratio": 0.46311533020176543,
+      "max_drawdown": -0.21079373685179012,
+      "beta": 1.1416264641637164,
+      "sessions": 1120
+    },
+    "777": {
+      "total_return": 1.0433314225887003,
+      "bm_total_return": 0.7536549346936521,
+      "excess_return": 0.2896764878950482,
+      "sharpe_ratio": 0.7441007189076251,
+      "sortino_ratio": 0.4844980373890727,
+      "information_ratio": 0.35422752949955627,
+      "max_drawdown": -0.28865121044477865,
+      "beta": 1.2742749812106338,
+      "sessions": 1120
+    }
+  },
+  "diversification_ratio": 1.0396020524214102,
+  "artifacts": {
+    "blend_blotter": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/blotter_continuous_ex_post_blend_gen24.parquet",
+    "canonical_blend_blotter": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/canonical_anchors/blotter_continuous_ex_post_blend_gen24.parquet",
+    "constituent_blotters": {
+      "42": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/blotter_continuous_s42_gen24.parquet",
+      "101": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/blotter_continuous_s101_gen24.parquet",
+      "777": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/blotter_continuous_s777_gen24.parquet"
+    },
+    "checkpoints": {
+      "chunk0_s42": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk0_s42_champion.pt",
+      "chunk0_s101": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk0_s101_champion.pt",
+      "chunk0_s777": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk0_s777_champion.pt",
+      "chunk1_s42": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk1_s42_champion.pt",
+      "chunk1_s101": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk1_s101_champion.pt",
+      "chunk1_s777": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk1_s777_champion.pt",
+      "chunk2_s42": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk2_s42_champion.pt",
+      "chunk2_s101": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk2_s101_champion.pt",
+      "chunk2_s777": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk2_s777_champion.pt",
+      "chunk3_s42": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk3_s42_champion.pt",
+      "chunk3_s101": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk3_s101_champion.pt",
+      "chunk3_s777": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk3_s777_champion.pt",
+      "chunk4_s42": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk4_s42_champion.pt",
+      "chunk4_s101": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk4_s101_champion.pt",
+      "chunk4_s777": "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v3/output/model_checkpoints/walk_forward_gen24/model_chunk4_s777_champion.pt"
+    }
+  }
+}
