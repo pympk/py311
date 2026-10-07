@@ -45,12 +45,14 @@ def test_agent_tensor_shapes():
     ), f"Value shape mismatch in joint forward pass: {value.shape}"
 
 
-def test_agent_gradient_flow():
+def test_agent_gradient_flow() -> None:
     """
     [GUARD] Ensures the loss can backpropagate through the network.
+    Conforms to the 49-dimensional observation space contract (Gen 14).
     """
+    obs_dim: int = 49
     agent = AbsoluteZeroAgent()
-    mock_obs = torch.randn(1, 46)
+    mock_obs = torch.randn(1, obs_dim)
 
     action, log_prob, _, value = agent.get_action_and_value(mock_obs)
 
@@ -58,7 +60,7 @@ def test_agent_gradient_flow():
     loss = value.mean() + log_prob.mean()
     loss.backward()
 
-    # Check if gradients populated in the critic
+    # Check if gradients populated in the critic and actor
     has_critic_grad = any(p.grad is not None for p in agent.critic.parameters())
     has_actor_grad = any(p.grad is not None for p in agent.actor_mean.parameters())
 

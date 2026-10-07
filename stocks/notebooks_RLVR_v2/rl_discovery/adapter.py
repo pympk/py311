@@ -5,7 +5,7 @@ import pandas as pd
 
 
 class ObservationScaler:
-    def __init__(self, shape: Tuple[int, ...] = (46,), clip_max: float = 5.0):
+    def __init__(self, shape: Tuple[int, ...] = (49,), clip_max: float = 5.0):
         self.mean = np.zeros(shape, dtype=np.float32)
         self.var = np.ones(shape, dtype=np.float32)
         self.count = 1e-4

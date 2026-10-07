@@ -182,4 +182,126 @@ def test_sharpe_alignment():
     print("✅ All QuantUtils Alignment and Math tests passed!")
 
 
+# drop in at the bottom of tests/test_quant.py
+
+
+def test_calculate_information_ratio():
+    # 1. Normal active alpha scenario
+    dates = pd.date_range("2020-01-01", periods=10, freq="D")
+    bench = pd.Series(
+        [0.01, -0.01, 0.02, 0.00, 0.01, -0.02, 0.01, 0.00, -0.01, 0.02], index=dates
+    )
+    # Portfolio consistently beats benchmark by 10 bps with some active volatility
+    port = bench + pd.Series(
+        [0.001, 0.002, 0.001, 0.003, -0.001, 0.002, 0.001, 0.002, 0.000, 0.001],
+        index=dates,
+    )
+
+    ir = QuantUtils.calculate_information_ratio(port, bench, periods=252)
+    assert np.isfinite(ir)
+    assert ir > 0.0
+
+    # 2. Identical returns (Zero tracking error / zero active return)
+    ir_zero = QuantUtils.calculate_information_ratio(bench, bench, periods=252)
+    assert ir_zero == 0.0
+
+    # 3. Degenerate edge cases (< 2 observations, all NaNs)
+    short_s = pd.Series([0.01], index=pd.date_range("2020-01-01", periods=1))
+    assert QuantUtils.calculate_information_ratio(short_s, short_s) == 0.0
+
+    nan_s = pd.Series([np.nan, np.nan], index=pd.date_range("2020-01-01", periods=2))
+    assert QuantUtils.calculate_information_ratio(nan_s, bench.iloc[:2]) == 0.0
+
+
+def test_compute_composite_fitness():
+    # 1. Positive Alpha, Positive IR
+    fitness_pos = QuantUtils.compute_composite_fitness(
+        excess_return=0.05, information_ratio=1.2
+    )
+    assert fitness_pos == pytest.approx(0.05 * 1.2)
+    assert fitness_pos > 0.0
+
+    # 2. Positive Alpha, Micro IR (Clamped to ir_floor)
+    fitness_clamped = QuantUtils.compute_composite_fitness(
+        excess_return=0.04, information_ratio=0.01, ir_floor=0.05
+    )
+    assert fitness_clamped == pytest.approx(0.04 * 0.05)
+
+    # 3. Negative Alpha (Steep penalty applied)
+    fitness_neg = QuantUtils.compute_composite_fitness(
+        excess_return=-0.03, information_ratio=-0.8, ir_floor=0.05
+    )
+    assert fitness_neg < 0.0
+    assert fitness_neg == pytest.approx(-0.03 * (1.0 / 0.05))
+
+    # 4. Non-finite values safe trap
+    assert QuantUtils.compute_composite_fitness(np.nan, 1.0) == -10.0
+    assert QuantUtils.compute_composite_fitness(0.05, np.inf) == -10.0
+
+
+def test_calculate_residual_momentum():
+    dates = pd.date_range("2020-01-01", periods=150, freq="D")
+    bm_rets = pd.Series(np.random.normal(0.0005, 0.01, size=150), index=dates)
+
+    # Stock A: Beta = 1.0, Constant Positive Alpha (+10 bps/day)
+    stock_a = bm_rets + 0.001
+    # Stock B: Pure Beta = 1.0, Zero Alpha
+    stock_b = bm_rets.copy()
+
+    df_rets = pd.DataFrame({"Alpha_Stock": stock_a, "Beta_Stock": stock_b}, index=dates)
+    res_mom = QuantUtils.calculate_residual_momentum(df_rets, bm_rets, window=126)
+
+    assert isinstance(res_mom, pd.DataFrame)
+    assert (
+        res_mom["Alpha_Stock"].iloc[-1] > 0.0
+    ), "Alpha stock must have positive residual momentum"
+    assert np.isclose(
+        res_mom["Beta_Stock"].iloc[-1], 0.0, atol=1e-3
+    ), "Pure beta stock residual momentum should be near 0"
+
+
+def test_calculate_range_pos_52w():
+    dates = pd.date_range("2020-01-01", periods=260, freq="D")
+    # Monotonically increasing prices -> always at 52w high
+    p_high = pd.Series(np.linspace(100, 200, 260), index=dates)
+    pos_high = QuantUtils.calculate_range_pos_52w(p_high, window=252)
+    assert np.isclose(pos_high.iloc[-1], 1.0)
+
+    # Stock crashed 20% below peak
+    p_dip = p_high.copy()
+    p_dip.iloc[-1] = 160.0  # 160 / 200 = 0.80
+    pos_dip = QuantUtils.calculate_range_pos_52w(p_dip, window=252)
+    assert np.isclose(pos_dip.iloc[-1], 0.80)
+    assert (pos_dip >= 0.0).all() and (pos_dip <= 1.0).all()
+
+
+def test_calculate_downside_beta():
+    dates = pd.date_range("2020-01-01", periods=100, freq="D")
+    bm_rets = pd.Series(np.where(np.arange(100) % 2 == 0, -0.02, 0.02), index=dates)
+
+    # Stock doubles market down-moves: -0.04 on down days, +0.02 on up days
+    stock_down = pd.Series(np.where(np.arange(100) % 2 == 0, -0.04, 0.02), index=dates)
+
+    d_beta = QuantUtils.calculate_downside_beta(stock_down, bm_rets, window=63)
+    assert np.isclose(
+        d_beta.iloc[-1], 2.0, atol=1e-2
+    ), f"Expected downside beta ~2.0, got {d_beta.iloc[-1]}"
+
+
+def test_calculate_efficiency_ratio():
+    dates = pd.date_range("2020-01-01", periods=80, freq="D")
+
+    # 1. Smooth straight line -> ER = 1.0
+    p_smooth = pd.Series(np.linspace(100, 180, 80), index=dates)
+    er_smooth = QuantUtils.calculate_efficiency_ratio(p_smooth, window=63)
+    assert np.isclose(er_smooth.iloc[-1], 1.0)
+
+    # 2. Ping-pong price (100 -> 101 -> 100 -> 101) -> Net change ~0, Total path high -> ER ~ 0.0
+    p_choppy = pd.Series(
+        [100.0 if i % 2 == 0 else 101.0 for i in range(80)], index=dates
+    )
+    er_choppy = QuantUtils.calculate_efficiency_ratio(p_choppy, window=63)
+    assert er_choppy.iloc[-1] < 0.05
+
+
 #

@@ -1,8 +1,11 @@
-import pandas as pd
 import logging
 from typing import List, Optional, cast
 
-from core.contracts import MarketObservation, EngineInput
+import numpy as np
+import pandas as pd
+
+from core.contracts import EngineInput, MarketObservation
+from core.quant import QuantUtils
 from core.settings import TradingConfig
 
 
@@ -67,7 +70,6 @@ class UniverseScreener:
         entry_idx = decision_idx + 1
         end_idx = entry_idx + inputs.holding_period
 
-        # Wrap index variables in **`int()`**. This converts the NumPy integer into a standard Python integer
         return (
             cal[int(start_idx)],
             cal[int(decision_idx)],
@@ -96,7 +98,7 @@ class UniverseScreener:
                     thresholds.min_liquidity_percentile
                 ),
             )
-        # NEW: Ensure ticker is not halted/delisted TODAY (price is valid and not NaN)
+
         valid_price_mask = pd.Series(True, index=day_features.index)
         if not self.df_close.empty and date_ts in self.df_close.index:
             prices_today = self.df_close.loc[date_ts]
@@ -109,11 +111,8 @@ class UniverseScreener:
             (day_features["RollMedDollarVol"] >= vol_cutoff)
             & (day_features["RollingStalePct"] <= thresholds.max_stale_pct)
             & (day_features["RollingSameVolCount"] <= thresholds.max_same_vol_count)
-            # NEW: Immediate death sensors
-            & (
-                day_features["RecentStaleDays"] < 3
-            )  # Kick out if stale for 3 of the last 5 days
-            & (day_features["IsZeroPrice"] == 0)  # Kick out if price is 0.00 today
+            & (day_features["RecentStaleDays"] < 3)
+            & (day_features["IsZeroPrice"] == 0)
             & valid_price_mask
         )
 
@@ -147,7 +146,6 @@ class UniverseScreener:
             idx = pd.IndexSlice
             feat_window = self.features_df.loc[idx[candidates, active_dates], :]
 
-            # Add .reindex(candidates) to force alignment with the input order
             obs_atrp = (
                 feat_window["ATRP"].groupby(level="Ticker").mean().reindex(candidates)
             )
@@ -163,41 +161,115 @@ class UniverseScreener:
             feat_now = self.features_df.xs(decision_date, level="Date").reindex(
                 candidates
             )
-
-            # Cast the result of .loc to a Series so Pylance knows it's a single row
             macro_snapshot = cast(pd.Series, self.macro_df.loc[decision_date])
 
             lookback_close = self.df_close.loc[full_window_dates, candidates]
+            lookback_returns = lookback_close.ffill().pct_change(fill_method=None)
+
+            # Benchmark alignment for relative factor calculation
+            bm_ticker = getattr(
+                self.config,
+                "benchmark",
+                getattr(self.config, "benchmark_ticker", "SPY"),
+            )
+            if not self.df_close.empty and bm_ticker in self.df_close.columns:
+                bm_close = self.df_close.loc[full_window_dates, bm_ticker]
+                bm_rets = bm_close.pct_change(fill_method=None)
+            else:
+                bm_rets = pd.Series(0.0, index=full_window_dates)
+
+            # -----------------------------------------------------------------
+            # GENERATION 16 ORTHOGONAL FACTOR WIRING
+            # -----------------------------------------------------------------
+            # 1. Residual Momentum (126d)
+            if (
+                "ResMom_126" in feat_now.columns
+                and not feat_now["ResMom_126"].isna().all()
+            ):
+                obs_res_mom_126 = feat_now["ResMom_126"].fillna(0.0)
+            else:
+                res_mom_df = QuantUtils.calculate_residual_momentum(
+                    lookback_returns, bm_rets, window=126
+                )
+                obs_res_mom_126 = res_mom_df.iloc[-1].reindex(candidates).fillna(0.0)
+
+            # 2. Range Position (52w High)
+            if (
+                "Range_Pos_52w" in feat_now.columns
+                and not feat_now["Range_Pos_52w"].isna().all()
+            ):
+                obs_range_pos_52w = feat_now["Range_Pos_52w"].fillna(1.0)
+            else:
+                range_df = QuantUtils.calculate_range_pos_52w(
+                    lookback_close, window=252
+                )
+                obs_range_pos_52w = range_df.iloc[-1].reindex(candidates).fillna(1.0)
+
+            # 3. Downside Beta (-Beta_Down_63)
+            if (
+                "Beta_Down_63" in feat_now.columns
+                and not feat_now["Beta_Down_63"].isna().all()
+            ):
+                obs_beta_down_63 = feat_now["Beta_Down_63"].fillna(1.0)
+            else:
+                beta_down_df = QuantUtils.calculate_downside_beta(
+                    lookback_returns, bm_rets, window=63
+                )
+                obs_beta_down_63 = beta_down_df.iloc[-1].reindex(candidates).fillna(1.0)
+
+            # 4. Efficiency Ratio (ER_63)
+            if "ER_63" in feat_now.columns and not feat_now["ER_63"].isna().all():
+                obs_er_63 = feat_now["ER_63"].fillna(0.0)
+            else:
+                er_df = QuantUtils.calculate_efficiency_ratio(lookback_close, window=63)
+                obs_er_63 = er_df.iloc[-1].reindex(candidates).fillna(0.0)
 
             return MarketObservation(
                 lookback_close=lookback_close,
-                lookback_returns=lookback_close.ffill().pct_change(fill_method=None),
+                lookback_returns=lookback_returns,
                 atrp=obs_atrp,
                 trp=obs_trp,
-                # Use square brackets for guaranteed columns.
-                # This returns a pd.Series (one value per candidate).
                 atr=feat_now["ATR"],
                 rsi=feat_now["RSI"],
-                # If a column might be missing, use .get() with a default and cast
-                # consistency=cast(pd.Series, feat_now.get("Consistency", 0.0)),
-                consistency=feat_now["Consistency"],
-                mom_21=feat_now["Mom_21"],
                 ir_63=feat_now["IR_63"],
-                beta_63=feat_now["Beta_63"],
                 dd_21=feat_now["DD_21"],
-                autocorr_15=feat_now["AutoCorr_15"],
-                range_pos_20=feat_now["Range_Pos_20"],
-                slope_p_5=feat_now["Slope_P_5"],
-                slope_v_5=feat_now["Slope_V_5"],
-                slope_p_5_z=feat_now["Slope_P_5_Z"],  # <--- ADDED
-                slope_v_5_z=feat_now["Slope_V_5_Z"],  # <--- ADDED
-                convexity=feat_now["Convexity"],
-                # For macro_snapshot (a Series), indexing returns a scalar.
-                # Use float() to ensure Pylance knows it's a scalar float.
+                mom_126=feat_now["Mom_126"],
+                ivol_63=feat_now["IVol_63"],
+                mom_252_21=feat_now["Mom_252_21"],
+                trend_r2_63=feat_now["Trend_R2_63"],
                 macro_trend=float(macro_snapshot["Macro_Trend"]),
                 macro_trend_vel=float(macro_snapshot["Macro_Trend_Vel_Z"]),
                 macro_vix_z=float(macro_snapshot["Macro_Vix_Z"]),
                 macro_vix_ratio=float(macro_snapshot["Macro_Vix_Ratio"]),
+                res_mom_126=obs_res_mom_126,
+                range_pos_52w=obs_range_pos_52w,
+                beta_down_63=obs_beta_down_63,
+                er_63=obs_er_63,
+                consistency=(
+                    feat_now["Consistency"]
+                    if "Consistency" in feat_now.columns
+                    else pd.Series(0.0, index=candidates)
+                ),
+                mom_21=(
+                    feat_now["Mom_21"]
+                    if "Mom_21" in feat_now.columns
+                    else pd.Series(0.0, index=candidates)
+                ),
+                mom_63=(
+                    feat_now["Mom_63"]
+                    if "Mom_63" in feat_now.columns
+                    else pd.Series(0.0, index=candidates)
+                ),
+                beta_63=(
+                    feat_now["Beta_63"]
+                    if "Beta_63" in feat_now.columns
+                    else pd.Series(1.0, index=candidates)
+                ),
+                semidev_63=(
+                    feat_now["SemiDev_63"]
+                    if "SemiDev_63" in feat_now.columns
+                    else pd.Series(0.0, index=candidates)
+                ),
             )
 
         except Exception as e:

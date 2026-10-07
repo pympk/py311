@@ -1,59 +1,11 @@
-import pytest
 import pickle
 import numpy as np
 import pandas as pd
-import re
+import pytest
 
 from core.paths import OUTPUT_DIR
-from core.settings import TradingConfig
+from core.settings import TradingConfig, extract_run_hyperparameters
 from strategy.registry import get_strategy_registry
-
-
-def _extract_run_hyperparameters(filename: str, metadata: dict | None = None) -> dict:
-    metadata = metadata or {}
-    params: dict = {}
-
-    # 1. upside_alpha_mult: from metadata or tokens like _mult2.5_, _upside_2.5_, _up_2.5_
-    mult_match = re.search(r"_(?:mult|upside|up)_?([0-9.]+)(?:_|$)", filename)
-    if "upside_alpha_mult" in metadata:
-        params["upside_alpha_mult"] = float(metadata["upside_alpha_mult"])
-    elif mult_match:
-        params["upside_alpha_mult"] = float(mult_match.group(1))
-
-    # 2. loss_aversion_penalty: from metadata or tokens like _lossav_1.0_, _pen_2.0_, _loss_0.5_
-    lossav_match = re.search(r"_(?:lossav|loss)_?([0-9.]+)(?:_|$)", filename)
-    pen_match = re.search(r"_pen_?([0-9.]+)(?:_|$)", filename)
-    if "loss_aversion_penalty" in metadata:
-        params["loss_aversion_penalty"] = float(metadata["loss_aversion_penalty"])
-    elif lossav_match:
-        params["loss_aversion_penalty"] = float(lossav_match.group(1))
-    elif pen_match:
-        params["loss_aversion_penalty"] = max(0.0, float(pen_match.group(1)) - 1.0)
-
-    # 3. min_basket_width: from metadata or tokens like _Width5_, _w5_
-    w_match = re.search(r"_(?:Width|width|w)([0-9]+)(?:_|$)", filename)
-    if "min_basket_width" in metadata:
-        params["min_basket_width"] = int(metadata["min_basket_width"])
-    elif w_match:
-        params["min_basket_width"] = int(w_match.group(1))
-
-    # 4. min_active_tilt: from metadata or tokens like _tilt0.85_, _Tilt85_
-    tilt_match = re.search(r"_(?:tilt|Tilt)([0-9.]+)(?:_|$)", filename)
-    if "min_active_tilt" in metadata:
-        params["min_active_tilt"] = float(metadata["min_active_tilt"])
-    elif tilt_match:
-        val = float(tilt_match.group(1))
-        params["min_active_tilt"] = val / 100.0 if val > 1.0 else val
-
-    # 5. holding_period: from metadata or token like _T3_
-    t_match = re.search(r"_T([0-9]+)(?:_|$)", filename)
-    if "holding_period" in metadata:
-        params["holding_period"] = int(metadata["holding_period"])
-    elif t_match:
-        params["holding_period"] = int(t_match.group(1))
-
-    return params
-
 
 # =====================================================================
 # FIXTURES
@@ -76,7 +28,12 @@ def blotter_df():
         results = pickle.load(f)
 
     meta = results.get("metadata", {})
-    params = _extract_run_hyperparameters(latest_pkl.name, meta)
+    df = pd.DataFrame(results["blotter"])
+    df["decision_date"] = pd.to_datetime(df["decision_date"])
+    df["buy_date"] = pd.to_datetime(df["buy_date"])
+    df["sell_date"] = pd.to_datetime(df["sell_date"])
+
+    params = extract_run_hyperparameters(latest_pkl, metadata=meta, blotter_df=df)
 
     loss_penalty = params.get(
         "loss_aversion_penalty",
@@ -86,11 +43,6 @@ def blotter_df():
         "upside_alpha_mult",
         getattr(TradingConfig(), "upside_alpha_mult", 1.0),
     )
-
-    df = pd.DataFrame(results["blotter"])
-    df["decision_date"] = pd.to_datetime(df["decision_date"])
-    df["buy_date"] = pd.to_datetime(df["buy_date"])
-    df["sell_date"] = pd.to_datetime(df["sell_date"])
 
     df.attrs["loss_aversion_penalty"] = loss_penalty
     df.attrs["upside_alpha_mult"] = upside_mult
@@ -105,7 +57,9 @@ def trading_config(blotter_df):
     config = TradingConfig()
     params = blotter_df.attrs.get("extracted_params", {})
     for k, v in params.items():
-        if hasattr(config, k):
+        if k == "benchmark":
+            config.benchmark_ticker = str(v)
+        elif hasattr(config, k):
             setattr(config, k, v)
     return config
 
@@ -241,3 +195,21 @@ def test_cumulative_equity_provenance(blotter_df):
     assert np.isclose(
         final_manual_equity, final_recorded_equity, atol=1e-4
     ), f"Phantom Compounding Detected! Manual Final: {final_manual_equity}, Recorded Final: {final_recorded_equity}"
+
+
+def test_cumulative_alpha_equity_provenance(blotter_df):
+    """
+    INVARIANT: Alpha Equity must strictly equal the geometric wealth ratio:
+    Alpha Multiplier(t) = Portfolio Equity(t) / Benchmark Equity(t).
+    Additive compounding (1 + penalized_alpha) is strictly forbidden.
+    """
+    manual_agent_curve = (1.0 + blotter_df["net_daily_simple_ret"]).cumprod()
+    manual_bm_curve = (1.0 + blotter_df["bm_daily_simple_ret"]).cumprod()
+    expected_alpha_curve = manual_agent_curve / np.maximum(manual_bm_curve, 1e-8)
+
+    final_recorded_alpha = float(blotter_df["alpha_equity"].iloc[-1])
+    final_expected_alpha = float(expected_alpha_curve.iloc[-1])
+
+    assert np.isclose(
+        final_expected_alpha, final_recorded_alpha, atol=1e-4
+    ), f"Geometric Alpha Drift Detected! Expected: {final_expected_alpha:.8f}, Recorded: {final_recorded_alpha:.8f}"

@@ -14,37 +14,55 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class MarketObservation:
-
     # Dataframes
     lookback_close: pd.DataFrame
     lookback_returns: pd.DataFrame
 
-    # Series (per ticker)
+    # Active Strategy Series (per ticker)
     atrp: pd.Series
     trp: pd.Series
-
     atr: pd.Series
     rsi: pd.Series
-    consistency: pd.Series
-    mom_21: pd.Series
     ir_63: pd.Series
-    beta_63: pd.Series
     dd_21: pd.Series
+    mom_126: pd.Series
+    ivol_63: pd.Series
+    mom_252_21: pd.Series
+    trend_r2_63: pd.Series
 
-    # --- 4 NEW MICROSTRUCTURE SLOTS ---
-    autocorr_15: pd.Series
-    range_pos_20: pd.Series
-    slope_p_5: pd.Series
-    slope_v_5: pd.Series
-    slope_p_5_z: pd.Series  # <--- ADDED
-    slope_v_5_z: pd.Series  # <--- ADDED
-    convexity: pd.Series
-
-    # Macro Scalars (or Series)
+    # Macro Scalars
     macro_trend: float
     macro_trend_vel: float
     macro_vix_z: float
     macro_vix_ratio: float
+
+    # Generation 16 Orthogonal Strategy Factor Slots
+    res_mom_126: Optional[pd.Series] = None
+    range_pos_52w: Optional[pd.Series] = None
+    beta_down_63: Optional[pd.Series] = None
+    er_63: Optional[pd.Series] = None
+
+    # Legacy slots (Optional defaults to ensure clean decoupling)
+    consistency: Optional[pd.Series] = None
+    mom_21: Optional[pd.Series] = None
+    mom_63: Optional[pd.Series] = None
+    beta_63: Optional[pd.Series] = None
+    semidev_63: Optional[pd.Series] = None
+
+
+# -------------------------------------------------------------------------
+# DATA PIPELINE CONTRACTS
+# -------------------------------------------------------------------------
+@dataclass(frozen=True)
+class ProcessedDataBundle:
+    """Standardized immutable container for aligned datasets.
+
+    Eliminates positional unpacking order bugs.
+    """
+
+    df_ohlcv: pd.DataFrame
+    macro_df: pd.DataFrame
+    features_df: pd.DataFrame
 
 
 @dataclass

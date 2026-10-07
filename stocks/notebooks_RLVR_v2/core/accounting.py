@@ -10,10 +10,7 @@ from core.settings import TradingConfig
 
 @dataclass(frozen=True)
 class MTMStepResult:
-    """Standardized Mark-To-Market (MTM) Portfolio Accounting Result.
-
-    All rates and returns are explicitly tagged as simple return or log return.
-    """
+    """Standardized Mark-To-Market (MTM) Portfolio Accounting Result."""
 
     # --- Tri-Asset Portfolio Allocation Weights ---
     weight_active: float
@@ -50,20 +47,14 @@ class MTMStepResult:
 class MTMPortfolioEngine:
     """STATEFUL: Mark-to-Market Overlapping FIFO Sleeve Portfolio Engine with
 
-    strict T+1 Next-Day Close Execution.
-
-    Execution Lifecycle:
-    1. Day T (Close): Decision made. Stored in `pending_sleeve`. Zero exposure over (T -> T+1).
-    2. Day T+1 (Close): `pending_sleeve` executes and enters `active_sleeves`.
-       The oldest sleeve (held for H days) is evicted.
-    3. Over interval (T+1 -> T+2): Active sleeves earn realized returns.
+    strict T+1 Next-Day Close Execution and Intra-Sleeve Risk-Parity Weighting.
     """
 
     def __init__(self, config: Optional[TradingConfig] = None):
         self.config = config or TradingConfig()
         self.holding_period = self.config.holding_period
         self.active_sleeves: deque = deque(maxlen=self.holding_period)
-        self.pending_sleeve: Optional[List[str]] = None
+        self.pending_sleeve: Optional[Dict[str, float]] = None
 
         # Compounding tracking curves (Base 1.0)
         self.portfolio_equity_curve: List[float] = [1.0]
@@ -79,49 +70,61 @@ class MTMPortfolioEngine:
         self.alpha_equity_curve = [1.0]
 
     @staticmethod
-    def extract_sleeve_return_array(
-        sleeve: List[str],
-        stock_simple_rets: Union[pd.Series, pd.DataFrame, Dict[str, float]],
-    ) -> np.ndarray:
-        """DataFrame Slicing Boundary: Extracts clean 1D float array of returns for a sleeve."""
-        if not sleeve:
-            return np.empty(0, dtype=float)
-
-        if isinstance(stock_simple_rets, pd.DataFrame):
-            row = stock_simple_rets.iloc[0]
-            valid_s = row.reindex(sleeve).dropna()
-            return valid_s.to_numpy(dtype=float)
-        elif isinstance(stock_simple_rets, pd.Series):
-            valid_s = stock_simple_rets.reindex(sleeve).dropna()
-            return valid_s.to_numpy(dtype=float)
-        elif isinstance(stock_simple_rets, dict):
-            vals = [
-                stock_simple_rets[t]
-                for t in sleeve
-                if t in stock_simple_rets and np.isfinite(stock_simple_rets[t])
-            ]
-            return np.asarray(vals, dtype=float)
-        return np.empty(0, dtype=float)
-
-    @staticmethod
     def calculate_sleeve_simple_ret(
-        sleeve: List[str],
+        sleeve: Union[List[str], Dict[str, float]],
         stock_simple_rets: Union[pd.Series, pd.DataFrame, Dict[str, float]],
     ) -> float:
-        """Slices the DataFrame and delegates mean return reduction to QuantUtils."""
-        ret_arr = MTMPortfolioEngine.extract_sleeve_return_array(
-            sleeve, stock_simple_rets
+        """
+        Calculates realized simple return for an active sleeve using uniform 1/K_t weighting.
+        Renormalizes automatically across surviving finite returns.
+        """
+        if not sleeve:
+            return 0.0
+
+        tickers = list(sleeve.keys()) if isinstance(sleeve, dict) else list(sleeve)
+        if not tickers:
+            return 0.0
+
+        ret_vals = []
+        for t in tickers:
+            ret = None
+            if isinstance(stock_simple_rets, pd.DataFrame):
+                if t in stock_simple_rets.columns:
+                    val = stock_simple_rets[t].iloc[0]
+                    if np.isfinite(val):
+                        ret = float(val)
+            elif isinstance(stock_simple_rets, pd.Series):
+                if t in stock_simple_rets.index:
+                    val = stock_simple_rets[t]
+                    if np.isfinite(val):
+                        ret = float(val)
+            elif isinstance(stock_simple_rets, dict):
+                if t in stock_simple_rets:
+                    val = stock_simple_rets[t]
+                    if np.isfinite(val):
+                        ret = float(val)
+
+            if ret is not None:
+                ret_vals.append(ret)
+
+        if not ret_vals:
+            return 0.0
+
+        return QuantUtils.calculate_equal_weight_return(
+            np.asarray(ret_vals, dtype=float)
         )
-        return QuantUtils.calculate_equal_weight_return(ret_arr)
 
     def step(
         self,
-        selected_tickers: List[str],
+        selected_tickers: Union[List[str], Dict[str, float]],
         equity_exposure: float,
         active_tilt: float,
         stock_simple_rets: Union[pd.Series, pd.DataFrame, Dict[str, float]],
         bm_daily_simple_ret: float,
         cash_daily_simple_ret: float = 0.0,
+        selected_weights: Optional[
+            Union[Dict[str, float], List[float], np.ndarray]
+        ] = None,
     ) -> MTMStepResult:
         """Executes one Mark-to-Market daily transition step."""
         # 1. State Transition: Pending sleeve from prior decision executes NOW (T Close)
@@ -146,7 +149,8 @@ class MTMPortfolioEngine:
             gross_stock_daily_simple_ret = bm_daily_simple_ret
 
         # 3. Dynamic Tri-Asset Weights
-        if num_active > 0 or len(selected_tickers) > 0:
+        has_selection = len(selected_tickers) > 0
+        if num_active > 0 or has_selection:
             w_active = equity_exposure * active_tilt
             w_benchmark = equity_exposure * (1.0 - active_tilt)
             w_cash = max(0.0, 1.0 - (w_active + w_benchmark))
@@ -216,8 +220,16 @@ class MTMPortfolioEngine:
         self.benchmark_equity_curve.append(new_bm_equity)
         self.alpha_equity_curve.append(new_alpha_equity)
 
-        # 9. Store today's selection as pending order for next step's close execution
-        self.pending_sleeve = list(selected_tickers)
+        # 9. Format today's selection as pending sleeve dict for next step's execution (Strict 1/K_t)
+        ticker_list = (
+            list(selected_tickers.keys())
+            if isinstance(selected_tickers, dict)
+            else list(selected_tickers)
+        )
+        n_sel = len(ticker_list)
+        self.pending_sleeve = {t: 1.0 / n_sel for t in ticker_list} if n_sel > 0 else {}
+
+        active_tickers_list = ticker_list
 
         return MTMStepResult(
             weight_active=w_active,
@@ -238,7 +250,7 @@ class MTMPortfolioEngine:
             penalized_alpha_daily_log_reward=penalized_alpha_daily_log_reward,
             agent_equity=new_p_equity,
             benchmark_equity=new_bm_equity,
-            alpha_equity=new_alpha_equity,  # Strictly V_p / V_bm (never 350 again!)
+            alpha_equity=new_alpha_equity,
             active_sleeves_count=len(self.active_sleeves),
-            active_tickers=selected_tickers,
+            active_tickers=active_tickers_list,
         )

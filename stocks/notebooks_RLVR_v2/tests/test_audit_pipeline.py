@@ -174,7 +174,12 @@ def test_audit_portfolio_drift_weights(engine_data):
     analyzer, _ = create_walk_forward_analyzer(engine, _inputs, universe_subset=None)
     analyzer.last_run = engine.run(_inputs)
 
+    # DIAGNOSTIC TRAP: Unmask the silent engine error
+    if analyzer.last_run.error_msg:
+        pytest.fail(f"[ENGINE ABORTED] Reason: {analyzer.last_run.error_msg}")
+
     result_map = SU.map_analyzer(analyzer=analyzer)
+
     if not result_map:
         pytest.fail("result_map is empty! Engine run failed to populate audit data.")
 
@@ -278,19 +283,39 @@ def test_audit_portfolio_drift_weights(engine_data):
 
 
 def test_audit_cross_sectional_blueprints(audit_data):
-    """Verifies Strategy Registry Blueprints apply correct Z-Scoring & Clipping across the universe."""
+    """Verifies all 12 Strategy Registry Blueprints execute cleanly and strictly preserve K=12 invariant."""
     _, features_df, config = audit_data
     registry = get_strategy_registry(config)
+
+    assert (
+        len(registry) == 12
+    ), f"Registry factor count violated! Expected 12, got {len(registry)}"
 
     all_dates = features_df.index.get_level_values("Date")
     target_date = all_dates.max()
     daily_snapshot = features_df.xs(target_date, level="Date")
+    idx = daily_snapshot.index
 
+    # Construct complete observation mock with all 12 Gen 16 factor fields
     obs = SimpleNamespace(
-        convexity=daily_snapshot["Convexity"],
-        slope_p_5=daily_snapshot["Slope_P_5"],
-        slope_v_5=daily_snapshot["Slope_V_5"],
+        mom_252_21=daily_snapshot.get("Mom_252_21", pd.Series(0.0, index=idx)),
+        res_mom_126=daily_snapshot.get("ResMom_126", pd.Series(0.0, index=idx)),
+        range_pos_52w=daily_snapshot.get("Range_Pos_52w", pd.Series(1.0, index=idx)),
+        ir_63=daily_snapshot.get("IR_63", pd.Series(0.0, index=idx)),
+        rsi=daily_snapshot.get("RSI", pd.Series(50.0, index=idx)),
+        dd_21=daily_snapshot.get("DD_21", pd.Series(0.0, index=idx)),
+        trend_r2_63=daily_snapshot.get("Trend_R2_63", pd.Series(0.0, index=idx)),
+        beta_down_63=daily_snapshot.get("Beta_Down_63", pd.Series(1.0, index=idx)),
+        atrp=daily_snapshot.get("ATRP", pd.Series(0.02, index=idx)),
+        er_63=daily_snapshot.get("ER_63", pd.Series(0.5, index=idx)),
+        mom_126=daily_snapshot.get("Mom_126", pd.Series(0.0, index=idx)),
+        ivol_63=daily_snapshot.get("IVol_63", pd.Series(0.0, index=idx)),
     )
 
-    universe_convexity = daily_snapshot["Convexity"]
-    pass  # File truncated for brevity in original
+    # Invariant assertion: All 12 blueprints must execute and return full cross-sectional series
+    for name, blueprint in registry.items():
+        scores = blueprint(obs)
+        assert len(scores) == len(
+            daily_snapshot
+        ), f"Blueprint '{name}' failed dimension check"
+        assert not scores.isna().all(), f"Blueprint '{name}' returned all NaNs"

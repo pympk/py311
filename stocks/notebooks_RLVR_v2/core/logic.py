@@ -1,7 +1,8 @@
 import pandas as pd
 import numpy as np
 
-from typing import List
+from typing import Dict, List, Optional, Tuple, Union
+from core.quant import QuantUtils
 from core.settings import TradingConfig
 
 
@@ -105,11 +106,15 @@ class SelectionLogic:
             np.interp(clipped_action[-1], [-1.0, 1.0], [min_active_tilt, 1.0])
         )
 
-        # 4. Clean NaNs & Vectorized Scoring
+        # 4. Clean NaNs, Cross-Sectional Factor Equalization (Z-Score) & Vectorized Scoring
+        # Enforce Factor Variance Equalization Rule: Z = clip((f - mu) / max(sigma, 1e-8), -4.0, 4.0)
         clean_ensemble = ensemble.fillna(0.0)
-        scores = pd.Series(
-            clean_ensemble.to_numpy() @ weights, index=clean_ensemble.index
-        )
+        vals = clean_ensemble.to_numpy(dtype=np.float64)
+        mu = np.mean(vals, axis=0, keepdims=True)
+        sigma = np.std(vals, axis=0, keepdims=True)
+        z_scores = np.clip((vals - mu) / np.maximum(sigma, 1e-8), -4.0, 4.0)
+
+        scores = pd.Series(z_scores @ weights, index=clean_ensemble.index)
         sorted_tickers = scores.sort_values(ascending=False)
 
         top_3 = sorted_tickers.index[:3].tolist()
@@ -125,6 +130,22 @@ class SelectionLogic:
             float(scores.max()) if not scores.empty else 0.0,
             float(scores.min()) if not scores.empty else 0.0,
         )
+
+    @staticmethod
+    def compute_intra_sleeve_weights(
+        selected_tickers: List[str],
+        ensemble: Optional[pd.DataFrame] = None,
+        atrp_series: Optional[pd.Series] = None,
+    ) -> Dict[str, float]:
+        """
+        [STRICT INVARIANT: UNIFORM EQUAL WEIGHTING 1/K_t]
+        Computes uniform equal weights w_i = 1 / K_t across selected assets.
+        Inverse-volatility (1/ATRP) weighting was empirically refuted in Gen 15 and permanently purged.
+        """
+        if not selected_tickers:
+            return {}
+        k = len(selected_tickers)
+        return {t: 1.0 / k for t in selected_tickers}
 
 
 #####################

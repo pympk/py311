@@ -183,6 +183,7 @@ class PPOTrainer:
 
         for epoch in range(update_epochs):
             np.random.shuffle(b_inds)
+            epoch_kls = []
 
             for start in range(0, batch_size, mini_batch_size):
                 end = start + mini_batch_size
@@ -193,11 +194,13 @@ class PPOTrainer:
                 )
 
                 logratio = newlogprob - b_logprobs[mb_inds]
-                ratio = logratio.exp()
+                # Defensive clamp to prevent exp overflow on boundary updates
+                ratio = torch.clamp(logratio, -20.0, 20.0).exp()
 
                 with torch.no_grad():
                     approx_kl = ((ratio - 1.0) - logratio).mean().item()
                     approx_kls.append(approx_kl)
+                    epoch_kls.append(approx_kl)
 
                 # Policy Loss
                 mb_advantages = b_advantages[mb_inds]
@@ -242,7 +245,11 @@ class PPOTrainer:
                 entropy_losses.append(entropy_loss.item())
                 total_losses.append(loss.item())
 
-            if self.target_kl is not None and approx_kl > self.target_kl:
+            if (
+                self.target_kl is not None
+                and len(epoch_kls) > 0
+                and np.mean(epoch_kls) > self.target_kl
+            ):
                 break
 
         y_pred = b_values.cpu().numpy()

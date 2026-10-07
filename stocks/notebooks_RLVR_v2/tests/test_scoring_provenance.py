@@ -1,12 +1,11 @@
-import pytest
 import pickle
 import numpy as np
 import pandas as pd
-import re
+import pytest
 
-from core.paths import OUTPUT_DIR, LOCAL_DATA_DIR
-from core.settings import CacheConfig, TradingConfig
 from core.logic import SelectionLogic
+from core.paths import LOCAL_DATA_DIR, OUTPUT_DIR
+from core.settings import CacheConfig, TradingConfig, extract_run_hyperparameters
 
 # =====================================================================
 # PATHS & CONFIGURATION
@@ -25,53 +24,6 @@ FILES_EXIST = PKL_PATH is not None and PKL_PATH.exists() and PARQUET_PATH.exists
 
 TARGET_DATES = ["2022-04-07", "2026-07-09"]
 
-
-def _extract_run_hyperparameters(filename: str, metadata: dict | None = None) -> dict:
-    metadata = metadata or {}
-    params: dict = {}
-
-    # 1. min_basket_width: from metadata or tokens like _Width5_, _w5_
-    w_match = re.search(r"_(?:Width|width|w)([0-9]+)(?:_|$)", filename)
-    if "min_basket_width" in metadata:
-        params["min_basket_width"] = int(metadata["min_basket_width"])
-    elif w_match:
-        params["min_basket_width"] = int(w_match.group(1))
-
-    # 2. min_active_tilt: from metadata or tokens like _tilt0.85_, _Tilt85_
-    tilt_match = re.search(r"_(?:tilt|Tilt)([0-9.]+)(?:_|$)", filename)
-    if "min_active_tilt" in metadata:
-        params["min_active_tilt"] = float(metadata["min_active_tilt"])
-    elif tilt_match:
-        val = float(tilt_match.group(1))
-        params["min_active_tilt"] = val / 100.0 if val > 1.0 else val
-
-    # 3. upside_alpha_mult: from metadata or tokens like _mult2.5_, _upside_2.5_, _up_2.5_
-    mult_match = re.search(r"_(?:mult|upside|up)_?([0-9.]+)(?:_|$)", filename)
-    if "upside_alpha_mult" in metadata:
-        params["upside_alpha_mult"] = float(metadata["upside_alpha_mult"])
-    elif mult_match:
-        params["upside_alpha_mult"] = float(mult_match.group(1))
-
-    # 4. loss_aversion_penalty: from metadata or tokens like _lossav_1.0_, _pen_2.0_, _loss_0.5_
-    lossav_match = re.search(r"_(?:lossav|loss)_?([0-9.]+)(?:_|$)", filename)
-    pen_match = re.search(r"_pen_?([0-9.]+)(?:_|$)", filename)
-    if "loss_aversion_penalty" in metadata:
-        params["loss_aversion_penalty"] = float(metadata["loss_aversion_penalty"])
-    elif lossav_match:
-        params["loss_aversion_penalty"] = float(lossav_match.group(1))
-    elif pen_match:
-        params["loss_aversion_penalty"] = max(0.0, float(pen_match.group(1)) - 1.0)
-
-    # 5. holding_period: from metadata or token like _T3_
-    t_match = re.search(r"_T([0-9]+)(?:_|$)", filename)
-    if "holding_period" in metadata:
-        params["holding_period"] = int(metadata["holding_period"])
-    elif t_match:
-        params["holding_period"] = int(t_match.group(1))
-
-    return params
-
-
 # =====================================================================
 # FIXTURES
 # =====================================================================
@@ -88,10 +40,10 @@ def system_artifacts():
         results = pickle.load(f)
 
     meta = results.get("metadata", {})
-    params = _extract_run_hyperparameters(PKL_PATH.name, meta)
-
     blotter_df = pd.DataFrame(results["blotter"])
     blotter_df["decision_date"] = pd.to_datetime(blotter_df["decision_date"])
+
+    params = extract_run_hyperparameters(PKL_PATH, metadata=meta, blotter_df=blotter_df)
 
     target_timestamps = pd.to_datetime(TARGET_DATES)
     test_blotter = blotter_df[
@@ -109,20 +61,9 @@ def system_artifacts():
 @pytest.fixture(scope="module")
 def trading_config():
     """Loads the core configuration updated with hyperparameters extracted from the artifact."""
-    config = TradingConfig()
-    meta = {}
     if PKL_PATH is not None and PKL_PATH.exists():
-        try:
-            with open(PKL_PATH, "rb") as f:
-                results = pickle.load(f)
-            meta = results.get("metadata", {})
-        except Exception:
-            pass
-        params = _extract_run_hyperparameters(PKL_PATH.name, meta)
-        for k, v in params.items():
-            if hasattr(config, k):
-                setattr(config, k, v)
-    return config
+        return TradingConfig.from_artifact(PKL_PATH)
+    return TradingConfig()
 
 
 # =====================================================================
@@ -158,9 +99,21 @@ def test_bare_metal_provenance(system_artifacts):
         norm = np.linalg.norm(weights)
         norm_weights = weights / norm if norm > 1e-6 else weights
 
-        scores = clean_matrix.values @ norm_weights
-        score_series = pd.Series(scores, index=clean_matrix.index)
-        sorted_tickers = score_series.sort_values(ascending=False)
+        vals = clean_matrix.values.astype(np.float64)
+        # Auto-detect whether blotter artifact was produced under Phase 1+ Factor Equalization
+        # or legacy unstandardized scoring
+        mu = np.mean(vals, axis=0, keepdims=True)
+        sigma = np.maximum(np.std(vals, axis=0, keepdims=True), 1e-8)
+        z_vals = np.clip((vals - mu) / sigma, -4.0, 4.0)
+
+        scores_z = pd.Series(z_vals @ norm_weights, index=clean_matrix.index)
+        scores_raw = pd.Series(vals @ norm_weights, index=clean_matrix.index)
+
+        # Reconcile against recorded max_score
+        if np.isclose(row["max_score"], float(scores_z.max()), atol=1e-4):
+            sorted_tickers = scores_z.sort_values(ascending=False)
+        else:
+            sorted_tickers = scores_raw.sort_values(ascending=False)
 
         expected_top_3 = sorted_tickers.index[:3].tolist()
         expected_max = float(sorted_tickers.max())

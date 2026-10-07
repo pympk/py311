@@ -1,0 +1,368 @@
+==============================================================================
+# MERGED NOTEBOOKS CONVERSION
+# Total notebooks: 1
+# ==============================================================================
+
+##############################################################################
+## NOTEBOOK: top_200.ipynb
+## PATH: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\top_200.ipynb
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 1  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+# Section 1: Setup, Unified Paths & Global Settings
+
+ This cell loads essential utilities, configures global Pandas display parameters,
+
+ silences silent-downcasting warnings, and dynamically maps project directories.
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 2  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# 3. Path Selection Toggle
+
+# USE_LOCAL_DATA = False  # Set False for GLOBAL_DATA_DIR
+USE_LOCAL_DATA = True  # Set False for GLOBAL_DATA_DIR
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 3  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+%load_ext autoreload
+%autoreload 2
+
+import ast
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from core.contracts import EngineInput, FilterPack
+from core.paths import (
+    GLOBAL_DATA_DIR,
+    GLOBAL_PROCESSED_DIR,
+    LOCAL_DATA_DIR,
+    NOTEBOOKS_RLVR_ROOT,
+    OUTPUT_DIR,
+    PROJECT_ROOT,
+)
+from core.settings import TradingConfig
+from core.utils import SystemUtils as SU
+from data_pipeline import generate_features
+from walk_forward import (
+    AlphaEngine,
+    create_walk_forward_analyzer,
+    run_headless_simulation,
+)
+
+# 1. Global Configuration Options
+config = TradingConfig()
+
+# 2. Display Settings & Silence Warnings
+pd.set_option("future.no_silent_downcasting", True)
+pd.set_option("display.max_columns", None)
+pd.set_option("display.max_rows", None)
+pd.set_option("display.width", 3000)
+
+# 3. Path Selection Toggle
+# USE_LOCAL_DATA = False  # Set False for GLOBAL_DATA_DIR
+
+data_dir = LOCAL_DATA_DIR if USE_LOCAL_DATA else GLOBAL_DATA_DIR
+processed_dir = GLOBAL_PROCESSED_DIR
+output_dir = OUTPUT_DIR
+
+# 4. Define Target File Paths
+ohlcv_filename = (
+    "df_ohlcv.parquet" if USE_LOCAL_DATA else "df_OHLCV_stocks_etfs.parquet"
+)
+fed_filename = (
+    "df_fed.parquet"
+    if USE_LOCAL_DATA
+    else "High_Yield_Spread_T10Y2Y_Spread.parquet"
+)
+
+raw_paths = {
+    "df_ohlcv": data_dir / ohlcv_filename,
+    "df_fed": data_dir / fed_filename,
+    "df_indices": data_dir / "df_indices.parquet",
+}
+
+features_df_path = data_dir / "features_df.parquet"
+macro_df_path = data_dir / "macro_df.parquet"
+
+print(
+    f"Paths Resolved:\n"
+    f" - Active Mode:          {'LOCAL' if USE_LOCAL_DATA else 'GLOBAL'}\n"
+    f" - Active Data Dir:       {data_dir}\n"
+    f" - Global Processed Dir: {GLOBAL_PROCESSED_DIR}\n"
+    f" - Output Dir:           {OUTPUT_DIR}\n"
+)
+```
+
+# --- Output ---
+# [stdout]
+NOTEBOOKS_RLVR_ROOT: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2
+PROJECT_ROOT: C:\Users\ping\Files_win10\python\py311\stocks
+GLOBAL_DATA_DIR: C:\Users\ping\Files_win10\python\py311\stocks\data
+GLOBAL_PROCESSED_DIR: C:\Users\ping\Files_win10\python\py311\stocks\data\processed
+LOCAL_DATA_DIR: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\data
+OUTPUT_DIR: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\output
+
+Paths Resolved:
+ - Active Mode:          LOCAL
+ - Active Data Dir:       C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\data
+ - Global Processed Dir: C:\Users\ping\Files_win10\python\py311\stocks\data\processed
+ - Output Dir:           C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\output
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 4  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+# Section 2: Ingest Datasets & Generate Features
+
+Loads raw input files and retrieves pre-calculated features or runs feature generation.
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 5  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Load Raw Files
+raw_dfs = {}
+
+for name, path in raw_paths.items():
+    if path.exists():
+        raw_dfs[name] = pd.read_parquet(path)
+        print(f"[OK] Successfully loaded {name:<10} from {path.name}")
+    else:
+        print(f"[ERROR] File not found: {path}")
+
+df_ohlcv = raw_dfs.get("df_ohlcv")
+df_fed = raw_dfs.get("df_fed")
+df_indices = raw_dfs.get("df_indices")
+```
+
+# --- Output ---
+# [stdout]
+[OK] Successfully loaded df_ohlcv   from df_ohlcv.parquet
+[OK] Successfully loaded df_fed     from df_fed.parquet
+[OK] Successfully loaded df_indices from df_indices.parquet
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 6  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Load Processed Features or Generate If Missing / Running Global
+if USE_LOCAL_DATA and features_df_path.exists() and macro_df_path.exists():
+    features_df = pd.read_parquet(features_df_path)
+    macro_df = pd.read_parquet(macro_df_path)
+    print(f"[OK] Loaded features_df from local disk | Shape: {features_df.shape}")
+    print(f"[OK] Loaded macro_df from local disk    | Shape: {macro_df.shape}")
+else:
+    reason = (
+        "USE_LOCAL_DATA is False"
+        if not USE_LOCAL_DATA
+        else "Local feature files missing"
+    )
+    print(f"[INFO] {reason}. Generating features (~6 mins)...")
+
+    features_df, macro_df = generate_features(
+        df_ohlcv=df_ohlcv, df_indices=df_indices, df_fed=df_fed, config=config
+    )
+    print(f"[OK] Generated features_df  | Shape: {features_df.shape}")
+    print(f"[OK] Generated macro_df     | Shape: {macro_df.shape}")
+```
+
+# --- Output ---
+# [stdout]
+[OK] Loaded features_df from local disk | Shape: (8570001, 22)
+[OK] Loaded macro_df from local disk    | Shape: (7454, 10)
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 7  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Cache Processed DataFrames to GLOBAL_PROCESSED_DIR when running Global
+if not USE_LOCAL_DATA:
+    GLOBAL_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"Saving DataFrames to: {GLOBAL_PROCESSED_DIR}\n")
+
+    dfs_to_save = {
+        "df_ohlcv.parquet": df_ohlcv,
+        "df_indices.parquet": df_indices,
+        "df_fed.parquet": df_fed,
+        "features_df.parquet": features_df,
+        "macro_df.parquet": macro_df,
+    }
+
+    for filename, df in dfs_to_save.items():
+        if df is not None:
+            save_path = GLOBAL_PROCESSED_DIR / filename
+            df.to_parquet(save_path)
+            print(f"[OK] Saved {filename:<20} | Shape: {df.shape}")
+        else:
+            print(f"[SKIP] {filename:<19} | DataFrame missing in memory")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 8  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+###############################
+###############################
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 9  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+print("🚀 Unstacking Wide Matrices...")
+
+# 1. Unstack directly.
+# (Since df_ohlcv is already a perfect grid of master_dates x tickers,
+# unstacking automatically creates perfectly aligned wide dataframes).
+df_close_wide = df_ohlcv["Adj Close"].unstack(level=0)
+df_atrp_wide = features_df["ATRP"].unstack(level=0)
+df_trp_wide = features_df["TRP"].unstack(level=0)
+
+print("Applying terminal NaN replacements for model inputs...")
+
+# 2. Terminal Fills ONLY.
+# Note: 0-to-NaN conversion and bounded ffills were ALREADY applied upstream to df_ohlcv.
+# Applying ffill here would incorrectly double your max_data_gap_ffill limit!
+df_close_wide = df_close_wide.fillna(config.nan_price_replacement)
+df_atrp_wide = df_atrp_wide.fillna(0.0)
+df_trp_wide = df_trp_wide.fillna(0.0)
+
+print("All wide dataframes unstacked and prepared for downstream modeling.")
+print(
+    f"[OK] Pipeline Complete. Tickers: {len(df_close_wide.columns)}, Days: {len(df_close_wide)}"
+)
+```
+
+# --- Output ---
+# [stdout]
+🚀 Unstacking Wide Matrices...
+Applying terminal NaN replacements for model inputs...
+All wide dataframes unstacked and prepared for downstream modeling.
+[OK] Pipeline Complete. Tickers: 1716, Days: 7454
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 10  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+# Section 4: Engine Initialization & Stage 1 Analysis
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 11  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Instantiate Master Engine
+engine = AlphaEngine(
+    df_ohlcv=df_ohlcv,
+    features_df=features_df,
+    macro_df=macro_df,
+    df_close_wide=df_close_wide,
+    df_atrp_wide=df_atrp_wide,
+    df_trp_wide=df_trp_wide,
+)
+print("Master AlphaEngine Ready.")
+```
+
+# --- Output ---
+# [stdout]
+Master AlphaEngine Ready.
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 12  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Configuration for Interactive UI (Stage 1 Setup)
+_inputs = EngineInput(
+    mode="Ranking",
+    decision_date=pd.Timestamp("2026-08-05"),
+    lookback_period=189,
+    holding_period=0,
+    metric="Sharpe (TRP)",
+    benchmark_ticker="VGT",
+    rank_start=1,
+    rank_end=200,  # Plot only display 50 tickers
+    debug=False,
+)
+
+analyzer1, stage1_pack = create_walk_forward_analyzer(
+    engine, _inputs, universe_subset=None
+)
+analyzer1.show()
+```
+
+# --- Output ---
+# [result]
+VBox(children=(HTML(value='<b>1. Timeline Configuration:</b> (Past <--- Decision ---> Future)'), HBox(children…
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 13  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Execute Headless Agent Simulation
+print("--- 🤖 RL AGENT HEADLESS VIEW ---")
+metrics_df = run_headless_simulation(engine, _inputs)
+display(metrics_df.style.format("{:.6f}"))
+print(f"\nTarget Reward Signal: {metrics_df.loc['Group Gain', 'Holding']:.6f}")
+```
+
+# --- Output ---
+# [stdout]
+--- 🤖 RL AGENT HEADLESS VIEW ---
+----------------------------------------------------------------------
+Timeline: [2025-10-31] -> Decision: 2026-08-05 -> Entry: 2026-08-06 -> End: 2026-08-06
+Selected Tickers (200):
+SGOV, SHV, BIL, VBIL, MINT, USFR, BOXX, PULS, JPST, JAAA
+RVMD, RY, TD, PEN, SNDK, VLUE, SCHD, MU, JAZZ, IWD
+ROST, NUE, HST, DELL, FNDX, CM, HSBC, WBS, ASX, RPRX
+EWT, STT, VTRS, STM, VTV, CSCO, TRGP, STX, ATI, BNS
+HPE, WDC, CASY, BUD, EFV, LITE, FTNT, SN, AMAT, TRV
+SCHV, SU, CSX, KEYS, BHP, AVUV, VYM, CNC, ARMK, DGRO
+TEVA, VLO, TXN, JNJ, BEN, EQNR, TGT, EXPD, TTE, DVA
+STLD, FDX, PBR, INTC, SNX, PNC, FTI, VGSH, JBHT, ROIV
+MRK, VIK, CGDV, KVUE, MNST, USB, CFG, MTB, SHY, PBR-A
+IWN, NTRS, EWY, RS, CVE, RIO, CLH, ADI, MKSI, UNP
+WAB, SOXX, PR, FFIV, MRVL, SPG, TER, IJR, CNI, BWA
+ALL, BMY, PFG, FLEX, FITB, KO, BAP, RSP, TSEM, IEX
+ARWR, EMXC, SOXL, NTAP, DAL, MUSA, SCHF, CRS, SPDW, LRCX
+SMH, PSX, OVV, DINO, AMGN, NVS, VEA, GRMN, EPD, LUV
+MAR, IVE, DGX, MPC, ONTO, HSIC, AXSM, DD, PANW, SPYV
+KNX, KRE, COHR, XLE, QYLD, IDEV, KBWB, CPAY, ET, CMI
+AMD, MRNA, SWK, VIG, AKAM, PCAR, DDOG, CNQ, FCX, CB
+KEY, RF, ASML, CIEN, ILMN, XLB, TRP, ODFL, USO, EXEL
+USFD, GEV, VEU, BALL, IEFA, IWR, CAT, KBE, IFF, FIX
+EFA, WELL, XOM, IXUS, ACWX, VGK, VXUS, QUAL, SPHQ, SRLN
+----------------------------------------------------------------------
+# [result]
+<pandas.io.formats.style.Styler at 0x24251504210>
+# [stdout]
+
+Target Reward Signal: 0.000000
+
+##############################################################################
+## END OF: top_200.ipynb
+##############################################################################
+
+
+==============================================================================
+# END OF MERGED FILE
+==============================================================================

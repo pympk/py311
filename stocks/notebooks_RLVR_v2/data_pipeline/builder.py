@@ -30,7 +30,7 @@ class MacroFeaturePipeline:
             macro_df["Mkt_Ret"] = mkt_close.pct_change().fillna(0.0)
             macro_df["Macro_Trend"] = (mkt_close / mkt_close.rolling(200).mean()) - 1.0
 
-            # NEW: Z-Scored Market Metrics
+            # Z-Scored Market Metrics
             mkt_roll_mean = macro_df["Mkt_Ret"].rolling(63, min_periods=21).mean()
             mkt_roll_std = (
                 macro_df["Mkt_Ret"].rolling(63, min_periods=21).std().replace(0, 1e-8)
@@ -163,7 +163,7 @@ class MacroFeaturePipeline:
 
         macro_df.fillna(0.0, inplace=True)
 
-        # FINAL GUARD: Strictly return 10 clean, stationary macro features
+        # FINAL GUARD: Strictly return 10 clean, stationary macro features (Parity Invariant: 46 dims)
         final_10_cols = [
             "Mkt_Ret",
             "Mkt_Ret_Z",
@@ -184,34 +184,34 @@ class MicroFeaturePipeline:
     def process(
         df_ohlcv: pd.DataFrame, macro_df: pd.DataFrame, config: TradingConfig
     ) -> pd.DataFrame:
-        win_5 = getattr(config, "win_5d", 5)
         win_21 = getattr(config, "win_21d", 21)
         win_63 = getattr(config, "win_63d", 63)
+        win_126 = getattr(config, "win_126d", 126)
+        win_252 = getattr(config, "win_252d", 252)
         atr_period = getattr(config, "atr_period", 14)
         rsi_period = getattr(config, "rsi_period", 14)
-        range_pos_period = getattr(config, "range_pos_period", 20)
 
+        # 1-day simple returns & aligned benchmark series
         rets = TickerEngine.map_kernels(
             df_ohlcv["Adj Close"], QuantUtils.compute_returns
         )
-        autocorr_15 = TickerEngine.map_kernels(
-            rets, QuantUtils.calculate_autocorr, lag=1, window=15
-        )
         mkt_ret_series = macro_df["Mkt_Ret"]
 
+        # 1. Rolling Quality & Risk-Adjusted Kernels
         ir_63 = TickerEngine.map_kernels(
             rets,
             QuantUtils.calculate_rolling_ir,
             benchmark_rets=mkt_ret_series,
             window=win_63,
         )
-        beta_63 = TickerEngine.map_kernels(
+        ivol_63 = TickerEngine.map_kernels(
             rets,
-            QuantUtils.calculate_rolling_beta,
+            QuantUtils.calculate_rolling_ivol,
             benchmark_rets=mkt_ret_series,
             window=win_63,
         )
 
+        # 2. Volatility & True Range
         def get_ticker_vol(df_slice):
             h, l, c = df_slice["Adj High"], df_slice["Adj Low"], df_slice["Adj Close"]
             return pd.DataFrame(
@@ -227,81 +227,73 @@ class MicroFeaturePipeline:
         natr = (atr / df_ohlcv["Adj Close"]).fillna(0)
         trp = (vol_bundle["TR_Raw"] / df_ohlcv["Adj Close"]).fillna(0)
 
-        mom_21 = TickerEngine.map_kernels(
-            df_ohlcv["Adj Close"], lambda x: x.pct_change(win_21, fill_method=None)
+        # 3. Momentum & Trend Anchors
+        mom_126 = TickerEngine.map_kernels(
+            df_ohlcv["Adj Close"], QuantUtils.calculate_momentum, window=win_126
         )
-        consistency = TickerEngine.map_kernels(
-            rets, lambda x: (x > 0).astype(float).rolling(win_5).mean()
+        mom_252_21 = TickerEngine.map_kernels(
+            df_ohlcv["Adj Close"],
+            QuantUtils.calculate_momentum_skip,
+            window_total=win_252,
+            window_skip=win_21,
         )
+        trend_r2_63 = TickerEngine.map_kernels(
+            df_ohlcv["Adj Close"],
+            QuantUtils.calculate_trend_quality,
+            window=win_63,
+        )
+
+        # 4. Pullback & Mean Reversion
         dd_21 = TickerEngine.map_kernels(
             df_ohlcv["Adj Close"], lambda x: (x / x.rolling(win_21).max()) - 1.0
         )
-
-        # FIX 1: THE RSI BOMB. Normalize 0-100 down to strictly [-1.0, 1.0].
         rsi_raw = TickerEngine.map_kernels(
             df_ohlcv["Adj Close"], QuantUtils.calculate_rsi, period=rsi_period
         )
         rsi_scaled = (rsi_raw - 50.0) / 50.0
 
-        def get_range_pos_kernel(df_slice):
-            rp = QuantUtils.calculate_range_pos(
-                df_slice["Adj High"],
-                df_slice["Adj Low"],
-                df_slice["Adj Close"],
-                window=range_pos_period,
-            )
-            return pd.DataFrame({"RP": rp})
-
-        range_pos_20 = TickerEngine.map_kernels(df_ohlcv, get_range_pos_kernel)["RP"]
-
-        def get_obv_kernel(df_slice):
-            v = df_slice["Volume"]
-            v_baseline = v.rolling(window=win_63, min_periods=1).mean().replace(0, 1e-8)
-            v_rel = v / v_baseline
-            obv_val = QuantUtils.calculate_obv_fast(df_slice["Adj Close"], v_rel)
-            return pd.DataFrame({"OBV": obv_val})
-
-        obv = TickerEngine.map_kernels(df_ohlcv, get_obv_kernel)["OBV"]
-        log_price = np.log(df_ohlcv["Adj Close"].replace(0, 1e-8))
-
-        slope_p = TickerEngine.map_kernels(
-            log_price, QuantUtils.calculate_rolling_slope_5d_fast
+        # 5. Generation 16 Orthogonal Alpha & Crash Defense Factors
+        res_mom_126 = TickerEngine.map_kernels(
+            rets,
+            QuantUtils.calculate_residual_momentum,
+            benchmark_rets=mkt_ret_series,
+            window=win_126,
         )
-        slope_v = TickerEngine.map_kernels(
-            obv, QuantUtils.calculate_rolling_slope_5d_fast
+        range_pos_52w = TickerEngine.map_kernels(
+            df_ohlcv["Adj Close"],
+            QuantUtils.calculate_range_pos_52w,
+            window=win_252,
         )
-        convexity = TickerEngine.map_kernels(
-            slope_p, QuantUtils.calculate_convexity_5d_fast
+        beta_down_63 = TickerEngine.map_kernels(
+            rets,
+            QuantUtils.calculate_downside_beta,
+            benchmark_rets=mkt_ret_series,
+            window=win_63,
+        )
+        er_63 = TickerEngine.map_kernels(
+            df_ohlcv["Adj Close"],
+            QuantUtils.calculate_efficiency_ratio,
+            window=win_63,
         )
 
-        # FIX 2: THE OBV DEAD NODE. Provide temporal rolling Z-Scores to prevent lookahead bias
-        def temporal_zscore(series, window=win_63):
-            roll_mean = series.rolling(window, min_periods=10).mean()
-            roll_std = series.rolling(window, min_periods=10).std().replace(0, 1e-8)
-            return (series - roll_mean) / roll_std
-
-        slope_p_z = TickerEngine.map_kernels(slope_p, temporal_zscore, window=win_63)
-        slope_v_z = TickerEngine.map_kernels(slope_v, temporal_zscore, window=win_63)
-
+        # Purged collinear legacy factors (Mom_21, Mom_63, Consistency, Beta_63, SemiDev_63)
         return pd.DataFrame(
             {
                 "ATR": atr,
                 "ATRP": natr,
                 "TRP": trp,
-                "RSI": rsi_scaled,  # Uses bounded RSI
-                "Mom_21": mom_21,
-                "Consistency": consistency,
+                "RSI": rsi_scaled,
+                "Mom_126": mom_126,
+                "Mom_252_21": mom_252_21,
+                "ResMom_126": res_mom_126,
+                "Range_Pos_52w": range_pos_52w,
                 "IR_63": ir_63,
-                "Beta_63": beta_63,
+                "Beta_Down_63": beta_down_63,
+                "IVol_63": ivol_63,
+                "Trend_R2_63": trend_r2_63,
+                "ER_63": er_63,
                 "DD_21": dd_21.fillna(0),
-                "AutoCorr_15": autocorr_15,
                 "Ret_1d": rets,
-                "Range_Pos_20": range_pos_20,
-                "Slope_P_5": slope_p,
-                "Slope_V_5": slope_v,
-                "Slope_P_5_Z": slope_p_z,  # Exported for Registry Blueprint
-                "Slope_V_5_Z": slope_v_z,  # Exported for Registry Blueprint
-                "Convexity": convexity,
             }
         )
 
@@ -344,7 +336,7 @@ class QualityFilterPipeline:
                     "RollingSameVolCount": slice_df["HasSameVolume"]
                     .rolling(window=quality_window, min_periods=quality_min_periods)
                     .sum(),
-                    # NEW: Short-term kill switches
+                    # Short-term kill switches
                     "RecentStaleDays": slice_df["IsStale"]
                     .rolling(window=5, min_periods=1)
                     .sum(),

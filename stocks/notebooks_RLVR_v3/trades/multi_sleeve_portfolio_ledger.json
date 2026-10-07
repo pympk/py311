@@ -1,0 +1,146 @@
+{
+  "active_sleeves": [
+    {
+      "entry_date": "2026-09-23",
+      "decision_date": "2026-09-22",
+      "positions": [
+        {
+          "Ticker": "SPY",
+          "Filled_Shares": 3,
+          "Fill_Price": 773.38,
+          "Executed_Dollars": 2320.14
+        },
+        {
+          "Ticker": "JAAA",
+          "Filled_Shares": 16,
+          "Fill_Price": 50.68,
+          "Executed_Dollars": 810.88
+        },
+        {
+          "Ticker": "W",
+          "Filled_Shares": 7,
+          "Fill_Price": 107.35,
+          "Executed_Dollars": 751.4499999999999
+        },
+        {
+          "Ticker": "ALB",
+          "Filled_Shares": 7,
+          "Fill_Price": 116.8,
+          "Executed_Dollars": 817.6
+        },
+        {
+          "Ticker": "RL",
+          "Filled_Shares": 2,
+          "Fill_Price": 346.06,
+          "Executed_Dollars": 692.12
+        },
+        {
+          "Ticker": "LEN",
+          "Filled_Shares": 10,
+          "Fill_Price": 83.06,
+          "Executed_Dollars": 830.6
+        },
+        {
+          "Ticker": "TJX",
+          "Filled_Shares": 6,
+          "Fill_Price": 130.79,
+          "Executed_Dollars": 784.74
+        },
+        {
+          "Ticker": "IRM",
+          "Filled_Shares": 7,
+          "Fill_Price": 118.13,
+          "Executed_Dollars": 826.91
+        },
+        {
+          "Ticker": "BMNR",
+          "Filled_Shares": 29,
+          "Fill_Price": 28.76,
+          "Executed_Dollars": 834.0400000000001
+        },
+        {
+          "Ticker": "SNAP",
+          "Filled_Shares": 150,
+          "Fill_Price": 5.62,
+          "Executed_Dollars": 843.0
+        },
+        {
+          "Ticker": "GDDY",
+          "Filled_Shares": 8,
+          "Fill_Price": 98.24,
+          "Executed_Dollars": 785.92
+        },
+        {
+          "Ticker": "SNX",
+          "Filled_Shares": 2,
+          "Fill_Price": 283.25,
+          "Executed_Dollars": 566.5
+        },
+        {
+          "Ticker": "FLR",
+          "Filled_Shares": 15,
+          "Fill_Price": 54.03,
+          "Executed_Dollars": 810.45
+        },
+        {
+          "Ticker": "CRL",
+          "Filled_Shares": 2,
+          "Fill_Price": 285.11,
+          "Executed_Dollars": 570.22
+        },
+        {
+          "Ticker": "CRM",
+          "Filled_Shares": 3,
+          "Fill_Price": 233.28,
+          "Executed_Dollars": 699.84
+        },
+        {
+          "Ticker": "EXPE",
+          "Filled_Shares": 2,
+          "Fill_Price": 280.7,
+          "Executed_Dollars": 561.4
+        },
+        {
+          "Ticker": "XLF",
+          "Filled_Shares": 14,
+          "Fill_Price": 54.8,
+          "Executed_Dollars": 767.1999999999999
+        },
+        {
+          "Ticker": "AVY",
+          "Filled_Shares": 4,
+          "Fill_Price": 172.09,
+          "Executed_Dollars": 688.36
+        },
+        {
+          "Ticker": "IWF",
+          "Filled_Shares": 6,
+          "Fill_Price": 126.7,
+          "Executed_Dollars": 760.2
+        },
+        {
+          "Ticker": "PHYS",
+          "Filled_Shares": 24,
+          "Fill_Price": 32.93,
+          "Executed_Dollars": 790.3199999999999
+        },
+        {
+          "Ticker": "KDP",
+          "Filled_Shares": 25,
+          "Fill_Price": 31.51,
+          "Executed_Dollars": 787.75
+        },
+        {
+          "Ticker": "SWK",
+          "Filled_Shares": 8,
+          "Fill_Price": 92.13,
+          "Executed_Dollars": 737.04
+        }
+      ],
+      "total_cost": 18036.680000000004,
+      "entry_slippage": 9.01834
+    }
+  ],
+  "liquidated_history": [],
+  "residual_cash_pool": 1963.3200000000006
+}

@@ -1,10 +1,13 @@
 from collections import deque
+
 import numpy as np
 import pandas as pd
 import pytest
 import torch
 
 from core.accounting import MTMPortfolioEngine
+from core.logic import SelectionLogic
+from core.quant import QuantUtils
 from core.settings import TradingConfig
 from rl_discovery.adapter import RLVRGymEnv
 from rl_discovery.environment import DiscoveryEnv
@@ -232,16 +235,22 @@ def test_empty_basket_safe_handling(mock_mtm_setup):
 
 
 class MockActorCritic(torch.nn.Module):
-    """Deterministic mock agent returning fixed actions and zero critic values."""
+    """Deterministic mock agent conforming to get_deterministic_action and get_value contracts."""
 
-    def __init__(self, action_dim=16):
+    def __init__(self, action_dim: int = 16):
         super().__init__()
         self.action_dim = action_dim
 
-    def actor_mean(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, deterministic: bool = True) -> torch.Tensor:
         act = torch.zeros((x.shape[0], self.action_dim), dtype=torch.float32)
         act[:, -4:] = torch.tensor([-1.0, 1.0, 1.0, 1.0])
         return act
+
+    def get_deterministic_action(self, x: torch.Tensor) -> torch.Tensor:
+        return self.forward(x, deterministic=True)
+
+    def actor_mean(self, x: torch.Tensor) -> torch.Tensor:
+        return self.get_deterministic_action(x)
 
     def get_value(self, x: torch.Tensor) -> torch.Tensor:
         return torch.zeros((x.shape[0], 1), dtype=torch.float32)
@@ -280,3 +289,64 @@ def test_validator_evaluator_sharpe_accuracy(mock_mtm_setup):
     )
 
     assert results["sharpe_ratio"] == pytest.approx(float(expected_sharpe), abs=1e-5)
+
+
+# ----------------------------------------------------------------------
+# 4. TEST CASES: INTRA-SLEEVE RISK PARITY & SELECTION LOGIC
+# ----------------------------------------------------------------------
+
+
+def test_intra_sleeve_inverse_volatility_weighting():
+    """
+    INVARIANT 7: Intra-sleeve weights must strictly equal inverse volatility:
+    Stock A: ATRP = 0.01 (1%), Stock B: ATRP = 0.04 (4%)
+    Inv Vol: A = 100, B = 25 -> Normalized: A = 0.80, B = 0.20
+    """
+    vols = np.array([0.01, 0.04])
+    weights = QuantUtils.calculate_inv_vol_weights(vols)
+
+    assert weights[0] == pytest.approx(0.80, abs=1e-6)
+    assert weights[1] == pytest.approx(0.20, abs=1e-6)
+    assert np.sum(weights) == pytest.approx(1.0, abs=1e-6)
+
+    # Calculate weighted sleeve return: A earns +2%, B drops -1%
+    # Expected sleeve return = 0.80 * 0.02 + 0.20 * (-0.01) = 0.016 - 0.002 = 0.014
+    sleeve = {"TICKER_A": weights[0], "TICKER_B": weights[1]}
+    rets = {"TICKER_A": 0.02, "TICKER_B": -0.01}
+    sleeve_ret = MTMPortfolioEngine.calculate_sleeve_simple_ret(sleeve, rets)
+    assert sleeve_ret == pytest.approx(0.014, abs=1e-6)
+
+
+def test_intra_sleeve_delisting_weight_renormalization():
+    """
+    INVARIANT 8: If an asset in a risk-parity sleeve has NaN return (missing/delisted),
+    surviving weights are renormalized to 1.0 without capital leakage.
+    """
+    sleeve = {"A": 0.50, "B": 0.30, "C": 0.20}
+    # C is delisted/missing
+    rets = {"A": 0.04, "B": 0.02, "C": np.nan}
+
+    # Surviving weights: A = 0.50/0.80 = 0.625, B = 0.30/0.80 = 0.375
+    # Expected return = 0.625 * 0.04 + 0.375 * 0.02 = 0.025 + 0.0075 = 0.0325
+    sleeve_ret = MTMPortfolioEngine.calculate_sleeve_simple_ret(sleeve, rets)
+    assert sleeve_ret == pytest.approx(0.0325, abs=1e-6)
+
+
+def test_selection_logic_compute_intra_sleeve_weights():
+    """
+    INVARIANT 9: SelectionLogic extracts ATRP and maps to normalized weights.
+    """
+    ensemble = pd.DataFrame(
+        {
+            "feat_0": [0.1, 0.2],
+            "ATRP": [0.02, 0.08],
+        },
+        index=["TICKER_X", "TICKER_Y"],
+    )
+    weights = SelectionLogic.compute_intra_sleeve_weights(
+        ["TICKER_X", "TICKER_Y"], ensemble
+    )
+
+    # ATRP: 0.02 vs 0.08 -> Inv: 50 vs 12.5 -> Total: 62.5 -> X=0.80, Y=0.20
+    assert weights["TICKER_X"] == pytest.approx(0.80, abs=1e-6)
+    assert weights["TICKER_Y"] == pytest.approx(0.20, abs=1e-6)

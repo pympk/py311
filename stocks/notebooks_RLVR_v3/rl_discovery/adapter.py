@@ -100,7 +100,12 @@ class RLVRGymEnv(gym.Env):
     Gym wrapper for DiscoveryEnv with integrated state scaling and telemetry isolation.
     """
 
-    def __init__(self, discovery_env: DiscoveryEnv, macro_df: pd.DataFrame):
+    def __init__(
+        self,
+        discovery_env: DiscoveryEnv,
+        macro_df: pd.DataFrame,
+        seed: Optional[int] = None,
+    ):
         super().__init__()
         self.env = discovery_env
         self.macro_df = macro_df
@@ -115,6 +120,10 @@ class RLVRGymEnv(gym.Env):
         self.observation_space = gym.spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.obs_dim,), dtype=np.float32
         )
+
+        if seed is not None:
+            self.action_space.seed(seed)
+            self.observation_space.seed(seed)
 
         self.scaler = ObservationScaler(shape=(self.obs_dim,))
         self.is_training = True
@@ -167,12 +176,11 @@ def make_stratified_train_envs(
     episode_steps: int = 512,
     hist_cutoff_idx: Optional[int] = None,
     initial_scaler_state: Optional[Union[Dict[str, Any], ObservationScaler]] = None,
+    seed: Optional[int] = None,
 ) -> gym.vector.SyncVectorEnv:
     """
-    Constructs a vectorized SyncVectorEnv enforcing Generation 17 Stratified Replay bounds:
-    - Envs 0 .. (num_envs // 2 - 1): historical window bounds (0, hist_cutoff_idx).
-    - Envs (num_envs // 2) .. (num_envs - 1): recent window bounds (hist_cutoff_idx, len(cal) - 1).
-    - If hist_cutoff_idx is None: uniform unstratified sampling across full calendar.
+    Constructs a vectorized SyncVectorEnv enforcing Generation 17 Stratified Replay bounds
+    with strict rank-isolated worker seeding (seed + rank * 1000).
     """
     if hist_cutoff_idx is not None:
         if num_envs < 2 or num_envs % 2 != 0:
@@ -197,6 +205,8 @@ def make_stratified_train_envs(
             else:
                 bounds = None
 
+            worker_seed = (seed + rank * 1000) if seed is not None else None
+
             discovery_env = DiscoveryEnv(
                 feature_cube=feature_cube,
                 simple_ret_matrix=simple_ret_matrix,
@@ -206,8 +216,9 @@ def make_stratified_train_envs(
                 randomize_start=True,
                 episode_steps=episode_steps,
                 start_idx_bounds=bounds,
+                seed=worker_seed,
             )
-            gym_env = RLVRGymEnv(discovery_env, macro_df)
+            gym_env = RLVRGymEnv(discovery_env, macro_df, seed=worker_seed)
             gym_env.is_training = True
             if initial_scaler_state is not None:
                 gym_env.scaler.load_state(initial_scaler_state)
@@ -225,6 +236,7 @@ def make_eval_env(
     macro_df: pd.DataFrame,
     config: TradingConfig,
     scaler_state: Optional[Union[Dict[str, Any], ObservationScaler]] = None,
+    seed: Optional[int] = None,
 ) -> RLVRGymEnv:
     """
     Constructs a deterministic validation / test RLVRGymEnv enforcing:
@@ -239,8 +251,9 @@ def make_eval_env(
         config=config,
         randomize_start=False,
         episode_steps=0,
+        seed=seed,
     )
-    gym_env = RLVRGymEnv(discovery_env, macro_df)
+    gym_env = RLVRGymEnv(discovery_env, macro_df, seed=seed)
     gym_env.is_training = False
     if scaler_state is not None:
         gym_env.scaler.load_state(scaler_state)

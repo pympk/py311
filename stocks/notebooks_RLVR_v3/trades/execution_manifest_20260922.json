@@ -1,0 +1,57 @@
+{
+  "decision_date": "2026-09-22",
+  "execution_date": "2026-09-23",
+  "liquidate_sleeve_date": "2026-09-16",
+  "portfolio_equity": 100000.0,
+  "holding_period": 5,
+  "slippage_rate": 0.001,
+  "benchmark": "SPY",
+  "orders_parquet": "production_orders_20260922.parquet",
+  "seed_breakdown": {
+    "42": {
+      "w_active": 0.8973183631896973,
+      "w_bm": 0.10268163681030273,
+      "tickers": [
+        "JAAA",
+        "IRM",
+        "W",
+        "ALB",
+        "RL",
+        "LEN",
+        "TJX"
+      ],
+      "stock_dollars": 854.5889173235212,
+      "benchmark_dollars": 684.5442454020183
+    },
+    "101": {
+      "w_active": 0.8310094118118287,
+      "w_bm": 0.16899058818817125,
+      "tickers": [
+        "KDP",
+        "PHYS",
+        "IWF",
+        "SWK",
+        "AVY",
+        "XLF",
+        "EXPE"
+      ],
+      "stock_dollars": 791.4375350588846,
+      "benchmark_dollars": 1126.6039212544752
+    },
+    "777": {
+      "w_active": 0.886141014099121,
+      "w_bm": 0.11385898590087895,
+      "tickers": [
+        "BMNR",
+        "CRL",
+        "FLR",
+        "SNX",
+        "GDDY",
+        "SNAP",
+        "CRM"
+      ],
+      "stock_dollars": 843.9438229515439,
+      "benchmark_dollars": 759.0599060058597
+    }
+  }
+}

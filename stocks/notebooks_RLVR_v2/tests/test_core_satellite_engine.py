@@ -61,7 +61,7 @@ def core_satellite_fixture():
     simple_ret_matrix[benchmark] = 0.010
     simple_ret_matrix["CASH"] = 0.001
 
-    # 3. Clean 10-Column Macro DataFrame
+    # 3. Clean 13-Column Macro DataFrame
     macro_cols = [
         "Mkt_Ret",
         "Mkt_Ret_Z",
@@ -73,6 +73,9 @@ def core_satellite_fixture():
         "Macro_Vix_Z",
         "Macro_Vix_Ratio",
         "Mkt_Vol_63d_Z",
+        "Breadth_Above_SMA50",
+        "Breadth_Mom_Spread_21d",
+        "Breadth_CS_Dispersion_21d",
     ]
     macro_df = pd.DataFrame(0.5, index=dates, columns=macro_cols)
     macro_df["Mkt_Ret"] = 0.010
@@ -288,11 +291,11 @@ def test_asymmetric_loss_aversion_penalty(core_satellite_fixture):
 
 def test_observation_tensor_dimension_and_benchmark_alignment(core_satellite_fixture):
     """
-    Verifies that the observation space contains EXACTLY 46 dimensions:
-    [0..11]   Universe Mean
-    [12..23]  Universe Std
-    [24..35]  Benchmark Vector
-    [36..45]  Macro Context
+    Verifies that the observation space contains EXACTLY 49 dimensions:
+    [0..11]   Universe Mean (12)
+    [12..23]  Universe Std (12)
+    [24..35]  Benchmark Vector (12)
+    [36..48]  Macro Context & Breadth (13)
     And verifies Benchmark features are precisely aligned.
     """
     cube, simple_ret_matrix, macro_df, dates, config = core_satellite_fixture
@@ -307,11 +310,10 @@ def test_observation_tensor_dimension_and_benchmark_alignment(core_satellite_fix
 
     obs, _ = gym_env.reset()
 
-    assert obs.shape == (46,), f"Expected 46 observation dimensions, got {obs.shape}"
-    assert gym_env.observation_space.shape == (46,)
+    assert obs.shape == (49,), f"Expected 49 observation dimensions, got {obs.shape}"
+    assert gym_env.observation_space.shape == (49,)
     assert gym_env.action_space.shape == (16,)
 
-    # Direct Raw Observation Verification via ObservationAdapter
     obs_dict = env._get_observation()
     raw_obs = ObservationAdapter.process(
         ensemble=obs_dict["ensemble"],
@@ -320,7 +322,7 @@ def test_observation_tensor_dimension_and_benchmark_alignment(core_satellite_fix
         bm_row=obs_dict["bm_row"],
     )
 
-    assert len(raw_obs) == 46
+    assert len(raw_obs) == 49
     assert isinstance(raw_obs, np.ndarray)
     assert raw_obs.dtype == np.float32
 
@@ -331,13 +333,10 @@ def test_observation_tensor_dimension_and_benchmark_alignment(core_satellite_fix
     ), "Benchmark feature vector in observation does not match cube data"
 
 
-def test_agent_forward_pass_46_to_16():
-    """
-    Audits the Neural Network architecture:
-    Accepts 46-dim observations and outputs 16-dim actions.
-    """
-    agent = AbsoluteZeroAgent(obs_dim=46, action_dim=16, hidden_size=256)
-    dummy_obs = torch.randn(8, 46)
+def test_agent_forward_pass_49_to_16():
+    """Audits 49-dim observations to 16-dim actions forward pass."""
+    agent = AbsoluteZeroAgent(obs_dim=49, action_dim=16, hidden_size=256)
+    dummy_obs = torch.randn(8, 49)
 
     action, logprob, entropy, value = agent.get_action_and_value(dummy_obs)
 
@@ -347,21 +346,18 @@ def test_agent_forward_pass_46_to_16():
     assert value.shape == (8, 1)
 
 
-def test_rollout_buffer_allocation_46_to_16():
-    """
-    Verifies RolloutBuffer correctly initializes and logs steps under
-    terminations and truncations separation.
-    """
+def test_rollout_buffer_allocation_49_to_16():
+    """Verifies RolloutBuffer correctly initializes with 49-dim observations."""
     buffer = RolloutBuffer(
-        num_steps=16, num_envs=4, obs_dim=46, action_dim=16, gamma=0.90
+        num_steps=16, num_envs=4, obs_dim=49, action_dim=16, gamma=0.90
     )
 
-    assert buffer.obs.shape == (16, 4, 46)
+    assert buffer.obs.shape == (16, 4, 49)
     assert buffer.actions.shape == (16, 4, 16)
     assert buffer.rewards.shape == (16, 4)
 
     buffer.add(
-        obs=np.zeros((4, 46)),
+        obs=np.zeros((4, 49)),
         action=torch.zeros((4, 16)),
         logprob=torch.zeros(4),
         reward=np.ones(4),

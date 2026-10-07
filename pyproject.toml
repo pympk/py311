@@ -68,3 +68,8 @@ torchsummary = "^1.5.1"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: mark test as an integration test",
+]

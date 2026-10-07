@@ -372,3 +372,194 @@ def test_continuous_blotter_stitching_and_geometric_equity():
     metrics = compute_institutional_metrics(stitched)
     assert np.isclose(metrics["total_return"], expected_p - 1.0, atol=1e-5)
     assert metrics["sessions"] == 3
+
+
+def test_checkpoint_telemetry_schema(tmp_path):
+    """Guarantees that saved champion checkpoints strictly adhere to Architecture A schema."""
+    import torch
+
+    dummy_path = tmp_path / "model_chunk0_s42_champion.pt"
+    dummy_payload = {
+        "model_state_dict": {},
+        "scaler_state": {"mean": [0.0], "var": [1.0], "count": 100},
+        "history": {
+            "epoch": [1, 2],
+            "total_loss": [1.5, 1.2],
+            "policy_loss": [0.3, 0.2],
+            "value_loss": [1.2, 1.0],
+            "entropy": [2.5, 2.4],
+            "approx_kl": [0.005, 0.008],
+            "clip_fraction": [0.05, 0.04],
+            "explained_variance": [0.10, 0.25],
+            "step_reward": [0.001, 0.002],
+            "avg_reward": [0.001, 0.002],
+        },
+    }
+    torch.save(dummy_payload, dummy_path)
+
+    loaded = torch.load(dummy_path, weights_only=False)
+    assert "history" in loaded, "Missing 'history' key in champion checkpoint"
+
+    required_keys = {
+        "epoch",
+        "total_loss",
+        "policy_loss",
+        "value_loss",
+        "entropy",
+        "approx_kl",
+        "clip_fraction",
+        "explained_variance",
+        "step_reward",
+    }
+    history_keys = set(loaded["history"].keys())
+    assert required_keys.issubset(
+        history_keys
+    ), f"Missing telemetry channels: {required_keys - history_keys}"
+    assert len(loaded["history"]["epoch"]) == len(
+        loaded["history"]["total_loss"]
+    ), "Telemetry array dimension mismatch"
+
+
+def test_trading_config_to_dict_runtime_fidelity():
+    """
+    Verifies that TradingConfig.to_dict() captures runtime attribute mutations,
+    nested dataclasses, and dynamic properties without dropping fields.
+    """
+    cfg = TradingConfig()
+    cfg.min_active_tilt = 0.35
+    cfg.benchmark_ticker = "QQQ"
+    cfg.holding_period = 10
+    cfg.loss_aversion_penalty = 0.75
+    cfg.strategy_params.rsi_overbought = 75
+
+    d = cfg.to_dict()
+
+    assert d["min_active_tilt"] == 0.35
+    assert d["benchmark"] == "QQQ"
+    assert d["benchmark_ticker"] == "QQQ"
+    assert d["holding_period"] == 10
+    assert d["loss_aversion_penalty"] == 0.75
+    assert d["gamma"] == 0.90
+    assert d["dynamic_gamma"] == 0.90
+    assert isinstance(d["strategy_params"], dict)
+    assert d["strategy_params"]["rsi_overbought"] == 75
+    assert isinstance(d["thresholds"], dict)
+
+
+def test_checkpoint_grid_params_contract(tmp_path):
+    """
+    Verifies that checkpoint payloads embedding merged runtime grid_params
+    are parsed by extract_run_hyperparameters directly without regex guessing.
+    """
+    from core.settings import extract_run_hyperparameters
+
+    cfg = TradingConfig()
+    cfg.min_active_tilt = 0.25
+    cfg.loss_aversion_penalty = 0.50
+    cfg.holding_period = 7
+    cfg.benchmark_ticker = "IWM"
+
+    chunk_spec = {
+        "chunk_id": 1,
+        "lr": 2.0e-5,
+        "kl_anchor_coef": 0.05,
+    }
+
+    runtime_grid_params = {
+        **cfg.to_dict(),
+        **chunk_spec,
+        "holding_period": cfg.holding_period,
+        "benchmark": cfg.benchmark,
+        "gamma": cfg.gamma,
+    }
+
+    ckpt_file = tmp_path / "model_chunk1_s42_champion.pt"
+    torch.save(
+        {
+            "model_state_dict": {},
+            "scaler_state": {},
+            "grid_params": runtime_grid_params,
+            "holding_period": cfg.holding_period,
+            "benchmark": cfg.benchmark,
+            "epoch": 15,
+        },
+        ckpt_file,
+    )
+
+    extracted = extract_run_hyperparameters(ckpt_file)
+    assert extracted["min_active_tilt"] == 0.25
+    assert extracted["loss_aversion_penalty"] == 0.50
+    assert extracted["holding_period"] == 7
+    assert extracted["benchmark"] == "IWM"
+    assert extracted["gamma"] == 0.90
+
+
+def test_save_run_manifest_generation(tmp_path):
+    """
+    Verifies that save_run_manifest generates a valid, fully populated JSON file.
+    """
+    import json
+    from run_walk_forward import save_run_manifest
+
+    cfg = TradingConfig()
+    cfg.min_active_tilt = 0.20
+
+    dates = pd.date_range("2023-01-01", periods=10, freq="B")
+    feature_cube = pd.DataFrame(
+        np.zeros((20, 5)),
+        index=pd.MultiIndex.from_product(
+            [dates, ["AAPL", "MSFT"]], names=["Date", "Ticker"]
+        ),
+        columns=[f"F_{i}" for i in range(5)],
+    )
+    macro_df = pd.DataFrame(
+        np.zeros((10, 3)), index=dates, columns=["M_0", "M_1", "M_2"]
+    )
+
+    cache_file = tmp_path / "alpha_cache_test.parquet"
+    cache_file.touch()
+
+    out_blend = tmp_path / "blotter_blend.parquet"
+    canonical_blend = tmp_path / "canonical_blotter_blend.parquet"
+    out_blend.touch()
+    canonical_blend.touch()
+
+    ckpt_dir = tmp_path / "walk_forward_gen99"
+    ckpt_dir.mkdir(parents=True)
+    canonical_dir = tmp_path / "canonical_anchors"
+    canonical_dir.mkdir(parents=True)
+
+    manifest_path = save_run_manifest(
+        generation=99,
+        seeds=[42, 101],
+        config=cfg,
+        chunk_specs=[{"chunk_id": 0, "name": "base"}],
+        scorecard={"gate1": {"pass": True, "value": 0.90}},
+        blend_metrics={"sharpe_ratio": 0.90},
+        seed_metrics={42: {"sharpe_ratio": 0.88}, 101: {"sharpe_ratio": 0.91}},
+        div_ratio=1.06,
+        verdict="CONFIRMED",
+        feature_cube=feature_cube,
+        macro_df=macro_df,
+        trading_calendar=dates,
+        cache_file=cache_file,
+        out_blend_blotter=out_blend,
+        canonical_blend_blotter=canonical_blend,
+        seed_blotter_paths={42: out_blend, 101: out_blend},
+        checkpoint_paths={"chunk0_s42": tmp_path / "m1.pt"},
+        checkpoint_dir=ckpt_dir,
+        canonical_dir=canonical_dir,
+    )
+
+    assert manifest_path.exists()
+    assert (canonical_dir / "run_metadata_gen99.json").exists()
+
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+
+    assert payload["generation"] == 99
+    assert payload["verdict"] == "CONFIRMED"
+    assert payload["trading_config"]["min_active_tilt"] == 0.20
+    assert payload["data_lineage"]["obs_dim"] == 3 * 5 + 3  # 18
+    assert payload["data_lineage"]["universe_size"] == 5
+    assert payload["diversification_ratio"] == 1.06

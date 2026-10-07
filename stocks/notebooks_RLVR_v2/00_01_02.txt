@@ -1,0 +1,1645 @@
+==============================================================================
+# MERGED NOTEBOOKS CONVERSION
+# Total notebooks: 3
+# ==============================================================================
+
+##############################################################################
+## NOTEBOOK: 00_RLVR_data_process_v8.ipynb
+## PATH: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\00_RLVR_data_process_v8.ipynb
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 1  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+### RUN IN CPU ~00:05:00
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 2  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 1
+import time
+
+start_time = time.time()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 3  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 2: Setup
+import sys, os
+from pathlib import Path
+
+RUNNING_IN_COLAB = "google.colab" in sys.modules
+if RUNNING_IN_COLAB:
+    from google.colab import drive  # type: ignore
+    drive.mount("/content/drive")
+    rl_root = Path("/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2")
+    !pip install -q pyarrow fastparquet
+else:
+    rl_root = Path("C:/Users/ping/Files_win10/python/py311/stocks/notebooks_RLVR_v2")
+
+if str(rl_root) not in sys.path:
+    sys.path.append(str(rl_root))
+os.chdir(rl_root)
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 4  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 3: Load Data, Filter & Align Dates
+import pandas as pd
+import numpy as np
+from core.settings import TradingConfig
+from core.paths import GLOBAL_PROCESSED_DIR, LOCAL_DATA_DIR
+from data_pipeline.loader import load_raw_global_data
+from data_pipeline.utils import get_master_trading_calendar
+from data_pipeline.builder import generate_features
+
+pd.set_option("future.no_silent_downcasting", True)
+config = TradingConfig()
+
+print("Loading raw global data...")
+df_ohlcv, df_fed, df_indices = load_raw_global_data()
+
+# ---> FIX: Type assertions for Pylance <---
+assert isinstance(df_ohlcv, pd.DataFrame), "df_ohlcv must be a pandas DataFrame"
+assert isinstance(df_ohlcv.index, pd.MultiIndex), "df_ohlcv index must be a MultiIndex"
+
+# ---------------------------------------------------------
+# OPTIMIZATION 1: Truncate Dates Early
+# We train from 1998, but need ~1 year (252 days) for rolling features.
+# ---------------------------------------------------------
+CUTOFF_DATE = pd.Timestamp("1997-01-01")
+df_ohlcv = df_ohlcv[df_ohlcv.index.get_level_values("Date") >= CUTOFF_DATE]
+
+print(f"Aligning to Master Trading Calendar ({config.calendar_ticker})...")
+master_dates = get_master_trading_calendar(df_ohlcv, config.calendar_ticker)
+master_dates = master_dates[master_dates >= CUTOFF_DATE]
+
+# Filter out dates that are not in the master calendar
+df_ohlcv = df_ohlcv[df_ohlcv.index.get_level_values("Date").isin(master_dates)]
+
+# ---------------------------------------------------------
+# OPTIMIZATION 2: Fast Pre-Screening (Shift Left)
+# Drop stocks that NEVER meet the $1M median dollar volume threshold
+# to save RAM during feature generation.
+# ---------------------------------------------------------
+print("Pre-screening universe to drop perpetually illiquid stocks...")
+df_ohlcv["DollarVolume"] = df_ohlcv["Adj Close"] * df_ohlcv["Volume"]
+
+# Calculate rolling 126d median (as per config.quality_min_periods)
+# and find the max value it ever reached in its history.
+max_med_dv = (
+    df_ohlcv.groupby(level="Ticker")["DollarVolume"]
+    .rolling(window=config.quality_min_periods, min_periods=30)
+    .median()
+    .groupby(level=0)  # Use level=0 to avoid the duplicate "Ticker" name error
+    .max()
+)
+
+# Keep only tickers that breached the $1M threshold at least once
+valid_tickers = max_med_dv[
+    max_med_dv >= config.thresholds.min_median_dollar_volume
+].index
+
+# ---> FIX: PROTECT THE BENCHMARK & CALENDAR TICKERS <---
+protected_tickers = pd.Index([config.calendar_ticker, config.benchmark_ticker])
+valid_tickers = valid_tickers.union(protected_tickers)
+
+df_ohlcv = df_ohlcv[
+    df_ohlcv.index.get_level_values("Ticker").isin(valid_tickers)
+].copy()
+df_ohlcv.drop(columns=["DollarVolume"], inplace=True)
+print(
+    f"Universe reduced to {len(valid_tickers)} viable tickers (Benchmarks protected)."
+)
+
+
+# ---------------------------------------------------------
+# OPTIMIZATION 3: Smart Forward Fill (No Cartesian Product)
+# Reindex each stock ONLY within its own valid date range (IPO to Delist)
+# ---------------------------------------------------------
+def fill_ticker(df_ticker):
+    # Find the min and max date for THIS specific stock
+    min_date = df_ticker.index.get_level_values("Date").min()
+    max_date = df_ticker.index.get_level_values("Date").max()
+
+    # Create a calendar just for this stock's lifespan
+    stock_calendar = master_dates[
+        (master_dates >= min_date) & (master_dates <= max_date)
+    ]
+
+    # Reindex and forward fill gaps (up to max_data_gap_ffill)
+    df_ticker = df_ticker.droplevel("Ticker").reindex(stock_calendar)
+
+    price_cols = ["Adj Open", "Adj High", "Adj Low", "Adj Close"]
+    if config.handle_zeros_as_nan:
+        df_ticker[price_cols] = df_ticker[price_cols].replace(0, np.nan)
+
+    df_ticker[price_cols] = df_ticker[price_cols].ffill(limit=config.max_data_gap_ffill)
+    df_ticker["Volume"] = df_ticker["Volume"].fillna(0)
+
+    return df_ticker
+
+
+print("Forward-filling intra-lifespan data gaps...")
+# Let Pandas naturally reconstruct the MultiIndex
+df_ohlcv = df_ohlcv.groupby(level="Ticker").apply(fill_ticker)
+
+
+# ==============================================================================
+# INJECT SYNTHETIC "CASH" ASSET
+# ==============================================================================
+print("Injecting synthetic CASH asset for RL environment...")
+
+# 1. Use the exact master calendar so CASH never has missing days
+cash_dates = master_dates
+np.random.seed(42)  # Keep the noise deterministic across pipeline runs
+
+# 2. Generate mean-reverting micro-noise (6th decimal place)
+# This perfectly centers RSI at 50 and creates a tiny, safe variance
+price_noise = np.random.normal(0, 1e-6, len(cash_dates))
+cash_close = 100.0 + price_noise
+
+# 3. Generate Volume noise so RollingSameVolCount == 0
+vol_noise = np.random.randint(-5000, 5000, len(cash_dates))
+cash_volume = 100_000_000.0 + vol_noise
+
+# 4. Construct the dataframe
+cash_df = pd.DataFrame(
+    {
+        "Ticker": "CASH",
+        "Date": cash_dates,
+        "Adj Open": cash_close,
+        "Adj High": cash_close
+        + 1e-4,  # Strictly > Close to bypass 'adj_high == adj_low' stale trap
+        "Adj Low": cash_close - 1e-4,  # Strictly < Close
+        "Adj Close": cash_close,
+        "Volume": cash_volume,
+    }
+)
+
+# 5. Format and append
+cash_df = cash_df.set_index(["Ticker", "Date"])
+df_ohlcv = pd.concat([df_ohlcv, cash_df]).sort_index()
+
+print(f"Successfully injected {len(cash_dates)} rows of synthetic CASH.")
+
+
+# Ensure index names are correct after apply
+if isinstance(df_ohlcv.index, pd.MultiIndex):
+    df_ohlcv.index.names = ["Ticker", "Date"]
+
+# Align df_fed & df_indices
+if df_fed is not None:
+    df_fed["Date"] = pd.to_datetime(df_fed["Date"])
+    df_fed = df_fed.set_index("Date").reindex(master_dates).ffill()
+
+if df_indices is not None:
+    assert isinstance(df_indices.index, pd.MultiIndex)
+    df_indices = df_indices[
+        df_indices.index.get_level_values("Date").isin(master_dates)
+    ].sort_index()  # Sorts by all levels naturally
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 5  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+print(f"df_ohlcv.info():\n{df_ohlcv.info()}\n")
+print(f"df_fed.info():\n{df_fed.info()}\n")
+print(f"df_indices.info():\n{df_indices.info()}\n")
+
+print(f"df_ohlcv.describe():\n{df_ohlcv.describe()}\n")
+print(f"df_fed.describe():\n{df_fed.describe()}\n")
+print(f"df_indices.describe():\n{df_indices.describe()}\n")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 6  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+df_ohlcv.loc["CASH"]
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 7  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+import pandas as pd
+
+print("=== Analyzing Ticker Lifespans ===")
+
+# 1. Get the global max and min dates of the whole dataset
+global_min_date = df_ohlcv.index.get_level_values("Date").min()
+global_max_date = df_ohlcv.index.get_level_values("Date").max()
+print(f"Global Dataset Range: {global_min_date.date()} to {global_max_date.date()}")
+
+# 2. Get the specific min and max dates for EACH ticker
+ticker_lifespans = (
+    df_ohlcv.index.to_frame(index=False).groupby("Ticker")["Date"].agg(["min", "max"])
+)
+ticker_lifespans.columns = ["First_Trade", "Last_Trade"]
+
+# 3. Identify different categories
+# "Delisted" = stopped trading before the global max date
+delisted = ticker_lifespans[ticker_lifespans["Last_Trade"] < global_max_date]
+# "Late IPO" = started trading after the global min date
+late_ipos = ticker_lifespans[ticker_lifespans["First_Trade"] > global_min_date]
+# "Came and Went" = Started late AND Delisted early
+# ---> FIX: Added .copy() at the end of the slice to prevent SettingWithCopyWarning <---
+came_and_went = ticker_lifespans[
+    (ticker_lifespans["First_Trade"] > global_min_date)
+    & (ticker_lifespans["Last_Trade"] < global_max_date)
+].copy()
+
+print(f"\nTotal Tickers: {len(ticker_lifespans)}")
+print(f"Tickers that Delisted before end date: {len(delisted)}")
+print(f"Tickers that IPO'd after start date: {len(late_ipos)}")
+print(f"Tickers that 'Came and Went' (Both): {len(came_and_went)}")
+
+# Display a sample of the ones that "came and went"
+if not came_and_went.empty:
+    print("\nSample of stocks that 'Came and Went':")
+    came_and_went["Lifespan_Days"] = (
+        came_and_went["Last_Trade"] - came_and_went["First_Trade"]
+    ).dt.days
+    print(came_and_went.sort_values("Lifespan_Days").head(10))
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 8  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 4: Generate Features
+print("Generating features_df and macro_df (~6 mins)...")
+features_df, macro_df = generate_features(
+    df_ohlcv=df_ohlcv, df_indices=df_indices, df_fed=df_fed, config=config
+)
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 9  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+import pandas as pd
+
+# Display all columns without truncation
+pd.set_option("display.max_columns", None)
+
+# Increase maximum width of the output display (in characters)
+pd.set_option("display.width", 2000)
+
+# Expand column width so text inside cells isn't truncated
+pd.set_option("display.max_colwidth", None)
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 10  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+print(features_df.tail())
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 11  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+print(macro_df.tail())
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 12  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 5: Save Datasets
+print("Saving Processed Datasets...")
+
+# 1. Save "Production/Daily" copies to the Global Directory for other notebooks
+df_ohlcv.to_parquet(GLOBAL_PROCESSED_DIR / "df_ohlcv.parquet")
+if df_fed is not None:
+    df_fed.to_parquet(GLOBAL_PROCESSED_DIR / "df_fed.parquet")
+if df_indices is not None:
+    df_indices.to_parquet(GLOBAL_PROCESSED_DIR / "df_indices.parquet")
+
+# 2. Save "Version-Locked Snapshots" to the Local Directory for RLVR Training & Cache
+LOCAL_DATA_DIR.mkdir(parents=True, exist_ok=True)
+df_ohlcv.to_parquet(LOCAL_DATA_DIR / "df_ohlcv.parquet")
+if df_fed is not None:
+    df_fed.to_parquet(LOCAL_DATA_DIR / "df_fed.parquet")
+if df_indices is not None:
+    df_indices.to_parquet(LOCAL_DATA_DIR / "df_indices.parquet")
+
+# 3. Save matching features and macro files to the Local Directory
+features_df.to_parquet(LOCAL_DATA_DIR / "features_df.parquet")
+macro_df.to_parquet(LOCAL_DATA_DIR / "macro_df.parquet")
+
+print(f"All files exported to LOCAL_DATA_DIR: {LOCAL_DATA_DIR}.")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 13  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+import pandas as pd
+
+_feat_df = pd.read_parquet(LOCAL_DATA_DIR / "features_df.parquet")
+print("Loaded features_df as _feat_df")
+print(_feat_df.tail())
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 14  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 6: Timing
+end_time = time.time()
+print(f"Time: {time.strftime('%H:%M:%S', time.gmtime(end_time - start_time))}")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 15  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 10: Disconnect from TPU
+from google.colab import runtime
+
+# This will restart and unassign the current runtime,
+# effectively disconnecting from the T4 GPU.
+runtime.unassign()
+print("Runtime unassigned. This session has been disconnected.")
+```
+
+##############################################################################
+## END OF: 00_RLVR_data_process_v8.ipynb
+##############################################################################
+
+
+##############################################################################
+## NOTEBOOK: 01_RLVR_Part1_AlphaCache_v7.ipynb
+## PATH: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\01_RLVR_Part1_AlphaCache_v7.ipynb
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 1  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 0: Set Run Parameters
+import os
+
+os.environ["CACHE_LOOKBACK"] = "41"
+os.environ["CACHE_START_DATE"] = "1998-01-01"
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 2  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 1
+import time
+
+start_time = time.time()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 3  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 2: Setup
+import sys, os
+from pathlib import Path
+
+RUNNING_IN_COLAB = "google.colab" in sys.modules
+if RUNNING_IN_COLAB:
+    from google.colab import drive
+
+    drive.mount("/content/drive")
+    rl_root = Path(
+        "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2"
+    )
+else:
+    rl_root = Path("C:/Users/ping/Files_win10/python/py311/stocks/notebooks_RLVR_v2")
+
+if str(rl_root) not in sys.path:
+    sys.path.append(str(rl_root))
+os.chdir(rl_root)
+```
+
+# --- Output ---
+# [stdout]
+Mounted at /content/drive
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 4  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 3: Load Data & Initialize Cache
+from core.settings import TradingConfig, CacheConfig
+from core.paths import OUTPUT_DIR
+from data_pipeline.loader import load_processed_data
+from data_pipeline.utils import get_master_trading_calendar
+from data_pipeline.screener import UniverseScreener
+from data_pipeline.cache import CheckpointAlphaCache
+
+print("Loading preprocessed data...")
+data = load_processed_data()
+df_ohlcv = data.df_ohlcv
+macro_df = data.macro_df
+features_df = data.features_df
+
+# Tripwire validation on processed feature schemas
+expected_macro_cols = [
+    "Macro_Trend",
+    "Macro_Vix_Z",
+    "Macro_Vix_Ratio",
+    "Mkt_Vol_63d_Z",
+]
+
+expected_feature_cols = [
+    "Mom_252_21",
+    "ResMom_126",
+    "Range_Pos_52w",
+    "IR_63",
+    "RSI",
+    "DD_21",
+    "Trend_R2_63",
+    "Beta_Down_63",
+    "ATRP",
+    "ER_63",
+    "Mom_126",
+    "IVol_63",
+]
+
+assert all(
+    col in macro_df.columns for col in expected_macro_cols
+), f"macro_df missing expected engineered columns! Found: {macro_df.columns.tolist()}"
+
+assert all(
+    col in features_df.columns for col in expected_feature_cols
+), f"features_df missing expected columns! Found: {features_df.columns.tolist()}"
+
+print("✅ Data validation passed: Schemas and contracts verified.")
+
+config = TradingConfig()
+
+# Reconstruct wide df_close dynamically and sync calendar
+df_close = df_ohlcv["Adj Close"].unstack(level=0).sort_index()
+trading_calendar = get_master_trading_calendar(df_ohlcv, config.calendar_ticker)
+
+screener = UniverseScreener(
+    df_close=df_close,
+    features_df=features_df,
+    macro_df=macro_df,
+    trading_calendar=trading_calendar,
+    config=config,
+)
+```
+
+# --- Output ---
+# [stdout]
+NOTEBOOKS_RLVR_ROOT: /content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2
+PROJECT_ROOT: /content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks
+GLOBAL_DATA_DIR: /content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/data
+GLOBAL_PROCESSED_DIR: /content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/data/processed
+LOCAL_DATA_DIR: /content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2/data
+OUTPUT_DIR: /content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2/output
+
+Loading preprocessed data...
+# [ERROR] AssertionError: features_df missing expected columns! Found: ['ATR', 'ATRP', 'TRP', 'RSI', 'Mom_21', 'Mom_63', 'Mom_126', 'Mom_252_21', 'Consistency', 'IR_63', 'Beta_63', 'IVol_63', 'SemiDev_63', 'Trend_R2_63', 'DD_21', 'Ret_1d', 'RollingStalePct', 'RollMedDollarVol', 'RollingSameVolCount', 'RecentStaleDays', 'IsZeroPrice']
+# Traceback:
+[0;31m---------------------------------------------------------------------------[0m
+[0;31mAssertionError[0m                            Traceback (most recent call last)
+[0;32m/tmp/ipykernel_4775/814659608.py[0m in [0;36m<cell line: 0>[0;34m()[0m
+[1;32m     40[0m ), f"macro_df missing expected engineered columns! Found: {macro_df.columns.tolist()}"
+[1;32m     41[0m [0;34m[0m[0m
+[0;32m---> 42[0;31m assert all(
+[0m[1;32m     43[0m     [0mcol[0m [0;32min[0m [0mfeatures_df[0m[0;34m.[0m[0mcolumns[0m [0;32mfor[0m [0mcol[0m [0;32min[0m [0mexpected_feature_cols[0m[0;34m[0m[0;34m[0m[0m
+[1;32m     44[0m ), f"features_df missing expected columns! Found: {features_df.columns.tolist()}"
+
+[0;31mAssertionError[0m: features_df missing expected columns! Found: ['ATR', 'ATRP', 'TRP', 'RSI', 'Mom_21', 'Mom_63', 'Mom_126', 'Mom_252_21', 'Consistency', 'IR_63', 'Beta_63', 'IVol_63', 'SemiDev_63', 'Trend_R2_63', 'DD_21', 'Ret_1d', 'RollingStalePct', 'RollMedDollarVol', 'RollingSameVolCount', 'RecentStaleDays', 'IsZeroPrice']
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 5  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+print("--- macro_df columns ---")
+print(macro_df.columns.tolist())
+print("\n--- macro_df sample ---")
+print(macro_df.tail(2))
+
+print("\n--- features_df columns ---")
+print(features_df.columns.tolist())
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 6  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 4: Build Cache
+import os
+from pathlib import Path
+from core.paths import OUTPUT_DIR, LOCAL_DATA_DIR  # Added LOCAL_DATA_DIR
+
+# Create directories if they do not exist.
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+LOCAL_DATA_DIR.mkdir(parents=True, exist_ok=True)
+print(f"Successfully ensured output directory exists: {OUTPUT_DIR}")
+print(f"Successfully ensured local data directory exists: {LOCAL_DATA_DIR}")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 7  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 5: Build Cache
+cache_file_path = LOCAL_DATA_DIR / CacheConfig.get_filename()
+
+# Add a warning if the cache file already exists
+if cache_file_path.exists():
+    print(
+        f"Warning: Cache file already exists at {cache_file_path}. Resuming build process."
+    )
+
+cache = CheckpointAlphaCache(
+    screener=screener, config=config, lookbacks=[CacheConfig.LOOKBACK]
+)
+
+cache.build(
+    start_date=CacheConfig.START_DATE,
+    end_date=None,
+    checkpoint_path=cache_file_path,
+    save_every_n_days=2000,  # save every ~7 minutes
+)
+
+# print(cache.describe())
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 8  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+print(f"File saved to: {cache_file_path}")
+print(f"File exists: {cache_file_path.exists()}")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 9  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 6: Timing
+end_time = time.time()
+print(f"Time: {time.strftime('%H:%M:%S', time.gmtime(end_time - start_time))}")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 10  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 7: Disconnect from TPU
+from google.colab import runtime
+
+# This will restart and unassign the current runtime,
+# effectively disconnecting from the T4 GPU.
+runtime.unassign()
+print("Runtime unassigned. This session has been disconnected.")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 11  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+
+```
+
+##############################################################################
+## END OF: 01_RLVR_Part1_AlphaCache_v7.ipynb
+##############################################################################
+
+
+##############################################################################
+## NOTEBOOK: 02_RLVR_Part2_Training_v57_.ipynb
+## PATH: C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2\02_RLVR_Part2_Training_v57_.ipynb
+##############################################################################
+
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 1  |  MARKDOWN
+──────────────────────────────────────────────────────────────────────────────
+
+# 02_RLVR_Part2_Training_v45.ipynb
+
+
+
+ ### 🤖 Dynamic Staggered-Sleeve PPO Alpha Agent Training
+
+ - **Observation Space:** 46 Dimensions (12 CS Mean, 12 CS Std, 12 Benchmark Vector, 10 Stationary Macro)
+
+ - **Action Space:** 16 Dimensions (12 Strategy Weights, Offset, Width, Equity Exposure, Active Tilt)
+
+ - **MTM Portfolio:** Overlapping $H = \text{config.holding\_period}$ sleeves with T+1 Next-Day Close execution
+
+ - **Objective:** Maximize benchmark-relative alpha spread under 100% equity exposure
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 2  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 0: System Thread Locks, Cache Config & Reproducibility
+import os
+import torch
+import multiprocessing
+
+os.environ["CACHE_LOOKBACK"] = "41"
+os.environ["CACHE_START_DATE"] = "1998-01-01"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+torch.set_num_threads(1)
+
+print(f"CPU count: {multiprocessing.cpu_count()}")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 3  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 1: Start Execution Timer
+import time
+
+start_time = time.time()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 4  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 2: Environment & Path Setup
+import sys
+from pathlib import Path
+
+RUNNING_IN_COLAB = "google.colab" in sys.modules
+if RUNNING_IN_COLAB:
+    from google.colab import drive  # type: ignore
+
+    drive.mount("/content/drive")
+    rl_root = Path(
+        "/content/drive/Othercomputers/My Computer/Files_win10/python/py311/stocks/notebooks_RLVR_v2"
+    )
+else:
+    rl_root_default = Path(
+        r"C:\Users\ping\Files_win10\python\py311\stocks\notebooks_RLVR_v2"
+    )
+    rl_root = rl_root_default if rl_root_default.exists() else Path.cwd()
+
+if str(rl_root) not in sys.path:
+    sys.path.append(str(rl_root))
+os.chdir(rl_root)
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 5  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# AUTOMATED TRAINING GATE: Run before training starts
+import pytest
+
+ret_code = pytest.main(["-x", "tests/test_mtm_invariants.py", "-q"])
+if ret_code != 0:
+    raise SystemError(
+        "❌ TRAINING ABORTED: MTM Invariant tripwires failed! Check tests/test_mtm_invariants.py"
+    )
+print("✅ ALL MTM INVARIANT TRIPWIRES PASSED. Safe to proceed with training.")
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 6  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 3: Imports
+import copy
+import gc
+import json
+import random
+from typing import Any, Dict, Optional
+
+import gymnasium as gym
+import numpy as np
+import pandas as pd
+
+from core.paths import OUTPUT_DIR, LOCAL_DATA_DIR
+from core.settings import CacheConfig, TradingConfig
+from core.quant import QuantUtils
+from data_pipeline.loader import load_processed_data
+from data_pipeline.utils import get_master_trading_calendar
+from rl_discovery.adapter import RLVRGymEnv
+from rl_discovery.agent import AbsoluteZeroAgent
+from rl_discovery.environment import DiscoveryEnv
+from rl_discovery.trainer import PPOTrainer, RolloutBuffer
+from rl_discovery.validator import AgentEvaluator
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 7  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 4: Load AlphaCache, Return Matrices & Split Timeline
+print("📦 Loading preprocessed market data & AlphaCache...")
+data = load_processed_data()
+df_ohlcv = data.df_ohlcv
+macro_df = data.macro_df
+features_df = data.features_df
+config = TradingConfig()
+df_close = df_ohlcv["Adj Close"].unstack(level=0).sort_index()
+trading_calendar = get_master_trading_calendar(df_ohlcv, config.calendar_ticker)
+
+cache_file_path = LOCAL_DATA_DIR / CacheConfig.get_filename()
+print(f"AlphaCache path: {cache_file_path}")
+feature_cube = pd.read_parquet(cache_file_path)
+
+# Forward 1-Day MTM Simple Return Matrix (P_{t+1} - P_t) / P_t
+simple_ret_matrix = df_close.pct_change(1, fill_method=None).shift(-1)
+simple_ret_matrix["CASH"] = 0.0
+
+# Split dates
+valid_dates = feature_cube.index.get_level_values("Date").unique()
+valid_calendar = trading_calendar[trading_calendar.isin(valid_dates)]
+
+VAL_START = pd.Timestamp("2016-01-01")
+TEST_START = pd.Timestamp("2022-04-01")
+
+cal_train_raw = valid_calendar[valid_calendar < VAL_START]
+cal_val_raw = valid_calendar[
+    (valid_calendar >= VAL_START) & (valid_calendar < TEST_START)
+]
+cal_test_raw = valid_calendar[valid_calendar >= TEST_START]
+
+# Purge leakage buffer based on config.holding_period
+hp = config.holding_period
+cal_train = cal_train_raw[:-hp] if len(cal_train_raw) > hp else cal_train_raw
+cal_val = cal_val_raw[:-hp] if len(cal_val_raw) > hp else cal_val_raw
+cal_test = cal_test_raw
+
+print(f"✅ Data splits ready with {hp}-day leakage buffer dropped.")
+print(
+    f"   • Train: {cal_train.min().strftime('%Y-%m-%d')} to {cal_train.max().strftime('%Y-%m-%d')} ({len(cal_train)} days)"
+)
+print(
+    f"   • Val  : {cal_val.min().strftime('%Y-%m-%d')} to {cal_val.max().strftime('%Y-%m-%d')} ({len(cal_val)} days)"
+)
+print(
+    f"   • Test : {cal_test.min().strftime('%Y-%m-%d')} to {cal_test.max().strftime('%Y-%m-%d')} ({len(cal_test)} days)"
+)
+
+del df_ohlcv
+gc.collect()
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 8  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# Insert into Cell 7 right after loading data:
+final_10_cols = [
+    "Mkt_Ret",
+    "Mkt_Ret_Z",
+    "Macro_Trend",
+    "Macro_Trend_Z",
+    "Yield_Curve_10Y2Y_Z",
+    "Macro_Trend_Vel_Z",
+    "Macro_Trend_Mom",
+    "Macro_Vix_Z",
+    "Macro_Vix_Ratio",
+    "Mkt_Vol_63d_Z",
+]
+macro_df = macro_df[[c for c in final_10_cols if c in macro_df.columns]]
+assert macro_df.shape[1] == 10, f"Expected 10 macro columns, got {macro_df.shape[1]}"
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 9  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 8 (REPLACEMENT): Hyperparameter Grid Configuration — Generation 14 (P15 Risk-Parity Series)
+# Objective: Replacing uniform equal weighting ($1/K_t$) within active sleeves with
+# inverse-volatility weighting ($1/\text{ATRP}_{i, t}$) will equalize risk contribution
+# across selected stocks, suppressing idiosyncratic single-stock tail risk and
+# drawdown without reducing overall portfolio market beta to SPY.
+# Invariants: WARMUP_EPOCHS = 25, PATIENCE = 30, MIN_EPOCHS = 70, NUM_EPOCHS = 90
+
+SLICE_NUM = 1  # Set to 1, 2, or 3 for distributed training execution
+
+param_grid_sweep = [
+    # ---------------- SLICE 1: DIRECT CONTROL REPLICATION & MULTI-SEED (RUN 217 RIDGE) ----------------
+    {
+        "ID": "P15_RP_Scale25_Gamma88_LossAv035_Up118_Tilt10_Width5",
+        "LR": 2.0e-4,
+        "CRITIC_LR": 8.0e-4,
+        "ENT_COEF_START": 0.0050,
+        "ENT_COEF_END": 0.0005,
+        "UPSIDE_ALPHA_MULT": 1.18,
+        "loss_aversion_penalty": 0.35,
+        "max_cash_pct": 0.0,
+        "min_active_tilt": 0.10,
+        "min_width": 5,
+        "GAMMA": 0.88,
+        "GAE_LAMBDA": 0.95,
+        "REWARD_SCALE": 25.0,
+        "SEEDS": [42],  # Direct 1-to-1 baseline causal control against Run 217
+        "NUM_EPOCHS": 90,
+        "UPDATE_EPOCHS": 4,
+        "PATIENCE": 30,
+        "WARMUP_EPOCHS": 25,
+        "MIN_EPOCHS": 70,
+        "NUM_STEPS": 512,
+        "MINI_BATCH_SIZE": 256,
+        "NUM_ENVS": 8,
+        "EVAL_FREQ": 2,
+        "ROLLING_EVAL_WINDOW": 5,
+    },
+    {
+        "ID": "P15_RP_Scale25_Gamma88_LossAv035_Up118_Tilt10_Width5",
+        "LR": 2.0e-4,
+        "CRITIC_LR": 8.0e-4,
+        "ENT_COEF_START": 0.0050,
+        "ENT_COEF_END": 0.0005,
+        "UPSIDE_ALPHA_MULT": 1.18,
+        "loss_aversion_penalty": 0.35,
+        "max_cash_pct": 0.0,
+        "min_active_tilt": 0.10,
+        "min_width": 5,
+        "GAMMA": 0.88,
+        "GAE_LAMBDA": 0.95,
+        "REWARD_SCALE": 25.0,
+        "SEEDS": [101],  # Multi-seed validation
+        "NUM_EPOCHS": 90,
+        "UPDATE_EPOCHS": 4,
+        "PATIENCE": 30,
+        "WARMUP_EPOCHS": 25,
+        "MIN_EPOCHS": 70,
+        "NUM_STEPS": 512,
+        "MINI_BATCH_SIZE": 256,
+        "NUM_ENVS": 8,
+        "EVAL_FREQ": 2,
+        "ROLLING_EVAL_WINDOW": 5,
+    },
+    {
+        "ID": "P15_RP_Scale25_Gamma88_LossAv035_Up118_Tilt10_Width5",
+        "LR": 2.0e-4,
+        "CRITIC_LR": 8.0e-4,
+        "ENT_COEF_START": 0.0050,
+        "ENT_COEF_END": 0.0005,
+        "UPSIDE_ALPHA_MULT": 1.18,
+        "loss_aversion_penalty": 0.35,
+        "max_cash_pct": 0.0,
+        "min_active_tilt": 0.10,
+        "min_width": 5,
+        "GAMMA": 0.88,
+        "GAE_LAMBDA": 0.95,
+        "REWARD_SCALE": 25.0,
+        "SEEDS": [777],  # Multi-seed validation
+        "NUM_EPOCHS": 90,
+        "UPDATE_EPOCHS": 4,
+        "PATIENCE": 30,
+        "WARMUP_EPOCHS": 25,
+        "MIN_EPOCHS": 70,
+        "NUM_STEPS": 512,
+        "MINI_BATCH_SIZE": 256,
+        "NUM_ENVS": 8,
+        "EVAL_FREQ": 2,
+        "ROLLING_EVAL_WINDOW": 5,
+    },
+    # ---------------- SLICE 2: DEEP SHELTER & LOSS-AVERSION INTERACTION (SEED 42) ----------------
+    {
+        "ID": "P15_RP_Scale25_Gamma88_LossAv035_Up118_Tilt08_Width5",
+        "LR": 2.0e-4,
+        "CRITIC_LR": 8.0e-4,
+        "ENT_COEF_START": 0.0050,
+        "ENT_COEF_END": 0.0005,
+        "UPSIDE_ALPHA_MULT": 1.18,
+        "loss_aversion_penalty": 0.35,
+        "max_cash_pct": 0.0,
+        "min_active_tilt": 0.08,  # Test deeper 92% SPY shelter when breadth signals narrow market
+        "min_width": 5,
+        "GAMMA": 0.88,
+        "GAE_LAMBDA": 0.95,
+        "REWARD_SCALE": 25.0,
+        "SEEDS": [42],
+        "NUM_EPOCHS": 90,
+        "UPDATE_EPOCHS": 4,
+        "PATIENCE": 30,
+        "WARMUP_EPOCHS": 25,
+        "MIN_EPOCHS": 70,
+        "NUM_STEPS": 512,
+        "MINI_BATCH_SIZE": 256,
+        "NUM_ENVS": 8,
+        "EVAL_FREQ": 2,
+        "ROLLING_EVAL_WINDOW": 5,
+    },
+    {
+        "ID": "P15_RP_Scale25_Gamma88_LossAv030_Up118_Tilt10_Width5",
+        "LR": 2.0e-4,
+        "CRITIC_LR": 8.0e-4,
+        "ENT_COEF_START": 0.0050,
+        "ENT_COEF_END": 0.0005,
+        "UPSIDE_ALPHA_MULT": 1.18,
+        "loss_aversion_penalty": 0.30,  # Test lower loss aversion with breadth dampening
+        "max_cash_pct": 0.0,
+        "min_active_tilt": 0.10,
+        "min_width": 5,
+        "GAMMA": 0.88,
+        "GAE_LAMBDA": 0.95,
+        "REWARD_SCALE": 25.0,
+        "SEEDS": [42],
+        "NUM_EPOCHS": 90,
+        "UPDATE_EPOCHS": 4,
+        "PATIENCE": 30,
+        "WARMUP_EPOCHS": 25,
+        "MIN_EPOCHS": 70,
+        "NUM_STEPS": 512,
+        "MINI_BATCH_SIZE": 256,
+        "NUM_ENVS": 8,
+        "EVAL_FREQ": 2,
+        "ROLLING_EVAL_WINDOW": 5,
+    },
+    {
+        "ID": "P15_RP_Scale25_Gamma88_LossAv035_Up120_Tilt10_Width5",
+        "LR": 2.0e-4,
+        "CRITIC_LR": 8.0e-4,
+        "ENT_COEF_START": 0.0050,
+        "ENT_COEF_END": 0.0005,
+        "UPSIDE_ALPHA_MULT": 1.20,  # Re-test Up 1.20 cliff edge with breadth features present
+        "loss_aversion_penalty": 0.35,
+        "max_cash_pct": 0.0,
+        "min_active_tilt": 0.10,
+        "min_width": 5,
+        "GAMMA": 0.88,
+        "GAE_LAMBDA": 0.95,
+        "REWARD_SCALE": 25.0,
+        "SEEDS": [42],
+        "NUM_EPOCHS": 90,
+        "UPDATE_EPOCHS": 4,
+        "PATIENCE": 30,
+        "WARMUP_EPOCHS": 25,
+        "MIN_EPOCHS": 70,
+        "NUM_STEPS": 512,
+        "MINI_BATCH_SIZE": 256,
+        "NUM_ENVS": 8,
+        "EVAL_FREQ": 2,
+        "ROLLING_EVAL_WINDOW": 5,
+    },
+    # ---------------- SLICE 3: MULTI-SEED DEEP SHELTER (TILT 0.08) ----------------
+    {
+        "ID": "P15_RP_Scale25_Gamma88_LossAv035_Up118_Tilt08_Width5",
+        "LR": 2.0e-4,
+        "CRITIC_LR": 8.0e-4,
+        "ENT_COEF_START": 0.0050,
+        "ENT_COEF_END": 0.0005,
+        "UPSIDE_ALPHA_MULT": 1.18,
+        "loss_aversion_penalty": 0.35,
+        "max_cash_pct": 0.0,
+        "min_active_tilt": 0.08,
+        "min_width": 5,
+        "GAMMA": 0.88,
+        "GAE_LAMBDA": 0.95,
+        "REWARD_SCALE": 25.0,
+        "SEEDS": [101],
+        "NUM_EPOCHS": 90,
+        "UPDATE_EPOCHS": 4,
+        "PATIENCE": 30,
+        "WARMUP_EPOCHS": 25,
+        "MIN_EPOCHS": 70,
+        "NUM_STEPS": 512,
+        "MINI_BATCH_SIZE": 256,
+        "NUM_ENVS": 8,
+        "EVAL_FREQ": 2,
+        "ROLLING_EVAL_WINDOW": 5,
+    },
+    {
+        "ID": "P15_RP_Scale25_Gamma88_LossAv030_Up118_Tilt10_Width5",
+        "LR": 2.0e-4,
+        "CRITIC_LR": 8.0e-4,
+        "ENT_COEF_START": 0.0050,
+        "ENT_COEF_END": 0.0005,
+        "UPSIDE_ALPHA_MULT": 1.18,
+        "loss_aversion_penalty": 0.30,
+        "max_cash_pct": 0.0,
+        "min_active_tilt": 0.10,
+        "min_width": 5,
+        "GAMMA": 0.88,
+        "GAE_LAMBDA": 0.95,
+        "REWARD_SCALE": 25.0,
+        "SEEDS": [101],
+        "NUM_EPOCHS": 90,
+        "UPDATE_EPOCHS": 4,
+        "PATIENCE": 30,
+        "WARMUP_EPOCHS": 25,
+        "MIN_EPOCHS": 70,
+        "NUM_STEPS": 512,
+        "MINI_BATCH_SIZE": 256,
+        "NUM_ENVS": 8,
+        "EVAL_FREQ": 2,
+        "ROLLING_EVAL_WINDOW": 5,
+    },
+    {
+        "ID": "P15_RP_Scale25_Gamma88_LossAv035_Up118_Tilt08_Width5",
+        "LR": 2.0e-4,
+        "CRITIC_LR": 8.0e-4,
+        "ENT_COEF_START": 0.0050,
+        "ENT_COEF_END": 0.0005,
+        "UPSIDE_ALPHA_MULT": 1.18,
+        "loss_aversion_penalty": 0.35,
+        "max_cash_pct": 0.0,
+        "min_active_tilt": 0.08,
+        "min_width": 5,
+        "GAMMA": 0.88,
+        "GAE_LAMBDA": 0.95,
+        "REWARD_SCALE": 25.0,
+        "SEEDS": [777],
+        "NUM_EPOCHS": 90,
+        "UPDATE_EPOCHS": 4,
+        "PATIENCE": 30,
+        "WARMUP_EPOCHS": 25,
+        "MIN_EPOCHS": 70,
+        "NUM_STEPS": 512,
+        "MINI_BATCH_SIZE": 256,
+        "NUM_ENVS": 8,
+        "EVAL_FREQ": 2,
+        "ROLLING_EVAL_WINDOW": 5,
+    },
+]
+
+slice_map = {
+    1: param_grid_sweep[0:3],
+    2: param_grid_sweep[3:6],
+    3: param_grid_sweep[6:9],
+}
+
+if SLICE_NUM not in slice_map:
+    raise ValueError(f"❌ SLICE_NUM must be 1, 2, or 3. Got: {SLICE_NUM}")
+
+grid = slice_map[SLICE_NUM]
+print("=" * 75)
+print(
+    f"🔥 ACTIVE TRAINING SESSION: GENERATION 14 (SLICE {SLICE_NUM} of 3, {len(grid)} Configurations)"
+)
+print("=" * 75)
+for i, p in enumerate(grid, 1):
+    print(
+        f"  [{i}/{len(grid)}] ID: {p['ID']:<55} | Seed: {p['SEEDS'][0]} | "
+        f"Up: {p['UPSIDE_ALPHA_MULT']} | Tilt: {p['min_active_tilt']} | LossAv: {p['loss_aversion_penalty']}"
+    )
+print("=" * 75)
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 10  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 6: Environment Factory
+def create_fresh_environments(
+    base_config: TradingConfig,
+    grid_params: Dict[str, Any],
+    df_close: pd.DataFrame,
+    macro_df: pd.DataFrame,
+    feature_cube: pd.DataFrame,
+    cal_train: pd.DatetimeIndex,
+    cal_val: pd.DatetimeIndex,
+    cal_test: pd.DatetimeIndex,
+):
+    run_config = copy.deepcopy(base_config)
+
+    if "loss_aversion_penalty" in grid_params:
+        run_config.loss_aversion_penalty = float(grid_params["loss_aversion_penalty"])
+    if "UPSIDE_ALPHA_MULT" in grid_params:
+        run_config.upside_alpha_mult = float(grid_params["UPSIDE_ALPHA_MULT"])
+    if "max_cash_pct" in grid_params:
+        run_config.max_cash_pct = float(grid_params["max_cash_pct"])
+    if "min_active_tilt" in grid_params:
+        run_config.min_active_tilt = float(grid_params["min_active_tilt"])
+    if "min_width" in grid_params:
+        run_config.min_basket_width = int(grid_params["min_width"])
+    elif "min_basket_width" in grid_params:
+        run_config.min_basket_width = int(grid_params["min_basket_width"])
+
+    simple_rets = df_close.pct_change(1, fill_method=None).shift(-1)
+    simple_rets["CASH"] = 0.0
+
+    def make_train_env():
+        def thunk():
+            e = DiscoveryEnv(
+                feature_cube=feature_cube,
+                simple_ret_matrix=simple_rets,
+                calendar=cal_train,
+                macro_df=macro_df,
+                config=run_config,
+                randomize_start=True,
+                episode_steps=grid_params["NUM_STEPS"],
+            )
+            return RLVRGymEnv(e, macro_df)
+
+        return thunk
+
+    env_val = DiscoveryEnv(
+        feature_cube=feature_cube,
+        simple_ret_matrix=simple_rets,
+        calendar=cal_val,
+        macro_df=macro_df,
+        config=run_config,
+        randomize_start=False,
+        episode_steps=0,  # Strict full-calendar validation (no 512-step cutoff)
+    )
+    gym_val = RLVRGymEnv(env_val, macro_df)
+    gym_val.is_training = False
+
+    env_test = DiscoveryEnv(
+        feature_cube=feature_cube,
+        simple_ret_matrix=simple_rets,
+        calendar=cal_test,
+        macro_df=macro_df,
+        config=run_config,
+        randomize_start=False,
+        episode_steps=0,  # Strict full-calendar test bench
+    )
+    gym_test = RLVRGymEnv(env_test, macro_df)
+    gym_test.is_training = False
+
+    return make_train_env, gym_val, gym_test, run_config
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 11  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# ==============================================================================
+# CELL 10: Training Engine with Generation 11 Composite Fitness Early Stopping
+# ==============================================================================
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def set_seed(seed: int):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    torch.use_deterministic_algorithms(True, warn_only=True)
+
+
+def get_hp_tag(params: Dict[str, Any], seed: int = 42) -> str:
+    cid = params.get("ID", f"run_s{seed}")
+    return f"{cid}_s{seed}"
+
+
+def update_model_catalog(catalog_path: Path, record: Dict[str, Any]):
+    """Atomically append run parameters and performance metrics to model_catalog.parquet."""
+    df_new = pd.DataFrame([record])
+    if catalog_path.exists():
+        df_existing = pd.read_parquet(catalog_path)
+        df_catalog = (
+            pd.concat([df_existing, df_new], ignore_index=True)
+            .drop_duplicates(subset=["checkpoint_name"], keep="last")
+            .reset_index(drop=True)
+        )
+    else:
+        df_catalog = df_new
+
+    df_catalog.to_parquet(catalog_path, index=False)
+
+
+def train_agent_for_grid(
+    grid_params: Dict[str, Any],
+    make_train_env,
+    gym_val: RLVRGymEnv,
+    checkpoint_dir: Path,
+    run_config: Optional[TradingConfig] = None,
+):
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    cfg = run_config or TradingConfig()
+
+    seeds = grid_params["SEEDS"]
+    num_epochs = grid_params["NUM_EPOCHS"]
+    warmup_epochs = grid_params.get("WARMUP_EPOCHS", 25)
+    min_epochs = grid_params.get("MIN_EPOCHS", 70)
+    num_envs = grid_params["NUM_ENVS"]
+
+    grid_best_metric = -np.inf
+    grid_best_model_path: Optional[Path] = None
+    grid_best_seed = None
+    grid_best_history = []
+    grid_best_state_dict = None
+
+    for seed in seeds:
+        print(f"\n   -> 🚀 SEED: {seed}")
+        set_seed(seed)
+        hp_tag = get_hp_tag(grid_params, seed)
+
+        # Clean lingering checkpoints for this specific hp_tag
+        for existing_file in checkpoint_dir.glob(f"model_{hp_tag}_*.pt"):
+            try:
+                existing_file.unlink()
+            except OSError:
+                pass
+
+        if "google.colab" in sys.modules:
+            envs = gym.vector.AsyncVectorEnv(
+                [make_train_env() for _ in range(num_envs)]
+            )
+        else:
+            envs = gym.vector.SyncVectorEnv([make_train_env() for _ in range(num_envs)])
+
+        obs_shape = envs.single_observation_space.shape
+        action_shape = envs.single_action_space.shape
+        assert obs_shape is not None and action_shape is not None
+
+        obs_dim = int(obs_shape[0])
+        action_dim = int(action_shape[0])
+
+        agent = AbsoluteZeroAgent(obs_dim=obs_dim, action_dim=action_dim).to(device)
+        trainer = PPOTrainer(
+            agent,
+            lr=grid_params["LR"],
+            critic_lr=grid_params.get("CRITIC_LR", grid_params["LR"] * 4.0),
+            clip_coef=0.2,
+            clip_vloss=True,
+            ent_coef=grid_params.get("ENT_COEF_START", 0.0050),
+        )
+
+        buffer = RolloutBuffer(
+            num_steps=grid_params["NUM_STEPS"],
+            num_envs=num_envs,
+            obs_dim=obs_dim,
+            action_dim=action_dim,
+            device=device,
+            gamma=grid_params.get("GAMMA", cfg.gamma),
+            gae_lambda=grid_params.get("GAE_LAMBDA", cfg.gae_lambda),
+        )
+
+        seed_best_rolling_metric = -np.inf
+        seed_current_checkpoint_path: Optional[Path] = None
+        patience_counter = 0
+        seed_history = []
+        val_metric_history = []
+        rolling_window = grid_params.get("ROLLING_EVAL_WINDOW", 5)
+
+        for epoch in range(num_epochs):
+            obs, _ = envs.reset(seed=seed) if epoch == 0 else envs.reset()
+            epoch_rewards = []
+
+            for step in range(grid_params["NUM_STEPS"]):
+                obs_tensor = torch.tensor(obs, dtype=torch.float32).to(device)
+                with torch.no_grad():
+                    action, logprob, _, value = agent.get_action_and_value(obs_tensor)
+
+                raw_action = action.cpu().numpy()
+                next_obs, rewards, terminations, truncations, _ = envs.step(raw_action)
+
+                if np.isnan(rewards).any() or np.isinf(rewards).any():
+                    raise FloatingPointError(
+                        f"NaN/Inf reward detected at Epoch {epoch+1}, Step {step}"
+                    )
+
+                reward_scale = grid_params.get("REWARD_SCALE", 25.0)
+                scaled_rewards = rewards * reward_scale
+
+                buffer.add(
+                    obs=obs,
+                    action=action,
+                    logprob=logprob,
+                    reward=scaled_rewards,
+                    value=value,
+                    terminations=terminations,
+                    truncations=truncations,
+                )
+                epoch_rewards.append(rewards.mean())
+                obs = next_obs
+
+            # Bootstrap V(s_T)
+            obs_tensor = torch.tensor(obs, dtype=torch.float32).to(device)
+            next_term_tensor = torch.tensor(terminations, dtype=torch.float32).to(
+                device
+            )
+            with torch.no_grad():
+                next_values = agent.get_value(obs_tensor)
+
+            buffer.compute_advantages(next_values, next_termination=next_term_tensor)
+
+            trainer.update_schedules(
+                epoch + 1,
+                num_epochs,
+                ent_start=grid_params.get("ENT_COEF_START", 0.0050),
+                ent_end=grid_params.get("ENT_COEF_END", 0.0005),
+            )
+
+            diagnostics = trainer.update(
+                buffer,
+                update_epochs=grid_params["UPDATE_EPOCHS"],
+                mini_batch_size=grid_params["MINI_BATCH_SIZE"],
+            )
+            buffer.step = 0
+
+            diagnostics["epoch"] = epoch + 1
+            diagnostics["avg_reward"] = float(np.mean(epoch_rewards))
+            seed_history.append(diagnostics)
+
+            if (epoch + 1) % grid_params["EVAL_FREQ"] == 0:
+                train_scaler = envs.get_attr("scaler")[0]
+                gym_val.scaler.load_state(train_scaler)
+
+                val_results = AgentEvaluator.evaluate(agent, gym_val, device)
+
+                # ==========================================================
+                # GENERATION 12 CONTRACT: BENCHMARK-RELATIVE ACTIVE ALPHA FITNESS
+                # Objective: Maximize Information Ratio & Cumulative Spread.
+                # Invariant: Low-beta benchmark huggers with negative alpha
+                #            receive a strict penalty (Fitness < 0).
+                # ==========================================================
+                val_sharpe = float(val_results["sharpe_ratio"])
+                val_ir = float(val_results["information_ratio"])
+                val_excess = float(val_results["excess_return"])
+
+                # Single source of truth from QuantUtils kernel
+                val_fitness = QuantUtils.compute_composite_fitness(
+                    excess_return=val_excess,
+                    information_ratio=val_ir,
+                )
+                val_metric_history.append(val_fitness)
+
+                rolling_fitness = float(np.mean(val_metric_history[-rolling_window:]))
+                is_warmup = (epoch + 1) <= warmup_epochs
+                status_icon = "🔥 [WARMUP]" if is_warmup else ""
+
+                print(
+                    f"      Ep {epoch+1:03d} | Rew: {diagnostics['avg_reward']:.4f} | "
+                    f"Loss: {diagnostics['total_loss']:.4f} | EV: {diagnostics['explained_variance']:.3f} | "
+                    f"Fit: {val_fitness:.4f} | Roll-{rolling_window} Fit: {rolling_fitness:.4f} | "
+                    f"Val IR: {val_ir:.3f} | Excess: {val_excess*100:+.2f}% | Val Sh: {val_sharpe:.3f} {status_icon}"
+                )
+
+                if not is_warmup:
+                    if rolling_fitness > seed_best_rolling_metric:
+                        seed_best_rolling_metric = rolling_fitness
+                        patience_counter = 0
+
+                        new_checkpoint_name = f"model_{hp_tag}_ep_{epoch+1}.pt"
+                        new_checkpoint_path = checkpoint_dir / new_checkpoint_name
+
+                        scaler_state = {
+                            "mean": train_scaler.mean.copy(),
+                            "var": train_scaler.var.copy(),
+                            "count": train_scaler.count,
+                        }
+
+                        checkpoint_payload = {
+                            "model_state_dict": agent.state_dict(),
+                            "scaler_state": scaler_state,
+                            "val_fitness": val_fitness,
+                            "rolling_val_fitness": rolling_fitness,
+                            "val_sharpe": val_sharpe,
+                            "val_sortino": val_results["sortino_ratio"],
+                            "val_excess_return": val_excess,
+                            "val_info_ratio": val_ir,
+                            "epoch": epoch + 1,
+                            "seed": seed,
+                            "grid_params": grid_params,
+                            "holding_period": cfg.holding_period,
+                            "benchmark": cfg.benchmark,
+                            "num_steps": grid_params["NUM_STEPS"],
+                            "num_envs": num_envs,
+                            "total_timesteps_per_epoch": grid_params["NUM_STEPS"]
+                            * num_envs,
+                            "training_history": list(seed_history),
+                        }
+
+                        torch.save(checkpoint_payload, str(new_checkpoint_path))
+
+                        catalog_record = {
+                            "checkpoint_name": new_checkpoint_name,
+                            "model_path": str(new_checkpoint_path),
+                            "epoch": epoch + 1,
+                            "seed": seed,
+                            "val_fitness": val_fitness,
+                            "rolling_val_fitness": rolling_fitness,
+                            "val_sharpe": val_sharpe,
+                            "val_info_ratio": val_ir,
+                            "val_excess_return": val_excess,
+                            "num_steps": grid_params["NUM_STEPS"],
+                            "num_envs": num_envs,
+                            "holding_period": cfg.holding_period,
+                            "benchmark": cfg.benchmark,
+                            "min_active_tilt": grid_params.get("min_active_tilt"),
+                            "min_width": grid_params.get("min_width"),
+                            "lr": grid_params["LR"],
+                            "gamma": grid_params.get("GAMMA", cfg.gamma),
+                            "reward_scale": grid_params.get("REWARD_SCALE", 25.0),
+                            "timestamp": pd.Timestamp.now().isoformat(),
+                        }
+                        update_model_catalog(
+                            checkpoint_dir.parent / "model_catalog.parquet",
+                            catalog_record,
+                        )
+
+                        # Clean up previous local checkpoint to conserve disk space
+                        if (
+                            seed_current_checkpoint_path is not None
+                            and seed_current_checkpoint_path.exists()
+                        ):
+                            try:
+                                seed_current_checkpoint_path.unlink()
+                            except OSError:
+                                pass
+
+                        seed_current_checkpoint_path = new_checkpoint_path
+                        print(
+                            f"         🟢 NEW BEST! Retained model (Roll IR-Fit: {rolling_fitness:.4f} | IR: {val_ir:.3f} | Excess: {val_excess*100:+.2f}%)"
+                        )
+
+                        if rolling_fitness > grid_best_metric:
+                            grid_best_metric = rolling_fitness
+                            grid_best_model_path = new_checkpoint_path
+                            grid_best_seed = seed
+                            grid_best_history = list(seed_history)
+                            grid_best_state_dict = copy.deepcopy(agent.state_dict())
+                    else:
+                        patience_counter += 1
+                        print(
+                            f"         🔴 No improvement. Patience: {patience_counter}/{grid_params['PATIENCE']}"
+                        )
+
+                    # Generation 12 Invariant: Enforce MIN_EPOCHS before early stopping triggers
+                    if (epoch + 1) >= min_epochs and patience_counter >= grid_params[
+                        "PATIENCE"
+                    ]:
+                        print(
+                            f"      🛑 EARLY STOPPING triggered for Seed {seed} at Epoch {epoch+1}"
+                        )
+                        break
+
+        envs.close()
+        del agent, trainer, buffer, envs
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    return (
+        grid_best_model_path,
+        grid_best_metric,
+        grid_best_seed,
+        grid_best_history,
+        grid_best_state_dict,
+    )
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 12  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# ==============================================================================
+# CELL 11: Grid Execution Loop (Generation 11)
+# ==============================================================================
+checkpoint_dir = OUTPUT_DIR / "model_checkpoints"
+checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+OVERWRITE_EXISTING = True
+
+print("\n" + "=" * 60)
+print(f"🏆 STARTING GENERATION 11 HYPERPARAMETER SWEEP (SLICE {SLICE_NUM}) 🏆")
+print("=" * 60)
+
+for idx, params in enumerate(grid):
+    current_seed = params["SEEDS"][0]
+    hp_tag = get_hp_tag(params, current_seed)
+
+    done_marker = checkpoint_dir / f".completed_{hp_tag}"
+    if done_marker.exists() and not OVERWRITE_EXISTING:
+        print(
+            f"\n✅ [SKIPPING] GRID COMBO {idx+1}/{len(grid)} - Already completed: {hp_tag}"
+        )
+        continue
+    elif done_marker.exists() and OVERWRITE_EXISTING:
+        try:
+            done_marker.unlink()
+        except OSError:
+            pass
+
+    print(f"\n\n{'='*50}")
+    print(f"🔧 RUNNING GRID COMBO {idx+1}/{len(grid)}: {params['ID']}")
+    print(json.dumps({k: v for k, v in params.items() if k != "SEEDS"}, indent=2))
+    print(f"{'='*50}")
+
+    make_train_env, gym_val, gym_test, run_config = create_fresh_environments(
+        base_config=config,
+        grid_params=params,
+        df_close=df_close,
+        macro_df=macro_df,
+        feature_cube=feature_cube,
+        cal_train=cal_train,
+        cal_val=cal_val,
+        cal_test=cal_test,
+    )
+
+    best_model_path, best_fitness, best_seed, best_history, best_state_dict = (
+        train_agent_for_grid(
+            grid_params=params,
+            make_train_env=make_train_env,
+            gym_val=gym_val,
+            checkpoint_dir=checkpoint_dir,
+            run_config=run_config,
+        )
+    )
+
+    done_marker.touch()
+
+    if best_state_dict is None:
+        print("⚠️ No model survived warmup for this configuration.")
+        continue
+
+    champion_name = best_model_path.name if best_model_path else "None"
+    print(
+        f"\n⭐ [GRID {idx+1} COMPLETE] Best Val Fitness: {best_fitness:.3f} | Best Model Saved: {champion_name}"
+    )
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 13  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 9: Execution Timing Summary
+end_time = time.time()
+print("\n" + "=" * 60)
+print(
+    f"🏆 TRAINING COMPLETED! Total Duration: {time.strftime('%H:%M:%S', time.gmtime(end_time - start_time))}"
+)
+print("Run Notebook 03a to evaluate the saved models Out-of-Sample.")
+print("=" * 60)
+```
+
+──────────────────────────────────────────────────────────────────────────────
+### CELL 14  |  CODE
+──────────────────────────────────────────────────────────────────────────────
+
+```python
+# CELL 10: Runtime Cleanup / Disconnect (Colab Safe)
+if RUNNING_IN_COLAB:
+    from google.colab import runtime  # type: ignore
+
+    runtime.unassign()
+    print("Runtime unassigned. Session disconnected.")
+```
+
+##############################################################################
+## END OF: 02_RLVR_Part2_Training_v57_.ipynb
+##############################################################################
+
+
+==============================================================================
+# END OF MERGED FILE
+==============================================================================
